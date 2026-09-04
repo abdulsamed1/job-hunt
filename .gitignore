@@ -1,0 +1,10 @@
+.ref-repos/
+_bmad
+_bmad-output/
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+*.db
+*.sqlite3
