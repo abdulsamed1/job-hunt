@@ -338,11 +338,18 @@ class FreeLLMClient:
         try:
             return asyncio.run(self.tailor_summary(job, profile))
         except RuntimeError:
-            loop = asyncio.new_event_loop()
+            # If an event loop is already running in this thread, execute in a worker thread
+            import concurrent.futures
+
+            def _runner() -> Optional[str]:
+                return asyncio.run(self.tailor_summary(job, profile))
+
             try:
-                return loop.run_until_complete(self.tailor_summary(job, profile))
-            finally:
-                loop.close()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(_runner).result()
+            except Exception as e:
+                logger.warning("Worker thread tailor_summary failed: %s", e)
+                return None
         except Exception:
             return None
 

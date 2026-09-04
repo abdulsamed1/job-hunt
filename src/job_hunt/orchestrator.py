@@ -113,7 +113,7 @@ class PipelineOrchestrator:
         logger.info("Discovery complete. Discovered %d jobs (%d new)", len(postings), new_jobs)
         return new_jobs
 
-    async def run_evaluation_stage_async(self, limit: int = 100) -> int:
+    async def run_evaluation_stage_async(self, limit: int = 100, threshold: float = 70.0) -> int:
         """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs asynchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
         evaluated_count = 0
@@ -126,19 +126,19 @@ class PipelineOrchestrator:
                     self.storage.update_job_state(job.id, JobState.PRE_FILTERED_OUT, details=liveness_reason, force=True)
                     continue
 
-                eval_result = await self.eval_engine.evaluate_async(job, self.profile)
+                eval_result = await self.eval_engine.evaluate_async(job, self.profile, threshold=threshold)
                 self.storage.save_evaluation(eval_result)
                 evaluated_count += 1
 
         logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
         return evaluated_count
 
-    def run_evaluation_stage(self, limit: int = 100) -> int:
+    def run_evaluation_stage(self, limit: int = 100, threshold: float = 70.0) -> int:
         """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs synchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
         evaluated_count = 0
         for job in pending_jobs:
-            eval_result = self.eval_engine.evaluate(job, self.profile)
+            eval_result = self.eval_engine.evaluate(job, self.profile, threshold=threshold)
             self.storage.save_evaluation(eval_result)
             evaluated_count += 1
 
@@ -156,6 +156,11 @@ class PipelineOrchestrator:
 
         logger.info("CV tailoring complete. Tailored %d CVs.", tailored_count)
         return tailored_count
+
+    # Alias for web API & consistency
+    def run_tailoring_stage(self, limit: int = 50) -> int:
+        """Alias for run_cv_stage."""
+        return self.run_cv_stage(limit=limit)
 
     async def run_application_stage(self, limit: int = 10, dry_run: bool = True) -> int:
         """Stage 8 & 9: Launch browser automation to fill and submit applications."""
@@ -254,6 +259,9 @@ class PipelineOrchestrator:
             "daily_metrics": daily_metrics,
             "database_stats": stats,
         }
+
+    # Alias for web/CLI callers
+    run_single_cycle = run_cycle
 
     async def start_continuous_loop(self, interval_seconds: int = 3600, dry_run: bool = True) -> None:
         """Run 24/7 continuous autonomous job-hunting loop."""

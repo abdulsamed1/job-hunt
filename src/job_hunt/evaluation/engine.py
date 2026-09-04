@@ -121,8 +121,14 @@ class EvaluationEngine:
 
         return True, None
 
-    def evaluate(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
+    def evaluate(
+        self,
+        job: JobPosting,
+        profile: CandidateProfile,
+        threshold: Optional[float] = None,
+    ) -> EvaluationResult:
         """Synchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
+        thresh = threshold if threshold is not None else self.min_score_threshold
         # 1. Run pre-filter
         passed, reason = self.pre_filter(job, profile)
         if not passed:
@@ -142,17 +148,23 @@ class EvaluationEngine:
             try:
                 llm_data = self.llm_client.evaluate_job_sync(job, profile)
                 if llm_data and isinstance(llm_data, dict) and "score" in llm_data:
-                    res = self._build_llm_result(job.id, llm_data)
+                    res = self._build_llm_result(job.id, llm_data, threshold=thresh)
                     if res is not None:
                         return res
             except Exception as e:
                 logger.warning("LLM evaluation failed, using deterministic fallback: %s", e)
 
         # 3. Deterministic scoring fallback
-        return self._evaluate_deterministic(job, profile)
+        return self._evaluate_deterministic(job, profile, threshold=thresh)
 
-    async def evaluate_async(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
+    async def evaluate_async(
+        self,
+        job: JobPosting,
+        profile: CandidateProfile,
+        threshold: Optional[float] = None,
+    ) -> EvaluationResult:
         """Asynchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
+        thresh = threshold if threshold is not None else self.min_score_threshold
         passed, reason = self.pre_filter(job, profile)
         if not passed:
             return EvaluationResult(
@@ -170,20 +182,26 @@ class EvaluationEngine:
             try:
                 llm_data = await self.llm_client.evaluate_job(job, profile)
                 if llm_data and isinstance(llm_data, dict) and "score" in llm_data:
-                    res = self._build_llm_result(job.id, llm_data)
+                    res = self._build_llm_result(job.id, llm_data, threshold=thresh)
                     if res is not None:
                         return res
             except Exception as e:
                 logger.warning("Async LLM evaluation failed, using deterministic fallback: %s", e)
 
-        return self._evaluate_deterministic(job, profile)
+        return self._evaluate_deterministic(job, profile, threshold=thresh)
 
-    def _build_llm_result(self, job_id: Optional[int], data: Dict[str, Any]) -> Optional[EvaluationResult]:
+    def _build_llm_result(
+        self,
+        job_id: Optional[int],
+        data: Dict[str, Any],
+        threshold: Optional[float] = None,
+    ) -> Optional[EvaluationResult]:
         """Validate and transform LLM output into an EvaluationResult."""
+        thresh = threshold if threshold is not None else self.min_score_threshold
         try:
             raw_score = float(data.get("score", 0.0))
             score = max(0.0, min(100.0, round(raw_score, 1)))
-            is_eligible = score >= self.min_score_threshold
+            is_eligible = score >= thresh
 
             matched = [str(s) for s in data.get("matched_skills", []) if isinstance(s, (str, int))]
             missing = [str(s) for s in data.get("missing_skills", []) if isinstance(s, (str, int))]
@@ -203,16 +221,22 @@ class EvaluationEngine:
                 score=score,
                 eligible=is_eligible,
                 matched_skills=matched,
-                missing_skills=missing[:10],
+                missing_skills=missing,
                 reasoning=f"[AI-Evaluated] {reasoning}",
                 pre_filtered=False,
             )
         except Exception as e:
-            logger.debug("Failed to build LLM result from data: %s", e)
+            logger.warning("Error parsing LLM evaluation data: %s", e)
             return None
 
-    def _evaluate_deterministic(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
-        """Deterministic keyword and heuristic scoring fallback."""
+    def _evaluate_deterministic(
+        self,
+        job: JobPosting,
+        profile: CandidateProfile,
+        threshold: Optional[float] = None,
+    ) -> EvaluationResult:
+        """Deterministic keyword-based evaluation fallback scoring 0-100."""
+        thresh = threshold if threshold is not None else self.min_score_threshold
         text_to_scan = f"{job.title} {job.description}".lower()
 
         matched_skills: List[str] = []
@@ -288,7 +312,7 @@ class EvaluationEngine:
             location_score = 15.0 if profile.open_to_remote else 10.0
 
         total_score = min(100.0, round(skill_score + seniority_score + location_score, 1))
-        is_eligible = total_score >= self.min_score_threshold
+        is_eligible = total_score >= thresh
 
         reasoning = (
             f"Score: {total_score}/100 (Skills: {skill_score:.1f}/55, Seniority: {seniority_score:.1f}/25, "

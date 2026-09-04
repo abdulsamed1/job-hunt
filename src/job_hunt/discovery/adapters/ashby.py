@@ -63,11 +63,24 @@ class AshbyAdapter(DiscoveryAdapter):
             description = j.get("descriptionPlain", "") or j.get("descriptionHtml", "") or ""
             posted_at = j.get("publishedAt")
 
-            comp = j.get("compensation", {}) or {}
+            comp = j.get("compensation") or {}
+            if not isinstance(comp, dict):
+                comp = {}
             comp_tier = comp.get("compensationTierSummary") or {}
+            if not isinstance(comp_tier, dict):
+                comp_tier = {}
+
             salary_min = comp_tier.get("min") or comp.get("minSalary")
             salary_max = comp_tier.get("max") or comp.get("maxSalary")
             salary_curr = comp_tier.get("currency") or comp.get("currency")
+
+            def _safe_float(val: Any) -> Optional[float]:
+                if val is None:
+                    return None
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return None
 
             posting = JobPosting(
                 external_id=str(j.get("id")),
@@ -82,8 +95,8 @@ class AshbyAdapter(DiscoveryAdapter):
                 content_hash=content_hash(description),
                 location=location_str,
                 description=description,
-                salary_min=float(salary_min) if salary_min else None,
-                salary_max=float(salary_max) if salary_max else None,
+                salary_min=_safe_float(salary_min),
+                salary_max=_safe_float(salary_max),
                 salary_currency=salary_curr,
                 posted_at=posted_at,
                 metadata={"ashby_id": j.get("id"), "is_remote": j.get("isRemote")},
