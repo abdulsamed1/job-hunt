@@ -13,6 +13,7 @@ from job_hunt.discovery.adapters.ashby import AshbyAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
 from job_hunt.discovery.adapters.greenhouse import GreenhouseAdapter
 from job_hunt.discovery.adapters.lever import LeverAdapter
+from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
 from job_hunt.discovery.adapters.smartrecruiters import SmartRecruitersAdapter
 from job_hunt.discovery.adapters.workday import WorkdayAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
@@ -33,6 +34,7 @@ class SourceRegistry:
             SmartRecruitersAdapter(),
             WorkdayAdapter(),
             FeedAdapter(),
+            LinkedInAdapter(),
             UniversalWebAdapter(),
         ]
         self._adapter_map = {a.adapter_id: a for a in self.adapters}

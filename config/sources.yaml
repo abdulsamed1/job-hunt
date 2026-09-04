@@ -1,4 +1,27 @@
 sources:
+- adapter: linkedin
+  name: linkedin_remote_worldwide
+  url: https://www.linkedin.com/jobs/
+  queries:
+  - Software Engineer
+  - Backend Engineer
+  - Full Stack Engineer
+  - Python Developer
+  - Go Engineer
+  - Distributed Systems Engineer
+  - Cloud Infrastructure Engineer
+  - Senior Software Engineer
+  locations:
+  - Worldwide
+  - Remote
+  - United States
+  - European Union
+  - United Kingdom
+  - Germany
+  remote_only: true
+  past_24h_only: true
+  max_pages_per_query: 5
+  target_jobs_count: 500
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
@@ -335,27 +358,27 @@ sources:
 - adapter: lever
   name: kraken
   url: https://jobs.lever.co/kraken
-- adapter: lever
+- adapter: greenhouse
   name: ripple
-  url: https://jobs.lever.co/ripple
+  url: https://boards.greenhouse.io/ripple
 - adapter: lever
   name: ledger
   url: https://jobs.lever.co/ledger
-- adapter: lever
+- adapter: greenhouse
   name: consensys
-  url: https://jobs.lever.co/consensys
+  url: https://boards.greenhouse.io/consensys
 - adapter: lever
   name: chainalysis
   url: https://jobs.lever.co/chainalysis
-- adapter: lever
+- adapter: ashby
   name: alchemy
-  url: https://jobs.lever.co/alchemy
-- adapter: lever
+  url: https://jobs.ashbyhq.com/alchemy
+- adapter: ashby
   name: opensea
-  url: https://jobs.lever.co/opensea
-- adapter: lever
+  url: https://jobs.ashbyhq.com/opensea
+- adapter: ashby
   name: uniswap
-  url: https://jobs.lever.co/uniswap
+  url: https://jobs.ashbyhq.com/uniswap
 - adapter: lever
   name: polygon
   url: https://jobs.lever.co/polygon
@@ -631,158 +654,262 @@ sources:
   url: https://weworkremotely.com/categories/remote-programming-jobs.json
 - name: Calyptus
   url: https://calyptus.co/
+  adapter: web
 - name: Degen Crypto Jobs
   url: https://degencryptojobs.com/
+  adapter: web
 - name: CryptoJobs.com
   url: https://cryptojobs.com/
+  adapter: web
 - name: Solana Ecosystem Jobs
   url: https://jobs.solana.com/
+  adapter: web
 - name: Web3internships
   url: https://www.web3internships.com/
+  adapter: web
 - name: Ton Jobs
   url: https://jobs.ton.org/jobs
+  adapter: web
 - name: Web3.career
   url: https://web3.career/
+  adapter: web
 - name: CryptoJobsList
   url: https://cryptojobslist.com/
-- name: Cryptocurrency Jobs
-  url: https://cryptocurrencyjobs.co/
+  adapter: web
+- adapter: feed
+  name: cryptocurrencyjobs
+  url: https://cryptocurrencyjobs.co/index.xml
 - name: Blockchain Works
   url: https://blockchain.works-hub.com/
+  adapter: web
 - name: Ethereum Jobs
   url: https://ethgigs.com/
+  adapter: web
 - name: DeFi Jobs
   url: https://defi.jobs/
+  adapter: web
 - name: BitcoinJobs
   url: https://bitcoinjobs.com/
+  adapter: web
 - name: CryptoJobs
   url: https://crypto.jobs/
+  adapter: web
 - name: Remote3
   url: https://remote3.co/
+  adapter: web
 - name: Web3 Army
   url: https://web3army.xyz/
+  adapter: web
 - name: useWeb3 Jobs
   url: https://www.useweb3.xyz/jobs
+  adapter: web
 - name: Crypto Recruit
   url: https://cryptorecruit.com/
+  adapter: web
 - name: Blockchain Job Board
   url: https://blockchainjobboard.com/
+  adapter: web
 - name: CryptoJobsDB
   url: https://cryptojobsdb.com/
+  adapter: web
 - name: CryptoJobLand
   url: https://cryptojob.land/
+  adapter: web
 - name: Web3 Jobs
   url: https://web3jobs.ai/
+  adapter: web
 - adapter: greenhouse
   name: Chainlink Labs Careers
   url: https://boards.greenhouse.io/chainlink
 - name: Binance Careers
   url: https://www.binance.com/en/careers
+  adapter: web
 - name: CryptoJobsDaily
   url: https://cryptojobsdaily.com/
+  adapter: web
 - name: NFT Jobs
   url: https://nftjobs.com/
+  adapter: web
 - name: Crypto Careers
   url: https://crypto-careers.com/
+  adapter: web
 - name: CryptoJobSearch
   url: https://cryptojobsearch.com/
+  adapter: web
 - name: Web3 Talent
   url: https://web3talent.com/
+  adapter: web
 - name: Blocktribe
   url: https://blocktribe.com/
+  adapter: web
 - name: Blockchain Developers
   url: https://blockchaindevelopers.io/
+  adapter: web
 - name: Solidity Jobs
   url: https://solidityjobs.com/
+  adapter: web
 - name: SmartContractJobs
   url: https://smartcontractjobs.com/
+  adapter: web
 - name: Aave Careers
   url: https://aave.com/careers/
+  adapter: web
 - name: CryptoJobHunt
   url: https://cryptojobhunt.com/
+  adapter: web
 - name: Stellar Jobs
   url: https://www.stellar.org/careers
+  adapter: web
 - name: PompCryptoJobs
   url: https://pompcryptojobs.com/
-- name: "Remote \U0001F48E Web3 Jobs"
+  adapter: web
+- name: Remote 💎 Web3 Jobs
   url: https://web3.career/remote-jobs
+  adapter: web
 - name: Arc (formerly Vettery)
   url: https://arc.dev/
+  adapter: web
 - name: AngelList Talent
   url: https://angel.co/talent
+  adapter: web
 - name: Wellfound (formerly AngelList)
   url: https://wellfound.com/
+  adapter: web
 - name: Toptal
   url: https://www.toptal.com/
+  adapter: web
 - name: Hired
   url: https://hired.com/
+  adapter: web
 - name: Gun.io
   url: https://www.gun.io/
+  adapter: web
 - name: YCombinator Jobs
   url: https://www.workatastartup.com/
-- name: Working Nomads
-  url: https://www.workingnomads.com/jobs
+  adapter: web
+- adapter: feed
+  name: workingnomads
+  url: https://www.workingnomads.com/jobs/export
 - name: FlexJobs
   url: https://www.flexjobs.com/
+  adapter: web
 - name: PowerToFly
   url: https://powertofly.com/
+  adapter: web
 - name: Remote.co
   url: https://remote.co/
-- name: Jobspresso
-  url: https://jobspresso.co/
+  adapter: web
+- adapter: feed
+  name: jobspresso
+  url: https://jobspresso.co/feed/
 - adapter: feed
   name: Remotive
   url: https://remotive.com/api/remote-jobs
 - name: JustRemote
   url: https://justremote.co/
+  adapter: web
 - name: DailyRemote
   url: https://dailyremote.com/
+  adapter: web
 - name: RemoteLeaf
   url: https://remoteleaf.com/
+  adapter: web
 - name: RemoteMore
   url: https://remotemore.com/
+  adapter: web
 - name: Vanhack
   url: https://vanhack.com/
+  adapter: web
 - name: Talent.io
   url: https://www.talent.io/
+  adapter: web
 - name: NodeFlair
   url: https://nodeflair.com/
+  adapter: web
 - name: Stack Overflow Jobs
   url: https://stackoverflow.com/jobs
-- name: LinkedIn Jobs
-  url: https://www.linkedin.com/jobs/
+  adapter: web
 - name: Indeed
   url: https://www.indeed.com/
+  adapter: web
 - name: Glassdoor
   url: https://www.glassdoor.com/
+  adapter: web
 - name: Dice
   url: https://www.dice.com/
+  adapter: web
 - name: HackerRank Jobs
   url: https://www.hackerrank.com/jobs
+  adapter: web
 - name: Gitcoin
   url: https://gitcoin.co/
+  adapter: web
 - name: DAO Jobs
   url: https://daojobs.io/
+  adapter: web
 - name: https://ethglobal.com/auth?useredirect=/jobs
   url: https://ethglobal.com/auth?use_redirect=/jobs
+  adapter: web
 - name: WUZZUF
   url: https://wuzzuf.net/
+  adapter: web
 - name: Bayt
   url: https://www.bayt.com/
+  adapter: web
 - name: GulfTalent
   url: https://www.gulftalent.com/
+  adapter: web
 - adapter: feed
-  name: SwissDev Jobs
+  name: swissdevjobs
   url: https://swissdevjobs.ch/api/jobsLight
 - name: Jobbatical
   url: https://jobbatical.com/
+  adapter: web
 - name: Eurojobs
   url: https://www.eurojobs.com/
+  adapter: web
 - name: JobsDB
   url: https://www.jobsdb.com/
+  adapter: web
 - name: TokyoDev
   url: https://www.tokyodev.com/
+  adapter: web
 - name: JobStreet
   url: https://www.jobstreet.com/
+  adapter: web
 - name: https://www.jobberman.com/jobs?q=blockchain
   url: https://www.jobberman.com/jobs?q=blockchain
+  adapter: web
+- adapter: web
+  name: Polygon Ecosystem Jobs
+  url: https://jobs.polygon.technology/
+- adapter: web
+  name: Chainlink Labs Careers
+  url: https://chainlinklabs.com/careers
+- adapter: web
+  name: ConsenSys Careers
+  url: https://consensys.net/careers/
+- adapter: web
+  name: Coinbase Careers
+  url: https://www.coinbase.com/careers
+- adapter: web
+  name: Ripple Careers
+  url: https://ripple.com/careers/
+- adapter: web
+  name: Polygon Careers
+  url: https://polygon.technology/careers/
+- adapter: web
+  name: Alchemy Jobs
+  url: https://www.alchemy.com/jobs
+- adapter: web
+  name: OpenSea Careers
+  url: https://opensea.io/careers
+- adapter: web
+  name: Uniswap Careers
+  url: https://uniswap.org/careers
+- adapter: web
+  name: RemoteOK
+  url: https://remoteok.com/
+- adapter: web
+  name: Remotive
+  url: https://remotive.com/

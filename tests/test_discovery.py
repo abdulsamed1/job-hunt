@@ -145,3 +145,88 @@ async def test_universal_web_adapter_schema_org():
     assert p.canonical_url == "https://web3jobs.example/job/rust-dev-123"
     assert p.location == "Remote, Global"
     assert "Rust" in p.description
+
+
+def test_linkedin_adapter_matching():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+    li = LinkedInAdapter()
+    assert li.matches_url("https://www.linkedin.com/jobs/search") is True
+    assert li.matches_url("https://linkedin.com/jobs/view/123") is True
+    assert li.matches_url("https://boards.greenhouse.io/stripe") is False
+
+
+@pytest.mark.asyncio
+async def test_linkedin_adapter_mock_fetch():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:99887766">
+        <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-99887766?refId=xyz"></a>
+        <h3 class="base-search-card__title">Senior Backend Engineer - Python</h3>
+        <h4 class="base-search-card__subtitle">Acme Cloud</h4>
+        <span class="job-search-card__location">Remote, Worldwide</span>
+        <time datetime="2026-09-04">2026-09-04</time>
+      </div>
+    </li>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        entry = {
+            "adapter": "linkedin",
+            "queries": ["Backend Engineer"],
+            "locations": ["Worldwide"],
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        postings = await adapter.fetch(entry, client)
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Senior Backend Engineer - Python"
+    assert p.company == "Acme Cloud"
+    assert p.canonical_url == "https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-99887766"
+    assert p.location == "Remote, Worldwide"
+    assert p.external_id == "99887766"
+    assert p.source == "linkedin"
+
+
+@pytest.mark.asyncio
+async def test_feed_adapter_rss_xml_parsing():
+    sample_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <channel>
+        <title>Crypto Jobs RSS</title>
+        <item>
+          <title>Senior Distributed Systems Engineer</title>
+          <link>https://cryptocurrencyjobs.co/engineering/senior-distributed-systems-engineer/</link>
+          <dc:creator>Decentralized Labs</dc:creator>
+          <description>Lead engineering on high throughput consensus engines.</description>
+          <pubDate>Fri, 04 Sep 2026 12:00:00 GMT</pubDate>
+        </item>
+      </channel>
+    </rss>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_xml)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = FeedAdapter()
+        postings = await adapter.fetch(
+            {"name": "cryptocurrencyjobs", "url": "https://cryptocurrencyjobs.co/index.xml"},
+            client,
+        )
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Senior Distributed Systems Engineer"
+    assert p.company == "Decentralized Labs"
+    assert p.canonical_url == "https://cryptocurrencyjobs.co/engineering/senior-distributed-systems-engineer"
+    assert "consensus" in p.description
