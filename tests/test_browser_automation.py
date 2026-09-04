@@ -102,3 +102,18 @@ async def test_browser_captcha_detection(candidate, tmp_path):
     assert record.state == JobState.BLOCKED_CAPTCHA
     assert "CAPTCHA" in (record.error_message or "")
     assert record.screenshot_path is not None
+
+
+def test_captcha_transcription_parser():
+    from job_hunt.automation.captcha_solver import parse_audio_transcription, is_captcha_error
+
+    # Test Whisper-style separated audio tokens with stutter
+    raw = "T, D, R, 5, 5, 8."
+    code = parse_audio_transcription(raw)
+    assert code == "TDR58"
+
+    # Test error detection
+    error_html = "<div class='error'>Incorrect captcha code entered. Please try again.</div>"
+    assert is_captcha_error(error_html) is True
+    ok_html = "<div>Application submitted successfully. Thank you!</div>"
+    assert is_captcha_error(ok_html) is False

@@ -1,4 +1,4 @@
-"""Browser automation engine using Playwright for headless ATS form filling and submission."""
+"""Browser automation engine using Playwright with stealth context and audio-first CAPTCHA resolution."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
+from job_hunt.automation.captcha_solver import CaptchaSolver, is_captcha_error
 from job_hunt.models import ApplicationRecord, CandidateProfile, JobPosting, JobState
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,8 @@ CAPTCHA_SELECTORS = [
     ".g-recaptcha",
     ".h-captcha",
     "#cf-turnstile",
+    "img[id*='captcha' i]",
+    "img[src*='captcha' i]",
     "text=Verify you are human",
 ]
 
@@ -44,12 +47,14 @@ class BrowserApplicationEngine:
         headless: bool = True,
         screenshots_dir: str = "data/screenshots",
         timeout_ms: int = 30000,
+        captcha_solver: Optional[CaptchaSolver] = None,
     ):
         self.executable_path = executable_path
         self.headless = headless
         self.screenshots_dir = Path(screenshots_dir)
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_ms = timeout_ms
+        self.captcha_solver = captcha_solver or CaptchaSolver()
 
     async def _detect_captcha(self, page: Page) -> bool:
         """Check if page currently presents a CAPTCHA or Cloudflare challenge."""
@@ -60,6 +65,47 @@ class BrowserApplicationEngine:
                     return True
             except Exception:
                 continue
+        return False
+
+    async def _attempt_captcha_resolution(self, page: Page) -> bool:
+        """Attempt automated resolution of audio or visual CAPTCHA if presented."""
+        # 1. Look for audio challenge button (e.g. reCAPTCHA audio button)
+        audio_buttons = [
+            "button#recaptcha-audio-button",
+            "button[title*='audio' i]",
+            "button[aria-label*='audio' i]",
+            "a[href*='sound' i]",
+        ]
+        for sel in audio_buttons:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    logger.info("Found audio challenge button: %s. Clicking...", sel)
+                    await el.click()
+                    await page.wait_for_timeout(1500)
+                    # Look for audio source or evaluate fetch
+                    break
+            except Exception:
+                pass
+
+        # 2. Look for BotDetect or standard image CAPTCHA
+        img_el = await page.query_selector("img[id*='captcha' i], img[src*='captcha' i]")
+        captcha_input = await page.query_selector("input[id*='captcha' i], input[name*='captcha' i]")
+
+        if img_el and captcha_input and await img_el.is_visible():
+            try:
+                # Capture screenshot of CAPTCHA image element
+                img_bytes = await img_el.screenshot()
+                import base64
+                b64 = base64.b64encode(img_bytes).decode("utf-8")
+                code = await self.captcha_solver.solve_image_challenge(b64)
+                if code:
+                    await captcha_input.fill(code)
+                    logger.info("Filled CAPTCHA input with solved code: %s", code)
+                    return True
+            except Exception as e:
+                logger.warning("Automated CAPTCHA solve error: %s", e)
+
         return False
 
     async def _fill_field(self, page: Page, selectors: list[str], value: str) -> bool:
@@ -180,7 +226,13 @@ class BrowserApplicationEngine:
         )
 
         async with async_playwright() as p:
-            launch_args = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            # Stealth launch arguments to avoid bot detection
+            launch_args = [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+            ]
             exec_path = self.executable_path if os.path.exists(self.executable_path) else None
             browser = await p.chromium.launch(
                 executable_path=exec_path,
@@ -188,8 +240,10 @@ class BrowserApplicationEngine:
                 args=launch_args,
             )
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 800},
+                locale="en-US",
+                timezone_id="America/New_York",
             )
             page = await context.new_page()
 
@@ -198,15 +252,18 @@ class BrowserApplicationEngine:
                 await page.goto(job.raw_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2000)
 
-                # 1. Check for CAPTCHA
+                # 1. Check for CAPTCHA and attempt resolution
                 if await self._detect_captcha(page):
-                    screenshot_file = str(self.screenshots_dir / f"captcha_job_{job.id}.png")
-                    await page.screenshot(path=screenshot_file, full_page=True)
-                    record.state = JobState.BLOCKED_CAPTCHA
-                    record.screenshot_path = screenshot_file
-                    record.error_message = "CAPTCHA or Cloudflare challenge detected"
-                    logger.warning("Job %s blocked by CAPTCHA: %s", job.id, screenshot_file)
-                    return record
+                    logger.info("CAPTCHA detected on job %s. Attempting automated resolution...", job.id)
+                    solved = await self._attempt_captcha_resolution(page)
+                    if not solved:
+                        screenshot_file = str(self.screenshots_dir / f"captcha_job_{job.id}.png")
+                        await page.screenshot(path=screenshot_file, full_page=True)
+                        record.state = JobState.BLOCKED_CAPTCHA
+                        record.screenshot_path = screenshot_file
+                        record.error_message = "CAPTCHA or Cloudflare challenge detected and unresolvable"
+                        logger.warning("Job %s blocked by CAPTCHA: %s", job.id, screenshot_file)
+                        return record
 
                 # 2. Fill form fields
                 await self._fill_common_fields(page, profile)
@@ -224,8 +281,9 @@ class BrowserApplicationEngine:
                     record.confirmation_text = "DRY RUN: Form filled and verified successfully without submit."
                     return record
 
-                # 4. Find submit button
+                # 4. Find submit button (Precision selectors matching opran-booking lessons)
                 submit_selectors = [
+                    "input#nextButton",
                     "button[type='submit']",
                     "input[type='submit']",
                     "button:has-text('Submit')",
@@ -254,8 +312,17 @@ class BrowserApplicationEngine:
                 await submit_btn.click()
                 await page.wait_for_timeout(5000)
 
-                # 6. Verify confirmation
-                page_text = (await page.content()).lower()
+                # 6. Verify confirmation or rejection
+                content = await page.content()
+                if is_captcha_error(content):
+                    screenshot_file = str(self.screenshots_dir / f"captcha_reject_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file)
+                    record.state = JobState.BLOCKED_CAPTCHA
+                    record.screenshot_path = screenshot_file
+                    record.error_message = "Submission rejected: Invalid CAPTCHA"
+                    return record
+
+                page_text = content.lower()
                 current_url = page.url.lower()
 
                 has_success = (
@@ -273,7 +340,6 @@ class BrowserApplicationEngine:
                     record.state = JobState.SUBMITTED
                     record.confirmation_text = "Application submitted and confirmed"
                 else:
-                    # Check if error message appeared
                     record.state = JobState.FAILED
                     record.error_message = "Submitted, but could not detect confirmation text"
 
