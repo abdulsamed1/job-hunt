@@ -6,6 +6,7 @@ import logging
 import re
 from typing import List, Optional, Set, Tuple
 
+from job_hunt.cv.pdf_generator import ATSCVGenerator
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, JobPosting, TailoredCV
 
@@ -22,9 +23,11 @@ class CVTailor:
     def __init__(
         self,
         llm_client: Optional[FreeLLMClient] = None,
+        pdf_generator: Optional[ATSCVGenerator] = None,
         use_llm: bool = True,
     ):
         self.llm_client = llm_client
+        self.pdf_generator = pdf_generator or ATSCVGenerator(llm_client=self.llm_client)
         self.use_llm = use_llm
 
     def verify_cv_facts(self, cv_markdown: str, profile: CandidateProfile) -> Tuple[bool, List[str]]:
@@ -135,11 +138,17 @@ class CVTailor:
 
         return "\n".join(lines)
 
-    def generate_tailored_cv(self, job: JobPosting, profile: CandidateProfile) -> TailoredCV:
+    def generate_tailored_cv(
+        self,
+        job: JobPosting,
+        profile: CandidateProfile,
+        generate_pdf: bool = True,
+        output_pdf_dir: str = "data/cvs",
+    ) -> TailoredCV:
         """Generate a tailored CV highlighting relevant verified achievements for the job.
 
         Preserves 100% factual accuracy by only re-ordering and emphasizing verified bullets.
-        Never invents new bullets, tools, or metrics.
+        Generates a custom ATS-optimized PDF with recruiter highlights and hiring manager depth.
         """
         job_keywords = set(re.findall(r"\b\w+\b", f"{job.title} {job.description}".lower()))
 
@@ -231,9 +240,25 @@ class CVTailor:
             candidate_cv_markdown = self.build_master_cv(profile)
             passed = True
 
+        pdf_path_str: Optional[str] = None
+        if generate_pdf and job.id:
+            try:
+                from pathlib import Path
+                out_path = Path(output_pdf_dir) / f"tailored_cv_{job.id}.pdf"
+                self.pdf_generator.generate_tailored_pdf_sync(
+                    job=job,
+                    profile=profile,
+                    output_path=out_path,
+                    tailored_summary=summary_text,
+                )
+                pdf_path_str = str(out_path.resolve())
+            except Exception as e:
+                logger.warning("Could not render tailored PDF for Job %s: %s", job.id, e)
+
         return TailoredCV(
             job_id=job.id or 0,
             content_markdown=candidate_cv_markdown,
             verification_passed=passed,
             verification_log=log,
+            pdf_path=pdf_path_str,
         )

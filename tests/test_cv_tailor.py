@@ -106,3 +106,78 @@ def test_tailored_cv_fallback_on_unverified_content(profile):
     # Even in edge cases, generator guarantees verification passed (falling back to master if needed)
     cv = tailor.generate_tailored_cv(job, profile)
     assert cv.verification_passed is True
+
+
+def test_ats_cv_generator_structure_and_keywords(profile):
+    from job_hunt.cv.pdf_generator import ATSCVGenerator
+
+    generator = ATSCVGenerator()
+    job = JobPosting(
+        id=77,
+        source="greenhouse",
+        title="Senior Python / Go Backend Engineer",
+        company="StreamCloud",
+        raw_url="https://example.com/job/77",
+        canonical_url="https://example.com/job/77",
+        canonical_url_hash="h77",
+        role_fingerprint="rf77",
+        content_hash="c77",
+        description="Must have strong Python, Go, and PostgreSQL experience. Distributed systems, Docker, AWS.",
+    )
+
+    keywords = generator.generate_ats_keyword_stream(job, profile)
+    assert "Python" in keywords
+    assert "Go" in keywords
+    assert "StreamCloud" in keywords
+
+    html_cv = generator.build_html_cv(
+        job=job,
+        profile=profile,
+        ats_keywords_one_line=keywords,
+        tailored_summary="Proven backend engineer specializing in high-throughput streaming systems.",
+    )
+
+    # 1. Check recruiter highlights present
+    assert "Sam Taylor" in html_cv
+    assert "Professional Summary" in html_cv
+    assert "Technical Expertise" in html_cv
+
+    # 2. Check hiring manager depth present
+    assert "Amazon" in html_cv
+    assert "50M" in html_cv
+    assert "Expedia" in html_cv
+    assert "University of Washington" in html_cv
+
+    # 3. Check invisible ATS keyword layer is present at the end
+    assert 'class="ats-keyword-bypass"' in html_cv
+    assert keywords in html_cv
+
+
+def test_ats_cv_pdf_rendering(profile, tmp_path):
+    import subprocess
+    from job_hunt.cv.pdf_generator import ATSCVGenerator
+
+    generator = ATSCVGenerator()
+    job = JobPosting(
+        id=99,
+        source="lever",
+        title="Principal Infrastructure Engineer",
+        company="CloudScale",
+        raw_url="https://example.com/job/99",
+        canonical_url="https://example.com/job/99",
+        canonical_url_hash="h99",
+        role_fingerprint="rf99",
+        content_hash="c99",
+        description="Looking for expert in Kubernetes, Go, Kafka, and PostgreSQL.",
+    )
+
+    out_pdf = tmp_path / "test_rendered_cv.pdf"
+    res_path = generator.generate_tailored_pdf_sync(job, profile, out_pdf)
+    assert res_path.exists()
+    assert res_path.stat().st_size > 10000
+
+    # Verify pdftotext extracts both the visible text and the ATS keywords
+    out = subprocess.check_output(["pdftotext", str(res_path), "-"]).decode("utf-8")
+    assert "Sam Taylor" in out
+    assert "Amazon" in out
+    assert "Kubernetes" in out

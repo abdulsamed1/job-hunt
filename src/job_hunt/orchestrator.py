@@ -150,16 +150,6 @@ class PipelineOrchestrator:
         queue = tailored_jobs + retry_jobs
 
         processed = 0
-        custom_pdf = Path("Abdulsamed_Hamdy.pdf")
-        if custom_pdf.exists():
-            resume_path = str(custom_pdf.resolve())
-        else:
-            cv_dir = Path("data/cvs")
-            cv_dir.mkdir(parents=True, exist_ok=True)
-            cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
-            cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
-            resume_path = str(cv_file)
-
         for job in queue:
             # Check if an application has already been submitted for this company/role/URL
             is_dup, dup_reason = self.storage.has_already_applied(
@@ -176,6 +166,20 @@ class PipelineOrchestrator:
                 )
                 self.storage.update_job_state(job.id, JobState.DUPLICATE, details=dup_reason, force=True)
                 continue
+
+            # Resolve tailored ATS-optimized PDF for this specific job posting
+            tailored_pdf = Path(f"data/cvs/tailored_cv_{job.id}.pdf")
+            if tailored_pdf.exists():
+                resume_path = str(tailored_pdf.resolve())
+            elif Path("Abdulsamed_Hamdy.pdf").exists():
+                resume_path = str(Path("Abdulsamed_Hamdy.pdf").resolve())
+            else:
+                cv_dir = Path("data/cvs")
+                cv_dir.mkdir(parents=True, exist_ok=True)
+                cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
+                if not cv_file.exists():
+                    cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
+                resume_path = str(cv_file.resolve())
 
             self.storage.update_job_state(
                 job.id,

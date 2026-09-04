@@ -192,6 +192,7 @@ class TailoredCV(BaseModel):
     content_markdown: str
     verification_passed: bool = False
     verification_log: List[str] = Field(default_factory=list)
+    pdf_path: Optional[str] = None
     created_at: Optional[str] = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
