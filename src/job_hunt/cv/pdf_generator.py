@@ -269,14 +269,15 @@ class ATSCVGenerator:
         margin-bottom: 4px;
     }}
     /* INVISIBLE ATS KEYWORD LAYER:
-       White on white text, 2.5pt, zero line height, fully parseable by Poppler pdftotext
+       White on white text, 3.5pt, zero line margin, fully parseable by Poppler pdftotext
        and ATS engines (Greenhouse, Lever, Workday, Ashby), 100% invisible to human eyes */
     .ats-keyword-bypass {{
         color: #ffffff !important;
         background-color: #ffffff !important;
-        font-size: 2.5pt !important;
-        line-height: 2.5pt !important;
-        letter-spacing: 0px !important;
+        font-size: 3.5pt !important;
+        line-height: 4pt !important;
+        letter-spacing: normal !important;
+        word-spacing: normal !important;
         margin-top: 15px !important;
         user-select: text !important;
         opacity: 0.01 !important;

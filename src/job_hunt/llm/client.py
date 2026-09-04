@@ -188,9 +188,10 @@ class FreeLLMClient:
                 )
             )
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(
+            # If an event loop is already running in this thread, execute in a worker thread
+            import concurrent.futures
+            def _runner() -> Optional[str]:
+                return asyncio.run(
                     self.chat_completion(
                         messages=messages,
                         model=model,
@@ -199,8 +200,8 @@ class FreeLLMClient:
                         json_mode=json_mode,
                     )
                 )
-            finally:
-                loop.close()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(_runner).result()
         except Exception as e:
             logger.warning("Synchronous chat completion failed (%s): %s", type(e).__name__, e)
             return None
