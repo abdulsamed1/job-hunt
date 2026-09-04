@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     # run
     p_run = subparsers.add_parser("run", help="Run 24/7 continuous autonomous loop")
     p_run.add_argument("--interval", type=int, default=3600, help="Cycle interval in seconds (default: 3600)")
+    p_run.add_argument("--once", action="store_true", help="Execute a single pipeline cycle and exit")
     p_run.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
     p_run.add_argument("--sources-limit", type=int, default=None, help="Limit sources per cycle")
     p_run.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
@@ -142,14 +143,57 @@ def cmd_tailor(args: argparse.Namespace) -> None:
         llm_client=llm_client,
         use_llm=not args.no_llm,
     )
+    if args.job_id is not None:
+        job = orch.storage.get_job(args.job_id)
+        if not job:
+            print(f"Error: Job ID {args.job_id} not found.")
+            return
+        tailored_cv = orch.cv_tailor.generate_tailored_cv(job, orch.profile)
+        orch.storage.save_tailored_cv(tailored_cv)
+        print(f"CV tailoring completed for Job #{job.id} ({job.title} at {job.company}): {tailored_cv.pdf_path}")
+        return
+
     count = orch.run_cv_stage(limit=args.limit)
     print(f"CV tailoring completed: {count} CVs generated.")
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
     orch = PipelineOrchestrator(db_path=args.db)
-    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live))
     mode = "LIVE" if args.live else "DRY-RUN"
+    if args.job_id is not None:
+        job = orch.storage.get_job(args.job_id)
+        if not job:
+            print(f"Error: Job ID {args.job_id} not found.")
+            return
+        tailored_pdf = Path(f"data/cvs/tailored_cv_{job.id}.pdf")
+        if tailored_pdf.exists():
+            resume_path = str(tailored_pdf.resolve())
+        elif Path("Abdulsamed_Hamdy.pdf").exists():
+            resume_path = str(Path("Abdulsamed_Hamdy.pdf").resolve())
+        else:
+            cv_dir = Path("data/cvs")
+            cv_dir.mkdir(parents=True, exist_ok=True)
+            cv_file = cv_dir / f"resume_{orch.profile.last_name.lower()}.txt"
+            if not cv_file.exists():
+                cv_file.write_text(orch.cv_tailor.build_master_cv(orch.profile), encoding="utf-8")
+            resume_path = str(cv_file.resolve())
+
+        orch.storage.update_job_state(
+            job.id,
+            JobState.APPLICATION_STARTED,
+            details=f"Starting automated browser application session ({mode})",
+        )
+        record = asyncio.run(orch.browser_engine.fill_and_submit(
+            job,
+            orch.profile,
+            resume_file_path=resume_path,
+            dry_run=not args.live,
+        ))
+        orch.storage.record_application(record)
+        print(f"Application stage completed for Job #{job.id} ({job.title}): {record.final_status} ({mode} mode).")
+        return
+
+    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live))
     print(f"Application stage completed: {count} applications processed ({mode} mode).")
 
 
@@ -160,6 +204,16 @@ def cmd_run(args: argparse.Namespace) -> None:
         llm_client=llm_client,
         use_llm=not args.no_llm,
     )
+
+    if args.once:
+        logger.info("Executing single autonomous pipeline cycle (mode=%s)...", "LIVE" if args.live else "DRY-RUN")
+        results = asyncio.run(orch.run_cycle(dry_run=not args.live, max_sources=args.sources_limit))
+        print("\n==================== PIPELINE CYCLE SUMMARY ====================")
+        for k, v in results.items():
+            if k not in ("daily_metrics", "database_stats"):
+                print(f"{k:<25}: {v}")
+        print("================================================================\n")
+        return
 
     def sig_handler(sig, frame):
         logger.info("Termination signal received. Shutting down loop...")
