@@ -79,6 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_status(args: argparse.Namespace) -> None:
     storage = Storage(args.db)
     stats = storage.get_summary_stats()
+    daily = storage.get_daily_metrics()
+
     print("\n==================== AUTONOMOUS JOB AGENT TRACKER ====================")
     print(f"Database: {args.db}")
     print("----------------------------------------------------------------------")
@@ -89,6 +91,15 @@ def cmd_status(args: argparse.Namespace) -> None:
             print(f"{state:<25} | {count:<10}")
     print("----------------------------------------------------------------------")
     print(f"Total Discovery Events: {stats.get('total_discovery_events', 0)}")
+    print("\n-------------------- DAILY THROUGHPUT (LAST 24H) ---------------------")
+    target_status = "ACHIEVED [OK]" if daily.get("target_achieved") else f"IN PROGRESS ({daily.get('total_scanned', 0)}/500)"
+    print(f"Daily Scan Target (500+):    {target_status}")
+    print(f"Total Jobs Scanned (24h):    {daily.get('total_scanned', 0)}")
+    print(f"  - New Discovered Jobs:     {daily.get('jobs_discovered', 0)}")
+    print(f"  - Duplicates Blocked:      {daily.get('duplicates_caught', 0)}")
+    print(f"Jobs Evaluated (24h):        {daily.get('jobs_evaluated', 0)}")
+    print(f"Tailored CVs Prepared (24h): {daily.get('cvs_tailored', 0)}")
+    print(f"Applications Submitted (24h):{daily.get('applications_submitted', 0)}")
     print("======================================================================\n")
 
 

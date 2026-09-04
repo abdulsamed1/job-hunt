@@ -75,7 +75,14 @@
         "Enforced server-side row-level access control across 3 application roles validated by a 14/14 authorization regression suite.",
         "Deployed and maintained a production stack combining Docker Compose, PostgreSQL, Cloudflare Tunnel, and pgBackRest with continuous WAL archiving."
       ],
-      "technologies": ["React.js", "PostgreSQL", "Docker Compose", "Cloudflare Tunnel", "pgBackRest", "JavaScript"]
+      "technologies": [
+        "React.js",
+        "PostgreSQL",
+        "Docker Compose",
+        "Cloudflare Tunnel",
+        "pgBackRest",
+        "JavaScript"
+      ]
     },
     {
       "company": "Ride Hailing Aggregator SaaS (opran.org)",
@@ -89,7 +96,14 @@
         "Hardened asynchronous billing workflows with cursor-based batch schedulers, atomic D1 transactions, and dead-letter queues.",
         "Verified dual-provider billing integrations with Polar through constant-time webhook signature checks and 129 passing unit tests."
       ],
-      "technologies": ["Cloudflare Workers", "Durable Objects", "TypeScript", "D1", "WebSockets", "Polar"]
+      "technologies": [
+        "Cloudflare Workers",
+        "Durable Objects",
+        "TypeScript",
+        "D1",
+        "WebSockets",
+        "Polar"
+      ]
     },
     {
       "company": "Freellmapi",
@@ -102,7 +116,14 @@
         "Engineered WAL concurrency controls with 1-second busy timeout, jittered retries, and validated across a 206-test suite.",
         "Implemented OpenAI-compatible API support translating Responses-format input into internal schemas and SSE streaming events."
       ],
-      "technologies": ["SQLite", "FTS5", "Python", "TypeScript", "WAL", "REST APIs"]
+      "technologies": [
+        "SQLite",
+        "FTS5",
+        "Python",
+        "TypeScript",
+        "WAL",
+        "REST APIs"
+      ]
     }
   ],
   "verified_projects": [
@@ -114,7 +135,13 @@
         "Redesigned the pipeline around an audio challenge channel, transcribing BotDetect audio with dual Whisper models.",
         "Built Durable Object-backed distributed locks ensuring zero double bookings during concurrent job triggers."
       ],
-      "technologies": ["Playwright", "Whisper", "Cloudflare Workers", "Durable Objects", "TypeScript"],
+      "technologies": [
+        "Playwright",
+        "Whisper",
+        "Cloudflare Workers",
+        "Durable Objects",
+        "TypeScript"
+      ],
       "url": "https://github.com/abdulsamed1"
     },
     {
@@ -124,7 +151,11 @@
         "Built a hybrid keyword-and-LLM classification pipeline in Rust for an 8,000+ file skill catalog.",
         "Reduced redundant calls via keyword pre-filtering and SHA-256-based classification caching."
       ],
-      "technologies": ["Rust", "SHA-256", "LLM APIs"],
+      "technologies": [
+        "Rust",
+        "SHA-256",
+        "LLM APIs"
+      ],
       "url": "https://github.com/abdulsamed1/AI-skills-bank"
     }
   ],
@@ -142,5 +173,17 @@
     "Do you require sponsorship?": "No",
     "Years of experience": "4",
     "Current location": "Cairo, Egypt"
-  }
+  },
+  "open_to_remote": true,
+  "remote_only": false,
+  "target_locations": [
+    "Remote",
+    "Worldwide",
+    "Global",
+    "Anywhere",
+    "EMEA",
+    "US",
+    "Europe",
+    "UK"
+  ]
 }

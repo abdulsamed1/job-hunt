@@ -220,6 +220,11 @@ class FreeLLMClient:
         system_prompt = (
             "You are an expert technical recruiter and software engineering hiring evaluator. "
             "Your job is to objectively score the match between a candidate profile and a job posting.\n"
+            "LOCATION & WORK MODE CRITERIA:\n"
+            "- The candidate is based in Cairo, Egypt and is actively pursuing REMOTE positions worldwide (Global, US, Europe, UK, EMEA, Anywhere Remote) and international roles open to remote engineering talent.\n"
+            "- If the job is Remote (Worldwide, Anywhere, Global, EMEA, Americas, US Remote, etc.), score location_fit at 100% (ideal match).\n"
+            "- If the job is hybrid/flexible with remote options, score location_fit favorably.\n"
+            "- Only penalize location if the job strictly mandates in-person on-site office attendance in a country outside Egypt with no remote option.\n"
             "Respond ONLY with a valid JSON object with the following exact keys:\n"
             "{\n"
             '  "score": <float between 0 and 100>,\n'
@@ -227,7 +232,7 @@ class FreeLLMClient:
             '  "matched_skills": [<list of candidate skills present in job>],\n'
             '  "missing_skills": [<list of required job skills candidate lacks>],\n'
             '  "seniority_fit": "<brief evaluation of years of experience and level>",\n'
-            '  "location_fit": "<brief evaluation of remote/office location>",\n'
+            '  "location_fit": "<brief evaluation of remote/office location and global eligibility>",\n'
             '  "reasoning": "<concise 2-3 sentence executive summary of candidate fit>",\n'
             '  "pros": [<top 2-3 advantages>],\n'
             '  "cons": [<top 1-2 gaps or risks>]\n'
@@ -237,7 +242,8 @@ class FreeLLMClient:
         user_content = (
             f"### CANDIDATE PROFILE:\n"
             f"Name: {profile.full_name}\n"
-            f"Location: {profile.location}\n"
+            f"Location: {profile.location} (Open to Remote Worldwide / US / EU / UK / EMEA)\n"
+            f"Work Authorization: {profile.work_authorization}\n"
             f"Years of Experience: {profile.years_of_experience}\n"
             f"Verified Skills: {verified_skills_str}\n"
             f"Verified Experiences:\n{experiences_str}\n\n"

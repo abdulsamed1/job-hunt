@@ -59,6 +59,22 @@ CLEARANCE_PATTERNS = [
 ]
 
 
+STRICT_ONSITE_PATTERNS = [
+    re.compile(r"\bno\s+remote\b", re.IGNORECASE),
+    re.compile(r"\b100%\s+on-?site\b", re.IGNORECASE),
+    re.compile(r"\bstrictly\s+on-?site\b", re.IGNORECASE),
+    re.compile(r"\bmust\s+work\s+from\s+(?:the\s+)?office\b", re.IGNORECASE),
+    re.compile(r"\bin-?office\s+5\s+days\b", re.IGNORECASE),
+]
+
+REMOTE_KEYWORDS = [
+    "remote", "anywhere", "worldwide", "global", "work from home", "wfh",
+    "telecommute", "distributed", "virtual", "emea", "americas", "apac",
+    "remote (us)", "remote us", "remote eu", "remote uk", "us remote",
+    "eu remote", "uk remote", "flexible location", "work from anywhere"
+]
+
+
 class EvaluationEngine:
     """Evaluates job postings against a candidate profile using pre-filters, LLM, and heuristic fallback."""
 
@@ -91,6 +107,17 @@ class EvaluationEngine:
         for cl_pat in CLEARANCE_PATTERNS:
             if cl_pat.search(desc):
                 return False, f"Requires security clearance: {cl_pat.pattern}"
+
+        # Check strict on-site requirement in foreign country when candidate is remote
+        loc = (job.location or "").lower()
+        cand_loc = profile.location.lower()
+        cand_country = "egypt" if "egypt" in cand_loc else cand_loc.split(",")[-1].strip()
+
+        # If candidate is in Egypt and role is outside Egypt and strictly forbids remote:
+        if cand_country not in loc and not any(kw in loc for kw in ("remote", "anywhere", "worldwide", "global")):
+            for onsite_pat in STRICT_ONSITE_PATTERNS:
+                if onsite_pat.search(desc) or onsite_pat.search(title):
+                    return False, f"Role strictly requires 100% on-site presence abroad: {onsite_pat.pattern}"
 
         return True, None
 
@@ -236,17 +263,29 @@ class EvaluationEngine:
 
         # C) Location / Remote match (weight 20)
         loc = (job.location or "").lower()
-        location_score = 20.0
-        if "remote" in loc:
+        desc_lower = (job.description or "").lower()
+        title_lower = job.title.lower()
+
+        # Check if role is remote
+        is_remote = any(kw in loc or kw in title_lower for kw in REMOTE_KEYWORDS)
+        if not is_remote and any(kw in desc_lower[:600] for kw in ("fully remote", "100% remote", "remote work", "remote-first", "work from anywhere")):
+            is_remote = True
+
+        if is_remote or (profile.open_to_remote and any(k in loc for k in ("anywhere", "worldwide", "global", "remote"))):
             location_score = 20.0
-        elif any(country in loc for country in ("us", "united states", "remote us")):
-            location_score = 20.0 if "us" in profile.location.lower() else 5.0
+        elif "egypt" in loc or "cairo" in loc or "giza" in loc:
+            location_score = 20.0
+        elif any(country in loc for country in ("us", "united states", "uk", "europe", "germany", "canada", "netherlands", "emea")):
+            # International role - candidate is open to remote worldwide
+            location_score = 18.0 if profile.open_to_remote else 5.0
         elif "hybrid" in loc or "office" in loc or "in-office" in loc:
             cand_city = profile.location.split(",")[0].strip().lower()
             if cand_city and cand_city in loc:
                 location_score = 20.0
             else:
                 location_score = 0.0
+        else:
+            location_score = 15.0 if profile.open_to_remote else 10.0
 
         total_score = min(100.0, round(skill_score + seniority_score + location_score, 1))
         is_eligible = total_score >= self.min_score_threshold

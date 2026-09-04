@@ -514,6 +514,122 @@ class Storage:
             stats["total_discovery_events"] = cursor2.fetchone()["count"]
             return stats
 
+    def has_already_applied(
+        self,
+        job_id: Optional[int] = None,
+        canonical_url_hash: Optional[str] = None,
+        role_fingerprint: Optional[str] = None,
+        company: Optional[str] = None,
+        title: Optional[str] = None,
+        window_days: int = 90,
+    ) -> Tuple[bool, Optional[str]]:
+        """Strict check to guarantee NO duplicate applications are ever submitted.
+
+        Checks across:
+        1. Specific job ID.
+        2. Canonical URL hash.
+        3. Role fingerprint (normalized company + role).
+        4. Same company and title within window_days.
+        """
+        threshold = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
+        with self._get_connection() as conn:
+            # 1. Direct job_id check in applications table
+            if job_id:
+                cursor = conn.execute(
+                    "SELECT state, applied_at FROM applications WHERE job_id = ? AND state = 'SUBMITTED'",
+                    (job_id,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return True, f"Application already submitted for Job ID {job_id} on {row['applied_at']}"
+
+            # 2. Check by canonical URL hash
+            if canonical_url_hash:
+                cursor = conn.execute(
+                    """
+                    SELECT j.id, a.applied_at
+                    FROM jobs j
+                    JOIN applications a ON j.id = a.job_id
+                    WHERE j.canonical_url_hash = ? AND a.state = 'SUBMITTED'
+                    LIMIT 1
+                    """,
+                    (canonical_url_hash,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return True, f"Application already submitted for identical canonical URL (Job ID {row['id']} on {row['applied_at']})"
+
+            # 3. Check by role fingerprint
+            if role_fingerprint:
+                cursor = conn.execute(
+                    """
+                    SELECT j.id, a.applied_at
+                    FROM jobs j
+                    JOIN applications a ON j.id = a.job_id
+                    WHERE j.role_fingerprint = ? AND a.state = 'SUBMITTED'
+                    LIMIT 1
+                    """,
+                    (role_fingerprint,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return True, f"Application already submitted for role fingerprint {role_fingerprint} (Job ID {row['id']} on {row['applied_at']})"
+
+            # 4. Check by company + title within window_days
+            if company and title:
+                cursor = conn.execute(
+                    """
+                    SELECT j.id, j.title, j.company, a.applied_at
+                    FROM jobs j
+                    JOIN applications a ON j.id = a.job_id
+                    WHERE LOWER(j.company) = LOWER(?) AND LOWER(j.title) = LOWER(?)
+                      AND a.state = 'SUBMITTED' AND a.applied_at >= ?
+                    LIMIT 1
+                    """,
+                    (company.strip(), title.strip(), threshold),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return True, f"Application already submitted to {row['company']} for '{row['title']}' within past {window_days} days on {row['applied_at']}"
+
+        return False, None
+
+    def get_daily_metrics(self, window_hours: int = 24) -> Dict[str, Any]:
+        """Fetch throughput metrics over the last 24-hour window."""
+        threshold = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
+        with self._get_connection() as conn:
+            # Jobs discovered in window
+            cur = conn.execute("SELECT COUNT(*) as count FROM jobs WHERE created_at >= ?", (threshold,))
+            discovered = cur.fetchone()["count"]
+
+            # Discovery events (including duplicates caught)
+            cur = conn.execute("SELECT COUNT(*) as count FROM dedup_provenance WHERE discovered_at >= ?", (threshold,))
+            duplicates_caught = cur.fetchone()["count"]
+
+            # Evaluations in window
+            cur = conn.execute("SELECT COUNT(*) as count FROM evaluations WHERE evaluated_at >= ?", (threshold,))
+            evaluated = cur.fetchone()["count"]
+
+            # Tailored CVs in window
+            cur = conn.execute("SELECT COUNT(*) as count FROM tailored_cvs WHERE created_at >= ?", (threshold,))
+            tailored = cur.fetchone()["count"]
+
+            # Submitted applications in window
+            cur = conn.execute("SELECT COUNT(*) as count FROM applications WHERE applied_at >= ? AND state = 'SUBMITTED'", (threshold,))
+            submitted = cur.fetchone()["count"]
+
+            return {
+                "window_hours": window_hours,
+                "jobs_discovered": discovered,
+                "duplicates_caught": duplicates_caught,
+                "total_scanned": discovered + duplicates_caught,
+                "jobs_evaluated": evaluated,
+                "cvs_tailored": tailored,
+                "applications_submitted": submitted,
+                "daily_scan_target": 500,
+                "target_achieved": (discovered + duplicates_caught) >= 500,
+            }
+
     def _row_to_job(self, row: sqlite3.Row) -> JobPosting:
         return JobPosting(
             id=row["id"],

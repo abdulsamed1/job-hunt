@@ -161,6 +161,22 @@ class PipelineOrchestrator:
             resume_path = str(cv_file)
 
         for job in queue:
+            # Check if an application has already been submitted for this company/role/URL
+            is_dup, dup_reason = self.storage.has_already_applied(
+                job_id=job.id,
+                canonical_url_hash=job.canonical_url_hash,
+                role_fingerprint=job.role_fingerprint,
+                company=job.company,
+                title=job.title,
+            )
+            if is_dup:
+                logger.warning(
+                    "Skipping duplicate application for Job %s (%s - %s): %s",
+                    job.id, job.company, job.title, dup_reason
+                )
+                self.storage.update_job_state(job.id, JobState.DUPLICATE, details=dup_reason, force=True)
+                continue
+
             self.storage.update_job_state(
                 job.id,
                 JobState.APPLICATION_STARTED,
@@ -185,12 +201,12 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = 10) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
 
-        # 1. Discovery
+        # 1. Discovery (targeting 500+ jobs daily)
         new_jobs = await self.run_discovery_stage(max_sources=max_sources)
 
         # 2. Evaluation
@@ -199,16 +215,18 @@ class PipelineOrchestrator:
         # 3. Tailored CV
         tailored = self.run_cv_stage()
 
-        # 4. Applications
+        # 4. Applications (with strict duplicate avoidance)
         applied = await self.run_application_stage(dry_run=dry_run)
 
         stats = self.storage.get_summary_stats()
+        daily_metrics = self.storage.get_daily_metrics()
         return {
             "recovered_stuck": recovered,
             "new_jobs_discovered": new_jobs,
             "jobs_evaluated": evaluated,
             "cvs_tailored": tailored,
             "applications_processed": applied,
+            "daily_metrics": daily_metrics,
             "database_stats": stats,
         }
 
@@ -221,7 +239,15 @@ class PipelineOrchestrator:
             try:
                 logger.info("--- Starting Pipeline Cycle ---")
                 results = await self.run_cycle(dry_run=dry_run)
-                logger.info("Cycle results: %s", results)
+                metrics = results.get("daily_metrics", {})
+                logger.info(
+                    "24h Daily Progress: %d scanned (%d new) | Daily Target: 500+ | Evaluated: %d | Tailored: %d | Submitted: %d",
+                    metrics.get("total_scanned", 0),
+                    metrics.get("jobs_discovered", 0),
+                    metrics.get("jobs_evaluated", 0),
+                    metrics.get("cvs_tailored", 0),
+                    metrics.get("applications_submitted", 0),
+                )
             except Exception as e:
                 logger.error("Unexpected error in pipeline cycle: %s", e, exc_info=True)
 

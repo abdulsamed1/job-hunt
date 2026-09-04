@@ -152,8 +152,13 @@ class CandidateProfile(BaseModel):
     email: str
     phone: str
     location: str
-    work_authorization: str = "Authorized to work in US, does not require sponsorship"
+    work_authorization: str = "Authorized to work in Egypt, Remote Worldwide"
     sponsorship_required: bool = False
+    open_to_remote: bool = True
+    remote_only: bool = False
+    target_locations: List[str] = Field(
+        default_factory=lambda: ["Remote", "Worldwide", "US", "Europe", "UK", "Global", "EMEA"]
+    )
     linkedin_url: Optional[str] = None
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
@@ -209,14 +214,12 @@ class ApplicationRecord(BaseModel):
 
 
 class AuditEntry(BaseModel):
-    """Audit log entry tracking every state transition and event."""
+    """Immutable audit trail record for state transitions."""
 
     id: Optional[int] = None
     job_id: int
     from_state: Optional[str] = None
     to_state: str
-    timestamp: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str
     details: Optional[str] = None
     error: Optional[str] = None
