@@ -1,0 +1,18 @@
+{
+  "account": {
+    "email": "alifayeez67@gmail.com",
+    "tier": "Pro"
+  },
+  "mcp": {
+    "server_url": "https://api.rezi.ai/mcp",
+    "transport": "streamable-http"
+  },
+  "chrome_extension": {
+    "url": "https://chromewebstore.google.com/detail/rezi-ai-autofill-job-appl/jkcdmgcaamddgioenedkdhbegbaokcek",
+    "extension_id": "jkcdmgcaamddgioenedkdhbegbaokcek"
+  },
+  "options": {
+    "preserve_master_pdf": true,
+    "master_pdf_path": "/home/abdu/production/job-hunt/Abdulsamed_Hamdy.pdf"
+  }
+}

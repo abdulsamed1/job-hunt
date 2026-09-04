@@ -24,10 +24,16 @@ class CVTailor:
         self,
         llm_client: Optional[FreeLLMClient] = None,
         pdf_generator: Optional[ATSCVGenerator] = None,
+        master_pdf_path: Optional[Path | str] = None,
         use_llm: bool = True,
     ):
+        from pathlib import Path
         self.llm_client = llm_client
-        self.pdf_generator = pdf_generator or ATSCVGenerator(llm_client=self.llm_client)
+        self.master_pdf_path = Path(master_pdf_path) if master_pdf_path else None
+        self.pdf_generator = pdf_generator or ATSCVGenerator(
+            llm_client=self.llm_client,
+            master_pdf_path=self.master_pdf_path,
+        )
         self.use_llm = use_llm
 
     def verify_cv_facts(self, cv_markdown: str, profile: CandidateProfile) -> Tuple[bool, List[str]]:

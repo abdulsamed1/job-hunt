@@ -181,3 +181,46 @@ def test_ats_cv_pdf_rendering(profile, tmp_path):
     assert "Sam Taylor" in out
     assert "Amazon" in out
     assert "Kubernetes" in out
+
+
+def test_stamp_job_description_on_master_pdf(tmp_path):
+    from pathlib import Path
+    import subprocess
+    from job_hunt.cv.pdf_generator import ATSCVGenerator
+    from job_hunt.models import JobPosting
+
+    master_pdf = Path("Abdulsamed_Hamdy.pdf")
+    if not master_pdf.exists():
+        pytest.skip("Abdulsamed_Hamdy.pdf not present")
+
+    generator = ATSCVGenerator(master_pdf_path=master_pdf)
+    job = JobPosting(
+        id=80,
+        source="greenhouse",
+        title="Staff Backend Engineer",
+        company="GlobalScale Inc",
+        raw_url="https://example.com/job/80",
+        canonical_url="https://example.com/job/80",
+        canonical_url_hash="h80",
+        role_fingerprint="rf80",
+        content_hash="c80",
+        location="Remote Worldwide",
+        description="Looking for distributed systems expert in Rust, Python, SQLite, PostgreSQL, and high-throughput microservices.",
+    )
+
+    out_pdf = tmp_path / "abdulsamed_tailored.pdf"
+    res_path = generator.stamp_job_description_to_pdf(master_pdf, job, out_pdf)
+    assert res_path.exists()
+    assert res_path.stat().st_size > 50000
+
+    out_text = subprocess.check_output(["pdftotext", str(res_path), "-"]).decode("utf-8")
+    # Original resume text must be 100% preserved
+    assert "Abdulsamed Hamdy" in out_text
+    assert "Eagles" in out_text
+    assert "app.eagles-eg.online" in out_text
+    assert "Visa Appointment Automation" in out_text
+    assert "AI Skills Aggregator" in out_text
+    # Stamped 1pt job description must be extracted by ATS
+    assert "GlobalScale Inc" in out_text
+    assert "Staff Backend Engineer" in out_text
+    assert "distributed systems expert in Rust" in out_text

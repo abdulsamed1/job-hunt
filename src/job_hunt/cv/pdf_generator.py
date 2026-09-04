@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import pymupdf
 from playwright.async_api import async_playwright
 
 from job_hunt.llm.client import FreeLLMClient
@@ -18,18 +19,36 @@ from job_hunt.models import CandidateProfile, JobPosting
 logger = logging.getLogger(__name__)
 
 DEFAULT_CHROME_PATH = os.environ.get("CHROME_PATH", "/usr/bin/google-chrome")
+DEFAULT_MASTER_PDF = Path("/home/abdu/production/job-hunt/Abdulsamed_Hamdy.pdf")
 
 
 class ATSCVGenerator:
-    """Generates professional, multi-page PDFs tailored to jobs with an invisible ATS keyword layer."""
+    """Generates professional, job-tailored PDFs preserving the candidate's master resume as single source of truth."""
 
     def __init__(
         self,
         llm_client: Optional[FreeLLMClient] = None,
         chrome_path: str = DEFAULT_CHROME_PATH,
+        master_pdf_path: Optional[Path | str] = None,
     ):
         self.llm_client = llm_client
         self.chrome_path = chrome_path
+        self.explicit_master_pdf = master_pdf_path is not None
+        if master_pdf_path is not None:
+            self.master_pdf_path = Path(master_pdf_path)
+        elif DEFAULT_MASTER_PDF.exists():
+            self.master_pdf_path = DEFAULT_MASTER_PDF
+        else:
+            self.master_pdf_path = None
+
+    def _should_use_master_pdf(self, profile: CandidateProfile) -> bool:
+        if self.explicit_master_pdf and self.master_pdf_path and self.master_pdf_path.exists():
+            return True
+        if self.master_pdf_path and self.master_pdf_path.exists():
+            name_lower = profile.full_name.lower()
+            if "abdulsamed" in name_lower or "hamdy" in name_lower:
+                return True
+        return False
 
     def generate_ats_keyword_stream(
         self,
@@ -319,6 +338,68 @@ class ATSCVGenerator:
 </html>
 """
 
+    def stamp_job_description_to_pdf(
+        self,
+        master_pdf_path: Path | str,
+        job: JobPosting,
+        output_path: Path | str,
+    ) -> Path:
+        """Inject job description into the master PDF as 1pt pure-white text on the last page.
+
+        Guarantees 100% preservation of the original candidate resume layout, styling,
+        margins, fonts, and bullet points without any refactoring.
+        """
+        master_path = Path(master_pdf_path)
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if not master_path.exists():
+            raise FileNotFoundError(f"Master PDF not found at: {master_path}")
+
+        # Clean HTML markup and format into a single line
+        raw_desc = job.description or ""
+        clean_desc = html.unescape(raw_desc)
+        clean_desc = re.sub(r"<[^>]+>", " ", clean_desc)
+        clean_desc = html.unescape(clean_desc)
+        clean_desc = re.sub(r"&[a-zA-Z0-9#]+;", " ", clean_desc)
+        clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
+
+        ats_payload = (
+            f"Target Role: {job.title} | Company: {job.company} | Location: {job.location or 'Remote'} | "
+            f"Job Description & Requirements: {clean_desc}"
+        )
+
+        doc = pymupdf.open(str(master_path))
+        last_page = doc[-1]
+
+        # Find bottom of existing text blocks to avoid any overlap
+        blocks = last_page.get_text("blocks")
+        y_start = 50.0
+        if blocks:
+            y_start = max(y_start, blocks[-1][3] + 10.0)
+
+        rect = pymupdf.Rect(36.0, y_start, last_page.rect.width - 36.0, last_page.rect.height - 15.0)
+        rc = last_page.insert_textbox(rect, ats_payload, fontsize=1.0, color=(1.0, 1.0, 1.0))
+
+        if rc < 0:
+            # If text exceeded the available area, add a fresh page for the overflow
+            new_page = doc.new_page(width=last_page.rect.width, height=last_page.rect.height)
+            new_page.insert_textbox(
+                pymupdf.Rect(36.0, 36.0, last_page.rect.width - 36.0, last_page.rect.height - 36.0),
+                ats_payload,
+                fontsize=1.0,
+                color=(1.0, 1.0, 1.0),
+            )
+
+        doc.save(str(out_path))
+        doc.close()
+        logger.info(
+            "Stamped job description in 1pt white text onto master PDF for Job %s -> %s",
+            job.id,
+            out_path,
+        )
+        return out_path
+
     async def generate_tailored_pdf(
         self,
         job: JobPosting,
@@ -326,8 +407,15 @@ class ATSCVGenerator:
         output_path: Path,
         tailored_summary: Optional[str] = None,
     ) -> Path:
-        """Render a pixel-perfect, fact-checked tailored PDF with invisible ATS keyword layer."""
+        """Render tailored PDF: stamps 1pt white job description onto master PDF if available, else falls back to HTML renderer."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self._should_use_master_pdf(profile):
+            return self.stamp_job_description_to_pdf(
+                master_pdf_path=self.master_pdf_path,
+                job=job,
+                output_path=output_path,
+            )
 
         ats_keywords = self.generate_ats_keyword_stream(job, profile)
         html_content = self.build_html_cv(
@@ -363,6 +451,13 @@ class ATSCVGenerator:
         tailored_summary: Optional[str] = None,
     ) -> Path:
         """Synchronous wrapper for generate_tailored_pdf."""
+        if self._should_use_master_pdf(profile):
+            return self.stamp_job_description_to_pdf(
+                master_pdf_path=self.master_pdf_path,
+                job=job,
+                output_path=output_path,
+            )
+
         try:
             return asyncio.run(
                 self.generate_tailored_pdf(job, profile, output_path, tailored_summary)
