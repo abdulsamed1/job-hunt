@@ -8,14 +8,21 @@ import logging
 import signal
 import sys
 
+from pathlib import Path
+
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
+Path("data").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("data/job_hunt.log", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger("job-hunt-cli")
 
@@ -190,7 +197,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
             dry_run=not args.live,
         ))
         orch.storage.record_application(record)
-        print(f"Application stage completed for Job #{job.id} ({job.title}): {record.final_status} ({mode} mode).")
+        print(f"Application stage completed for Job #{job.id} ({job.title}): {record.state} ({mode} mode).")
         return
 
     count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live))
