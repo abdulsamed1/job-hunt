@@ -1,0 +1,146 @@
+{
+  "full_name": "Abdulsamed Hamdy",
+  "first_name": "Abdulsamed",
+  "last_name": "Hamdy",
+  "email": "abdulsamedhamdy@gmail.com",
+  "phone": "+201094393750",
+  "location": "Cairo, Egypt",
+  "work_authorization": "Authorized to work in Egypt, Remote Worldwide",
+  "sponsorship_required": false,
+  "linkedin_url": "https://linkedin.com/in/abdulsamed1",
+  "github_url": "https://github.com/abdulsamed1",
+  "portfolio_url": "https://app.eagles-eg.online",
+  "years_of_experience": 4,
+  "summary": "Full-Stack & Systems Software Engineer specializing in distributed backend systems, browser automation, Playwright, Rust, Python, React.js, and SQLite/PostgreSQL architectures.",
+  "verified_skills": [
+    "Python",
+    "TypeScript",
+    "JavaScript",
+    "Rust",
+    "C++",
+    "React.js",
+    "Node.js",
+    "FastAPI",
+    "PostgreSQL",
+    "SQLite",
+    "Docker",
+    "Docker Compose",
+    "Cloudflare Workers",
+    "Playwright",
+    "REST APIs",
+    "WebSockets",
+    "Distributed Systems",
+    "Git",
+    "CI/CD",
+    "Data Structures & Algorithms"
+  ],
+  "allowed_metrics": [
+    "270ms",
+    "24",
+    "20",
+    "8,000+",
+    "12+",
+    "75-line",
+    "143-line",
+    "300,000-gas",
+    "27",
+    "7",
+    "129",
+    "16",
+    "11",
+    "206",
+    "27",
+    "8-turn",
+    "12,000-character",
+    "3",
+    "87x",
+    "100,000",
+    "14/14",
+    "30-minute",
+    "4",
+    "2",
+    "7-stage"
+  ],
+  "verified_experiences": [
+    {
+      "company": "Eagles",
+      "title": "Full-Stack Software Engineer",
+      "start_date": "2026-07",
+      "end_date": "Present",
+      "location": "Cairo, Egypt",
+      "bullets": [
+        "Engineered a production workspace-rental management platform using React.js, automating lead ingestion, workload-based assignment, and lifecycle tracking.",
+        "Architected a deterministic lead-assignment engine balancing workload across sales representatives with a 30-minute acknowledgment SLA.",
+        "Integrated Meta Lead Ads webhooks with HMAC-SHA256 signature verification and WhatsApp API with message-level idempotency.",
+        "Enforced server-side row-level access control across 3 application roles validated by a 14/14 authorization regression suite.",
+        "Deployed and maintained a production stack combining Docker Compose, PostgreSQL, Cloudflare Tunnel, and pgBackRest with continuous WAL archiving."
+      ],
+      "technologies": ["React.js", "PostgreSQL", "Docker Compose", "Cloudflare Tunnel", "pgBackRest", "JavaScript"]
+    },
+    {
+      "company": "Ride Hailing Aggregator SaaS (opran.org)",
+      "title": "Backend Systems Engineer",
+      "start_date": "2025-08",
+      "end_date": "2026-07",
+      "location": "Remote",
+      "bullets": [
+        "Built a tenant-isolated WebSocket pricing gateway on Cloudflare Workers using Durable Objects.",
+        "Secured API access with timing-safe SHA-256 API key validation and HMAC-signed CSRF tokens.",
+        "Hardened asynchronous billing workflows with cursor-based batch schedulers, atomic D1 transactions, and dead-letter queues.",
+        "Verified dual-provider billing integrations with Polar through constant-time webhook signature checks and 129 passing unit tests."
+      ],
+      "technologies": ["Cloudflare Workers", "Durable Objects", "TypeScript", "D1", "WebSockets", "Polar"]
+    },
+    {
+      "company": "Freellmapi",
+      "title": "Open-Source Core Contributor",
+      "start_date": "2026-07",
+      "end_date": "2026-07",
+      "location": "Remote",
+      "bullets": [
+        "Architected SQLite-backed conversation memory combining FTS5 full-text search with recursive-CTE session lineage reconstruction.",
+        "Engineered WAL concurrency controls with 1-second busy timeout, jittered retries, and validated across a 206-test suite.",
+        "Implemented OpenAI-compatible API support translating Responses-format input into internal schemas and SSE streaming events."
+      ],
+      "technologies": ["SQLite", "FTS5", "Python", "TypeScript", "WAL", "REST APIs"]
+    }
+  ],
+  "verified_projects": [
+    {
+      "name": "Visa Appointment Automation",
+      "description": "Autonomous portal booking and CAPTCHA solving engine using Cloudflare Playwright and Whisper",
+      "bullets": [
+        "Automated a six-step, 31-field booking wizard using Playwright, confirming success through server response parsing.",
+        "Redesigned the pipeline around an audio challenge channel, transcribing BotDetect audio with dual Whisper models.",
+        "Built Durable Object-backed distributed locks ensuring zero double bookings during concurrent job triggers."
+      ],
+      "technologies": ["Playwright", "Whisper", "Cloudflare Workers", "Durable Objects", "TypeScript"],
+      "url": "https://github.com/abdulsamed1"
+    },
+    {
+      "name": "AI Skills Aggregator",
+      "description": "Hybrid classification and provider proxy in Rust",
+      "bullets": [
+        "Built a hybrid keyword-and-LLM classification pipeline in Rust for an 8,000+ file skill catalog.",
+        "Reduced redundant calls via keyword pre-filtering and SHA-256-based classification caching."
+      ],
+      "technologies": ["Rust", "SHA-256", "LLM APIs"],
+      "url": "https://github.com/abdulsamed1/AI-skills-bank"
+    }
+  ],
+  "verified_education": [
+    {
+      "institution": "New Cairo Academy",
+      "degree": "Bachelor's Degree",
+      "field_of_study": "Management Information Systems",
+      "graduation_year": 2026,
+      "location": "Cairo, Egypt"
+    }
+  ],
+  "custom_answers": {
+    "Are you authorized to work?": "Yes",
+    "Do you require sponsorship?": "No",
+    "Years of experience": "4",
+    "Current location": "Cairo, Egypt"
+  }
+}

@@ -41,9 +41,14 @@ class PipelineOrchestrator:
         self._running = False
 
         if profile is None:
-            # Default candidate profile
-            self.profile = CandidateProfile(
-                full_name="Alex Rivera",
+            prof_path = Path("config/candidate_profile.json")
+            if prof_path.exists():
+                import json
+                with open(prof_path, "r", encoding="utf-8") as f:
+                    self.profile = CandidateProfile(**json.load(f))
+            else:
+                self.profile = CandidateProfile(
+                    full_name="Alex Rivera",
                 first_name="Alex",
                 last_name="Rivera",
                 email="alex.rivera.dev@example.com",
@@ -113,11 +118,16 @@ class PipelineOrchestrator:
         queue = tailored_jobs + retry_jobs
 
         processed = 0
-        # Write candidate CV to temporary file for upload
-        cv_dir = Path("data/cvs")
-        cv_dir.mkdir(parents=True, exist_ok=True)
-        cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
-        cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
+        # Prefer verified candidate PDF if available
+        custom_pdf = Path("Abdulsamed_Hamdy.pdf")
+        if custom_pdf.exists():
+            resume_path = str(custom_pdf.resolve())
+        else:
+            cv_dir = Path("data/cvs")
+            cv_dir.mkdir(parents=True, exist_ok=True)
+            cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
+            cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
+            resume_path = str(cv_file)
 
         for job in queue:
             # Mark application started
@@ -129,7 +139,7 @@ class PipelineOrchestrator:
             record = await self.browser_engine.fill_and_submit(
                 job,
                 self.profile,
-                resume_file_path=str(cv_file),
+                resume_file_path=resume_path,
                 dry_run=dry_run,
             )
             self.storage.record_application(record)
