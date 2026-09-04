@@ -81,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic evaluation only")
     p_run.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
+    # ui / dashboard
+    p_ui = subparsers.add_parser("ui", help="Launch Mission Control web dashboard UI")
+    p_ui.add_argument("--host", default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
+    p_ui.add_argument("--port", type=int, default=8000, help="Port to serve web UI on (default: 8000)")
+    p_ui.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+
     return parser
 
 
@@ -233,6 +239,19 @@ def cmd_run(args: argparse.Namespace) -> None:
     asyncio.run(orch.start_continuous_loop(interval_seconds=args.interval, dry_run=not args.live))
 
 
+def cmd_ui(args: argparse.Namespace) -> None:
+    import uvicorn
+
+    print("\n==================== MISSION CONTROL WEB DASHBOARD ====================")
+    print(f"URL:        http://{args.host}:{args.port}")
+    print(f"Aesthetic:  Dark-mode first command center (Linear/Vercel standard)")
+    print(f"Design:     DESIGN.md")
+    print(f"Database:   data/jobs.db")
+    print(f"Logs:       data/job_hunt.log")
+    print("=======================================================================\n")
+    uvicorn.run("job_hunt.web.app:app", host=args.host, port=args.port, reload=args.reload)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -245,6 +264,7 @@ def main() -> None:
         "tailor": cmd_tailor,
         "apply": cmd_apply,
         "run": cmd_run,
+        "ui": cmd_ui,
     }
 
     fn = dispatch.get(args.command)

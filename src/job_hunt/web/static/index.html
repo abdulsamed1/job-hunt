@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autonomous Job Hunt — Mission Control</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            canvas: '#07080a',
+            surface: {
+              0: '#0b0e14',
+              1: '#0e1117',
+              2: '#131821',
+              3: '#19202c',
+              hover: '#1e2634',
+            },
+            hairline: {
+              DEFAULT: '#1f2633',
+              strong: '#2c3649',
+              focus: '#6366f1',
+            },
+            brand: {
+              primary: '#6366f1',
+              hover: '#4f46e5',
+            },
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    
+    body {
+      background-color: #07080a;
+      color: #f8fafc;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #07080a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1f2633;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2c3649;
+    }
+
+    .pulse-glow {
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+    }
+    .pulse-glow-busy {
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-canvas text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- ========================================================================= -->
+  <!-- TOP HEADER / MISSION CONTROL STATUS BAR                                   -->
+  <!-- ========================================================================= -->
+  <header class="sticky top-0 z-40 bg-surface-0/90 backdrop-blur-md border-b border-hairline px-4 lg:px-8 py-3 transition-colors">
+    <div class="max-w-[1720px] mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand & Status Pill -->
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 border border-indigo-400/30">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base font-semibold tracking-tight text-white flex items-center gap-2">
+                AUTONOMOUS JOB AGENT
+                <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-surface-2 border border-hairline text-slate-400 font-medium">MISSION CONTROL</span>
+              </h1>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-slate-400">
+              <span>Candidate: <strong class="text-slate-200 font-medium">Abdulsamed Hamdy</strong></span>
+              <span class="text-slate-600">•</span>
+              <span class="flex items-center gap-1.5">
+                <span id="llm-indicator-dot" class="w-2 h-2 rounded-full bg-emerald-500 pulse-glow"></span>
+                <span id="llm-indicator-text" class="text-slate-300 font-mono text-[11px]">FreeLLMAPI Active</span>
+              </span>
+              <span class="text-slate-600">•</span>
+              <span id="sources-count-badge" class="font-mono text-slate-300 text-[11px]">298 Sources</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons & Control Panel -->
+      <div class="flex items-center flex-wrap gap-2">
+        <button id="btn-scan" onclick="triggerAction('scan')" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-xs font-medium text-slate-200 transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          Scan Sources
+        </button>
+
+        <button id="btn-evaluate" onclick="triggerAction('evaluate')" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-xs font-medium text-slate-200 transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Evaluate Batch
+        </button>
+
+        <button id="btn-tailor" onclick="triggerAction('tailor')" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-xs font-medium text-slate-200 transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Tailor CVs
+        </button>
+
+        <button id="btn-apply" onclick="triggerAction('apply')" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-xs font-medium text-slate-200 transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          Apply (Dry-Run)
+        </button>
+
+        <button id="btn-cycle" onclick="triggerAction('cycle')" class="px-3.5 py-1.5 rounded-md bg-brand-primary hover:bg-brand-hover border border-indigo-400/30 text-xs font-semibold text-white shadow-md shadow-indigo-500/20 transition-all flex items-center gap-1.5 active:scale-95">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Run Full Cycle
+        </button>
+
+        <!-- Refresh & Terminal Toggle -->
+        <div class="h-4 w-px bg-hairline mx-1"></div>
+
+        <button onclick="fetchData()" title="Refresh Dashboard" class="p-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-slate-300 transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+
+        <button onclick="toggleConsole()" title="Toggle Console Log Drawer" class="p-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-slate-300 transition-all flex items-center gap-1 text-xs">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span class="hidden sm:inline font-mono">Logs</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN CONTAINER                                                            -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 max-w-[1720px] w-full mx-auto px-4 lg:px-8 py-6 space-y-6">
+
+    <!-- Activity Notification Banner (Conditional) -->
+    <div id="activity-banner" class="hidden bg-indigo-950/40 border border-indigo-500/30 rounded-lg p-3 flex items-center justify-between gap-3 text-xs text-indigo-200">
+      <div class="flex items-center gap-2.5">
+        <svg class="w-4 h-4 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <span>Operation in progress: <strong id="activity-action-name" class="font-mono text-white"></strong></span>
+      </div>
+      <span id="activity-timestamp" class="font-mono text-indigo-300 text-[11px]"></span>
+    </div>
+
+    <!-- DAILY SCAN TARGET HERO VELOCITY BAR -->
+    <section class="bg-surface-1 border border-hairline rounded-xl p-5 shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold tracking-wide uppercase text-slate-300">24-Hour Velocity & Throughput Target</h2>
+            <span id="target-pill" class="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">TARGET ACHIEVED</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Continuous automated multi-ATS scraping & deduplication velocity against daily 500+ quota</p>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-mono">
+          <div class="text-right">
+            <div class="text-slate-400 text-[11px]">Scanned (24h)</div>
+            <div id="metric-scanned-ratio" class="text-lg font-bold text-white">2,156 / 500</div>
+          </div>
+          <div class="text-right border-l border-hairline pl-4">
+            <div class="text-slate-400 text-[11px]">Duplicates Filtered</div>
+            <div id="metric-duplicates" class="text-lg font-bold text-indigo-400">0</div>
+          </div>
+        </div>
+      </div>
+      <!-- Progress Bar -->
+      <div class="w-full bg-surface-3 rounded-full h-2.5 overflow-hidden border border-hairline/60">
+        <div id="progress-target-bar" class="bg-gradient-to-r from-indigo-500 to-emerald-400 h-2.5 rounded-full transition-all duration-500" style="width: 100%;"></div>
+      </div>
+    </section>
+
+    <!-- ======================================================================= -->
+    <!-- BENTO METRIC CARDS                                                      -->
+    <!-- ======================================================================= -->
+    <section class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+      
+      <!-- Card: Total Discovered -->
+      <div class="bg-surface-1 border border-hairline rounded-xl p-4 flex flex-col justify-between hover:border-hairline-strong transition-all">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Total Discovered</span>
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        </div>
+        <div class="mt-2.5">
+          <div id="bento-discovered" class="text-2xl font-bold font-mono text-white">0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Unique requisitions</div>
+        </div>
+      </div>
+
+      <!-- Card: Eligible (Fit >= 70%) -->
+      <div class="bg-surface-1 border border-hairline rounded-xl p-4 flex flex-col justify-between hover:border-hairline-strong transition-all">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Eligible Matches</span>
+          <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+        </div>
+        <div class="mt-2.5">
+          <div id="bento-eligible" class="text-2xl font-bold font-mono text-emerald-400">0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Score &ge; 70% threshold</div>
+        </div>
+      </div>
+
+      <!-- Card: Tailored CVs -->
+      <div class="bg-surface-1 border border-hairline rounded-xl p-4 flex flex-col justify-between hover:border-hairline-strong transition-all">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Tailored CVs</span>
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        </div>
+        <div class="mt-2.5">
+          <div id="bento-tailored" class="text-2xl font-bold font-mono text-amber-400">0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">ATS-stealth verified</div>
+        </div>
+      </div>
+
+      <!-- Card: Submissions -->
+      <div class="bg-surface-1 border border-hairline rounded-xl p-4 flex flex-col justify-between hover:border-hairline-strong transition-all">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Submitted</span>
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+        </div>
+        <div class="mt-2.5">
+          <div id="bento-submitted" class="text-2xl font-bold font-mono text-indigo-400">0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Verified submission proofs</div>
+        </div>
+      </div>
+
+      <!-- Card: Rejected / Filtered -->
+      <div class="bg-surface-1 border border-hairline rounded-xl p-4 flex flex-col justify-between hover:border-hairline-strong transition-all col-span-2 sm:col-span-1">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span>Pre-Filtered / Low</span>
+          <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+        </div>
+        <div class="mt-2.5">
+          <div id="bento-filtered" class="text-2xl font-bold font-mono text-rose-400">0</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Low match or closed</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ======================================================================= -->
+    <!-- INTERACTIVE EXPLORER: FILTERS & DATA TABLE                              -->
+    <!-- ======================================================================= -->
+    <section class="bg-surface-1 border border-hairline rounded-xl overflow-hidden shadow-sm">
+      
+      <!-- Toolbar -->
+      <div class="p-4 border-b border-hairline bg-surface-0/60 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        
+        <!-- Search input -->
+        <div class="relative flex-1 max-w-md">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          </div>
+          <input
+            id="search-input"
+            type="text"
+            placeholder="Search by title, company, or location..."
+            oninput="debounceSearch()"
+            class="w-full pl-9 pr-4 py-1.5 rounded-lg bg-surface-2 border border-hairline focus:border-indigo-500 focus:outline-none text-xs text-slate-100 placeholder-slate-500"
+          />
+        </div>
+
+        <!-- Filter Selects -->
+        <div class="flex flex-wrap items-center gap-2">
+          
+          <!-- State Filter -->
+          <select id="state-filter" onchange="applyFilters()" class="px-2.5 py-1.5 rounded-lg bg-surface-2 border border-hairline text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="ALL">All States</option>
+            <option value="DISCOVERED">Discovered</option>
+            <option value="ELIGIBLE">Eligible (&ge;70%)</option>
+            <option value="TAILORED">Tailored CV Ready</option>
+            <option value="SUBMITTED">Submitted</option>
+            <option value="PRE_FILTERED_OUT">Pre-Filtered Out</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="FAILED">Failed</option>
+          </select>
+
+          <!-- Source Filter -->
+          <select id="source-filter" onchange="applyFilters()" class="px-2.5 py-1.5 rounded-lg bg-surface-2 border border-hairline text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="ALL">All Sources</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="greenhouse">Greenhouse</option>
+            <option value="ashby">Ashby</option>
+            <option value="lever">Lever</option>
+            <option value="smartrecruiters">SmartRecruiters</option>
+            <option value="workday">Workday</option>
+            <option value="workable">Workable</option>
+            <option value="bamboohr">BambooHR</option>
+            <option value="feed">Feed / XML</option>
+          </select>
+
+          <!-- Min Score Filter -->
+          <select id="score-filter" onchange="applyFilters()" class="px-2.5 py-1.5 rounded-lg bg-surface-2 border border-hairline text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="">Any Score</option>
+            <option value="70">&ge; 70% (Eligible)</option>
+            <option value="80">&ge; 80% (High Fit)</option>
+            <option value="90">&ge; 90% (Top Match)</option>
+          </select>
+
+          <!-- Reset -->
+          <button onclick="resetFilters()" class="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-hairline text-xs text-slate-400 hover:text-slate-200 transition-colors">
+            Reset
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Table Container -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-surface-0/80 uppercase text-[11px] font-mono tracking-wider text-slate-400 border-b border-hairline">
+            <tr>
+              <th class="px-4 py-3 font-medium">ID</th>
+              <th class="px-4 py-3 font-medium">Role & Company</th>
+              <th class="px-4 py-3 font-medium">Source & Location</th>
+              <th class="px-4 py-3 font-medium">Fit Score</th>
+              <th class="px-4 py-3 font-medium">State</th>
+              <th class="px-4 py-3 font-medium">Discovered</th>
+              <th class="px-4 py-3 font-medium text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-table-body" class="divide-y divide-hairline">
+            <!-- Table rows populated dynamically -->
+            <tr>
+              <td colspan="7" class="px-4 py-12 text-center text-slate-500">Loading jobs database...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Footer -->
+      <div class="p-4 border-t border-hairline bg-surface-0/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+        <div id="pagination-info">Showing 0 of 0 jobs</div>
+        <div class="flex items-center gap-2">
+          <button id="btn-prev-page" onclick="changePage(-1)" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline disabled:opacity-40 disabled:cursor-not-allowed">
+            Previous
+          </button>
+          <span id="page-current" class="font-mono text-slate-200 px-2">Page 1 of 1</span>
+          <button id="btn-next-page" onclick="changePage(1)" class="px-3 py-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline disabled:opacity-40 disabled:cursor-not-allowed">
+            Next
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- JOB INSPECTION DRAWER / MODAL                                             -->
+  <!-- ========================================================================= -->
+  <div id="job-drawer-backdrop" onclick="closeDrawer()" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden transition-opacity"></div>
+  <div id="job-drawer" class="fixed inset-y-0 right-0 max-w-3xl w-full bg-surface-1 border-l border-hairline shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+    
+    <!-- Drawer Header -->
+    <div class="p-5 border-b border-hairline bg-surface-0 flex items-start justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span id="drawer-source-badge" class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-indigo-500/10 border border-indigo-500/30 text-indigo-300">LINKEDIN</span>
+          <span id="drawer-state-badge" class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">ELIGIBLE</span>
+        </div>
+        <h2 id="drawer-title" class="text-base font-bold text-white mt-1.5">Role Title</h2>
+        <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+          <span id="drawer-company" class="font-medium text-slate-200">Company</span>
+          <span>•</span>
+          <span id="drawer-location">Location</span>
+        </div>
+      </div>
+      <button onclick="closeDrawer()" class="p-1.5 rounded-md bg-surface-2 hover:bg-surface-3 border border-hairline text-slate-400 hover:text-white transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Drawer Tabs -->
+    <div class="flex border-b border-hairline bg-surface-0/60 px-5 text-xs font-medium text-slate-400">
+      <button id="tab-btn-eval" onclick="switchDrawerTab('eval')" class="py-2.5 px-3 border-b-2 border-indigo-500 text-indigo-400 font-semibold">AI Match & Description</button>
+      <button id="tab-btn-cv" onclick="switchDrawerTab('cv')" class="py-2.5 px-3 border-b-2 border-transparent hover:text-slate-200">Tailored CV & ATS</button>
+      <button id="tab-btn-app" onclick="switchDrawerTab('app')" class="py-2.5 px-3 border-b-2 border-transparent hover:text-slate-200">Application Proof</button>
+      <button id="tab-btn-audit" onclick="switchDrawerTab('audit')" class="py-2.5 px-3 border-b-2 border-transparent hover:text-slate-200">Audit History</button>
+    </div>
+
+    <!-- Drawer Content Panels -->
+    <div class="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+
+      <!-- PANEL 1: AI MATCH & REASONING -->
+      <div id="panel-eval" class="space-y-4">
+        
+        <!-- Fit Score Banner -->
+        <div class="bg-surface-2 border border-hairline rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono">FreeLLM Match Fit</div>
+            <div id="drawer-score-val" class="text-2xl font-bold font-mono text-emerald-400">85.0%</div>
+          </div>
+          <a id="drawer-job-link" href="#" target="_blank" class="px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5">
+            <span>Open Job Posting</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          </a>
+        </div>
+
+        <!-- Matched Skills -->
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-2">Verified Matched Skills</div>
+          <div id="drawer-matched-skills" class="flex flex-wrap gap-1.5">
+            <span class="text-slate-500">None recorded</span>
+          </div>
+        </div>
+
+        <!-- Missing Skills -->
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-2">Identified Gaps / Missing Skills</div>
+          <div id="drawer-missing-skills" class="flex flex-wrap gap-1.5">
+            <span class="text-slate-500">None</span>
+          </div>
+        </div>
+
+        <!-- AI Reasoning Commentary -->
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-1.5">FreeLLMAPI Reasoning</div>
+          <div id="drawer-reasoning" class="p-3 bg-surface-3 rounded-lg border border-hairline text-slate-300 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+            No evaluation reasoning available.
+          </div>
+        </div>
+
+        <!-- Full Job Description -->
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-1.5">Full Requisition Description</div>
+          <div id="drawer-description" class="p-4 bg-surface-0 rounded-lg border border-hairline text-slate-300 font-sans text-xs leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap">
+            No description available.
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PANEL 2: TAILORED CV & ATS STEALTH -->
+      <div id="panel-cv" class="space-y-4 hidden">
+        <div class="bg-surface-2 border border-hairline rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm font-semibold text-white">Fact-Checked & ATS Stamped CV</div>
+            <div class="text-xs text-slate-400 mt-0.5">Single source of truth (Abdulsamed_Hamdy.pdf) + 1pt white stealth keywords</div>
+          </div>
+          <a id="drawer-cv-download-btn" href="#" target="_blank" class="px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white font-medium flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download Stamped PDF
+          </a>
+        </div>
+
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-1.5">ATS Verification Log</div>
+          <div id="drawer-cv-log" class="p-3 bg-surface-3 rounded-lg border border-hairline text-slate-300 font-mono text-[11px] leading-relaxed">
+            No verification log available.
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-1.5">Tailored Resume Summary / Extracted Points</div>
+          <div id="drawer-cv-markdown" class="p-4 bg-surface-0 rounded-lg border border-hairline text-slate-300 font-sans text-xs leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
+            No tailored content available.
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 3: APPLICATION PROOF -->
+      <div id="panel-app" class="space-y-4 hidden">
+        <div class="bg-surface-2 border border-hairline rounded-lg p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold text-white">Submission Verification Record</div>
+            <span id="drawer-app-state" class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">PENDING</span>
+          </div>
+          <div id="drawer-app-confirmation" class="text-xs text-slate-300 mt-2 font-mono">No submission attempt recorded yet.</div>
+        </div>
+
+        <!-- Playwright Screenshot Proof -->
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-2">Playwright Headless Browser Proof Screenshot</div>
+          <div id="drawer-screenshot-box" class="border border-hairline rounded-lg overflow-hidden bg-black flex items-center justify-center p-2 min-h-48">
+            <span class="text-slate-500">No screenshot proof captured</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 4: AUDIT HISTORY -->
+      <div id="panel-audit" class="space-y-3 hidden">
+        <div class="text-[11px] uppercase tracking-wider text-slate-400 font-mono mb-2">Immutable State Transition Audit Trail</div>
+        <div id="drawer-audit-log" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- LIVE CONSOLE DRAWER (VSCODE/WARP STYLE)                                   -->
+  <!-- ========================================================================= -->
+  <div id="console-drawer" class="fixed bottom-0 inset-x-0 bg-surface-0 border-t border-hairline shadow-2xl z-40 transition-transform duration-300 transform translate-y-full">
+    <div class="max-w-[1720px] mx-auto flex flex-col h-72">
+      <!-- Terminal Header -->
+      <div class="px-4 py-2 bg-surface-1 border-b border-hairline flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-glow"></span>
+          <span class="font-mono font-semibold text-slate-200">Autonomous Job Hunt Daemon Terminal</span>
+          <span class="text-slate-500 font-mono text-[11px]">(data/job_hunt.log)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1.5 text-slate-400 text-[11px] cursor-pointer">
+            <input type="checkbox" id="auto-scroll-toggle" checked class="rounded bg-surface-2 border-hairline text-indigo-500" />
+            <span>Auto-scroll</span>
+          </label>
+          <button onclick="clearConsole()" class="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-slate-300 text-[11px] border border-hairline">Clear</button>
+          <button onclick="toggleConsole()" class="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-slate-300 text-[11px] border border-hairline">Close</button>
+        </div>
+      </div>
+      <!-- Terminal Body -->
+      <div id="terminal-body" class="flex-1 p-4 overflow-y-auto font-mono text-[11.5px] leading-relaxed text-slate-300 bg-canvas space-y-0.5">
+        <!-- Live log rows inserted here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT APPLICATION LOGIC                                              -->
+  <!-- ========================================================================= -->
+  <script>
+    let currentPage = 1;
+    const pageSize = 50;
+    let searchDebounceTimer = null;
+    let consoleVisible = false;
+    let logPollTimer = null;
+
+    // Initialize application
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchData();
+      setInterval(fetchData, 10000); // 10s auto-refresh
+      pollLogs();
+    });
+
+    async function fetchData() {
+      await Promise.all([fetchStats(), fetchJobs()]);
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        // Bento counts
+        const summary = data.summary || {};
+        const daily = data.daily || {};
+
+        document.getElementById('bento-discovered').textContent = (summary.DISCOVERED || 0).toLocaleString();
+        document.getElementById('bento-eligible').textContent = (summary.ELIGIBLE || 0).toLocaleString();
+        document.getElementById('bento-tailored').textContent = (summary.TAILORED || 0).toLocaleString();
+        document.getElementById('bento-submitted').textContent = (summary.SUBMITTED || 0).toLocaleString();
+        
+        const filteredCount = (summary.PRE_FILTERED_OUT || 0) + (summary.REJECTED || 0);
+        document.getElementById('bento-filtered').textContent = filteredCount.toLocaleString();
+
+        // Velocity & daily quota
+        const scanned = daily.total_scanned || (daily.jobs_discovered + daily.duplicates_caught) || 0;
+        const target = daily.daily_scan_target || 500;
+        document.getElementById('metric-scanned-ratio').textContent = `${scanned.toLocaleString()} / ${target}`;
+        document.getElementById('metric-duplicates').textContent = (daily.duplicates_caught || 0).toLocaleString();
+        
+        const pct = Math.min(100, Math.round((scanned / target) * 100));
+        document.getElementById('progress-target-bar').style.width = `${pct}%`;
+
+        const targetPill = document.getElementById('target-pill');
+        if (daily.target_achieved || scanned >= target) {
+          targetPill.textContent = 'TARGET ACHIEVED [OK]';
+          targetPill.className = 'text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400';
+        } else {
+          targetPill.textContent = `IN PROGRESS (${pct}%)`;
+          targetPill.className = 'text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400';
+        }
+
+        // Sources count
+        if (data.sources_count) {
+          document.getElementById('sources-count-badge').textContent = `${data.sources_count} Active Sources`;
+        }
+
+        // FreeLLMAPI indicator
+        const llmDot = document.getElementById('llm-indicator-dot');
+        const llmText = document.getElementById('llm-indicator-text');
+        if (data.llm_status && data.llm_status.alive) {
+          llmDot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-glow';
+          llmText.textContent = 'FreeLLMAPI Active';
+        } else {
+          llmDot.className = 'w-2 h-2 rounded-full bg-amber-500';
+          llmText.textContent = 'FreeLLMAPI Deterministic Fallback';
+        }
+
+        // Activity banner
+        const banner = document.getElementById('activity-banner');
+        if (data.activity && data.activity.busy) {
+          banner.classList.remove('hidden');
+          document.getElementById('activity-action-name').textContent = data.activity.action || 'Processing';
+          document.getElementById('activity-timestamp').textContent = `Started: ${new Date(data.activity.started_at).toLocaleTimeString()}`;
+        } else {
+          banner.classList.add('hidden');
+        }
+
+      } catch (e) {
+        console.error('Error fetching stats:', e);
+      }
+    }
+
+    async function fetchJobs() {
+      const state = document.getElementById('state-filter').value;
+      const source = document.getElementById('source-filter').value;
+      const score = document.getElementById('score-filter').value;
+      const search = document.getElementById('search-input').value;
+
+      const params = new URLSearchParams({
+        page: currentPage,
+        page_size: pageSize,
+      });
+      if (state && state !== 'ALL') params.append('state', state);
+      if (source && source !== 'ALL') params.append('source', source);
+      if (score) params.append('min_score', score);
+      if (search) params.append('search', search);
+
+      try {
+        const res = await fetch(`/api/jobs?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderJobsTable(data);
+      } catch (e) {
+        console.error('Error fetching jobs:', e);
+      }
+    }
+
+    function renderJobsTable(data) {
+      const tbody = document.getElementById('jobs-table-body');
+      const jobs = data.jobs || [];
+
+      if (jobs.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-12 text-center text-slate-500 font-mono">No jobs match your selected filter criteria.</td></tr>`;
+        document.getElementById('pagination-info').textContent = 'Showing 0 of 0 jobs';
+        return;
+      }
+
+      const total = data.total || 0;
+      const start = (currentPage - 1) * pageSize + 1;
+      const end = Math.min(total, currentPage * pageSize);
+      document.getElementById('pagination-info').textContent = `Showing ${start}-${end} of ${total.toLocaleString()} jobs`;
+      document.getElementById('page-current').textContent = `Page ${data.page} of ${data.total_pages}`;
+      document.getElementById('btn-prev-page').disabled = (data.page <= 1);
+      document.getElementById('btn-next-page').disabled = (data.page >= data.total_pages);
+
+      tbody.innerHTML = jobs.map(j => {
+        // State badge style
+        let stateBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-300 border border-slate-700">${j.state}</span>`;
+        if (j.state === 'SUBMITTED') {
+          stateBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold">SUBMITTED</span>`;
+        } else if (j.state === 'TAILORED') {
+          stateBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-amber-500/10 text-amber-300 border border-amber-500/30">TAILORED</span>`;
+        } else if (j.state === 'ELIGIBLE') {
+          stateBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">ELIGIBLE</span>`;
+        } else if (j.state === 'REJECTED' || j.state === 'PRE_FILTERED_OUT') {
+          stateBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">${j.state}</span>`;
+        }
+
+        // Score badge
+        let scoreBadge = `<span class="text-slate-500 font-mono">-</span>`;
+        if (j.eval_score !== null && j.eval_score !== undefined) {
+          const s = j.eval_score.toFixed(0);
+          if (j.eval_score >= 85) {
+            scoreBadge = `<span class="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">${s}%</span>`;
+          } else if (j.eval_score >= 70) {
+            scoreBadge = `<span class="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-amber-500/15 text-amber-300 border border-amber-500/30">${s}%</span>`;
+          } else {
+            scoreBadge = `<span class="px-2 py-0.5 rounded font-mono text-[11px] bg-slate-800 text-slate-400 border border-slate-700">${s}%</span>`;
+          }
+        }
+
+        // Source badge
+        let sourceClass = "bg-slate-800 text-slate-300";
+        const src = (j.source || '').toLowerCase();
+        if (src.includes('linkedin')) sourceClass = "bg-blue-900/30 text-blue-300 border-blue-800/40";
+        else if (src.includes('greenhouse')) sourceClass = "bg-emerald-900/30 text-emerald-300 border-emerald-800/40";
+        else if (src.includes('ashby')) sourceClass = "bg-purple-900/30 text-purple-300 border-purple-800/40";
+        else if (src.includes('lever')) sourceClass = "bg-cyan-900/30 text-cyan-300 border-cyan-800/40";
+        else if (src.includes('workable')) sourceClass = "bg-teal-900/30 text-teal-300 border-teal-800/40";
+
+        const dateStr = j.created_at ? new Date(j.created_at).toLocaleDateString() : '-';
+
+        return `
+          <tr class="hover:bg-surface-2/60 transition-colors group cursor-pointer" onclick="openDrawer(${j.id})">
+            <td class="px-4 py-3 font-mono text-slate-500 text-[11px]">#${j.id}</td>
+            <td class="px-4 py-3">
+              <div class="font-medium text-slate-200 group-hover:text-indigo-300 transition-colors">${escapeHtml(j.title)}</div>
+              <div class="text-slate-400 text-[11px]">${escapeHtml(j.company)}</div>
+            </td>
+            <td class="px-4 py-3">
+              <div class="flex items-center gap-1.5">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase border ${sourceClass}">${escapeHtml(j.source)}</span>
+              </div>
+              <div class="text-slate-400 text-[11px] mt-0.5 truncate max-w-xs">${escapeHtml(j.location || 'Remote')}</div>
+            </td>
+            <td class="px-4 py-3">${scoreBadge}</td>
+            <td class="px-4 py-3">${stateBadge}</td>
+            <td class="px-4 py-3 font-mono text-slate-400 text-[11px]">${dateStr}</td>
+            <td class="px-4 py-3 text-right" onclick="event.stopPropagation()">
+              <button onclick="openDrawer(${j.id})" class="px-2.5 py-1 rounded bg-surface-2 hover:bg-surface-3 border border-hairline text-slate-300 text-xs font-medium">
+                Inspect
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // DRAWER / INSPECTION LOGIC
+    // =========================================================================
+    async function openDrawer(jobId) {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const job = data.job || {};
+        const evaluation = data.evaluation || {};
+        const tailoredCv = data.tailored_cv || {};
+        const application = data.application || {};
+        const auditLog = data.audit_log || [];
+
+        document.getElementById('drawer-title').textContent = job.title || 'Unknown Title';
+        document.getElementById('drawer-company').textContent = job.company || 'Unknown Company';
+        document.getElementById('drawer-location').textContent = job.location || 'Remote';
+        document.getElementById('drawer-source-badge').textContent = (job.source || 'UNKNOWN').toUpperCase();
+        document.getElementById('drawer-state-badge').textContent = job.state || 'DISCOVERED';
+        document.getElementById('drawer-job-link').href = job.raw_url || '#';
+
+        // Eval Panel
+        const score = evaluation.score !== undefined ? `${evaluation.score.toFixed(1)}%` : 'Not Evaluated';
+        document.getElementById('drawer-score-val').textContent = score;
+        document.getElementById('drawer-reasoning').textContent = evaluation.reasoning || evaluation.pre_filter_reason || 'No evaluation reasoning.';
+        document.getElementById('drawer-description').textContent = job.description || 'No description captured.';
+
+        // Matched Skills
+        const matchedBox = document.getElementById('drawer-matched-skills');
+        const matched = evaluation.matched_skills || [];
+        if (matched.length > 0) {
+          matchedBox.innerHTML = matched.map(s => `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">${escapeHtml(s)}</span>`).join('');
+        } else {
+          matchedBox.innerHTML = '<span class="text-slate-500 font-mono text-[11px]">No direct matches</span>';
+        }
+
+        // Missing Skills
+        const missingBox = document.getElementById('drawer-missing-skills');
+        const missing = evaluation.missing_skills || [];
+        if (missing.length > 0) {
+          missingBox.innerHTML = missing.map(s => `<span class="px-2 py-0.5 rounded text-[11px] font-mono bg-rose-500/15 text-rose-300 border border-rose-500/30">${escapeHtml(s)}</span>`).join('');
+        } else {
+          missingBox.innerHTML = '<span class="text-slate-500 font-mono text-[11px]">No skill gaps identified</span>';
+        }
+
+        // CV Panel
+        document.getElementById('drawer-cv-download-btn').href = `/api/cv/${job.id}`;
+        document.getElementById('drawer-cv-log').textContent = JSON.stringify(tailoredCv.verification_log || [], null, 2);
+        document.getElementById('drawer-cv-markdown').textContent = tailoredCv.content_markdown || 'No markdown generated.';
+
+        // Application Panel
+        document.getElementById('drawer-app-state').textContent = application.state || job.state;
+        document.getElementById('drawer-app-confirmation').textContent = application.confirmation_text || 'No confirmation text recorded.';
+        
+        const screenshotBox = document.getElementById('drawer-screenshot-box');
+        if (application.screenshot_path) {
+          const filename = application.screenshot_path.split('/').pop();
+          screenshotBox.innerHTML = `<img src="/api/screenshots/${filename}" alt="Submission Proof" class="rounded max-h-80 object-contain shadow-lg hover:scale-105 transition-transform cursor-pointer" onclick="window.open('/api/screenshots/${filename}', '_blank')" />`;
+        } else {
+          screenshotBox.innerHTML = '<span class="text-slate-500 font-mono">No screenshot proof captured</span>';
+        }
+
+        // Audit Trail
+        const auditBox = document.getElementById('drawer-audit-log');
+        if (auditLog.length > 0) {
+          auditBox.innerHTML = auditLog.map(a => `
+            <div class="p-2.5 rounded bg-surface-2 border border-hairline font-mono text-[11px]">
+              <div class="flex items-center justify-between text-slate-400">
+                <span class="text-indigo-300 font-semibold">${escapeHtml(a.from_state || 'START')} &rarr; ${escapeHtml(a.to_state)}</span>
+                <span>${new Date(a.timestamp).toLocaleTimeString()}</span>
+              </div>
+              <div class="text-slate-300 mt-1">${escapeHtml(a.details || '')}</div>
+              ${a.error ? `<div class="text-rose-400 mt-1">${escapeHtml(a.error)}</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          auditBox.innerHTML = '<span class="text-slate-500 font-mono">No state history</span>';
+        }
+
+        // Open Drawer
+        switchDrawerTab('eval');
+        document.getElementById('job-drawer-backdrop').classList.remove('hidden');
+        document.getElementById('job-drawer').classList.remove('translate-x-full');
+
+      } catch (e) {
+        console.error('Error opening job drawer:', e);
+      }
+    }
+
+    function closeDrawer() {
+      document.getElementById('job-drawer-backdrop').classList.add('hidden');
+      document.getElementById('job-drawer').classList.add('translate-x-full');
+    }
+
+    function switchDrawerTab(tab) {
+      ['eval', 'cv', 'app', 'audit'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const panel = document.getElementById(`panel-${t}`);
+        if (t === tab) {
+          btn.className = "py-2.5 px-3 border-b-2 border-indigo-500 text-indigo-400 font-semibold";
+          panel.classList.remove('hidden');
+        } else {
+          btn.className = "py-2.5 px-3 border-b-2 border-transparent hover:text-slate-200 text-slate-400";
+          panel.classList.add('hidden');
+        }
+      });
+    }
+
+    // =========================================================================
+    // ACTIONS & CONTROLS
+    // =========================================================================
+    async function triggerAction(action) {
+      let endpoint = `/api/actions/${action}`;
+      let body = {};
+
+      if (action === 'evaluate') {
+        body = { limit: 100, threshold: 70.0 };
+      } else if (action === 'apply') {
+        body = { limit: 10, live: false }; // Safe dry run by default
+      }
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Action ${action.toUpperCase()} started in background.`);
+          fetchData();
+        } else {
+          alert(`Error: ${data.detail || 'Could not start action'}`);
+        }
+      } catch (e) {
+        alert(`Request failed: ${e}`);
+      }
+    }
+
+    // =========================================================================
+    // CONSOLE TERMINAL
+    // =========================================================================
+    function toggleConsole() {
+      consoleVisible = !consoleVisible;
+      const drawer = document.getElementById('console-drawer');
+      if (consoleVisible) {
+        drawer.classList.remove('translate-y-full');
+        pollLogs();
+      } else {
+        drawer.classList.add('translate-y-full');
+      }
+    }
+
+    async function pollLogs() {
+      if (!consoleVisible) return;
+      try {
+        const res = await fetch('/api/logs?lines=120');
+        if (!res.ok) return;
+        const data = await res.json();
+        const body = document.getElementById('terminal-body');
+        body.innerHTML = (data.lines || []).map(line => {
+          let color = 'text-slate-300';
+          if (line.includes('[ERROR]')) color = 'text-rose-400';
+          else if (line.includes('[WARNING]')) color = 'text-amber-400';
+          else if (line.includes('[INFO]')) color = 'text-slate-300';
+          if (line.includes('Discovered') || line.includes('ACHIEVED')) color = 'text-emerald-400';
+          return `<div class="${color}">${escapeHtml(line)}</div>`;
+        }).join('');
+
+        if (document.getElementById('auto-scroll-toggle').checked) {
+          body.scrollTop = body.scrollHeight;
+        }
+      } catch (e) {}
+
+      setTimeout(pollLogs, 3000);
+    }
+
+    function clearConsole() {
+      document.getElementById('terminal-body').innerHTML = '';
+    }
+
+    // =========================================================================
+    // FILTERS & HELPERS
+    // =========================================================================
+    function debounceSearch() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        currentPage = 1;
+        fetchJobs();
+      }, 300);
+    }
+
+    function applyFilters() {
+      currentPage = 1;
+      fetchJobs();
+    }
+
+    function resetFilters() {
+      document.getElementById('search-input').value = '';
+      document.getElementById('state-filter').value = 'ALL';
+      document.getElementById('source-filter').value = 'ALL';
+      document.getElementById('score-filter').value = '';
+      currentPage = 1;
+      fetchJobs();
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      fetchJobs();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>

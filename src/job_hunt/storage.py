@@ -638,6 +638,120 @@ class Storage:
                 "target_achieved": (discovered + duplicates_caught) >= 500,
             }
 
+    def get_jobs_filtered(
+        self,
+        state: Optional[str] = None,
+        source: Optional[str] = None,
+        search: Optional[str] = None,
+        min_score: Optional[float] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Fetch filtered jobs list with evaluation, tailored CV, and application metadata."""
+        offset = max(0, (page - 1) * page_size)
+        conditions = []
+        params: List[Any] = []
+
+        if state and state.upper() != "ALL":
+            conditions.append("j.state = ?")
+            params.append(state.upper())
+        if source and source.upper() != "ALL":
+            conditions.append("LOWER(j.source) = LOWER(?)")
+            params.append(source)
+        if min_score is not None:
+            conditions.append("e.score >= ?")
+            params.append(min_score)
+        if search and search.strip():
+            s = f"%{search.strip()}%"
+            conditions.append("(j.title LIKE ? OR j.company LIKE ? OR j.location LIKE ?)")
+            params.extend([s, s, s])
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        count_sql = f"""
+            SELECT COUNT(*) as total
+            FROM jobs j
+            LEFT JOIN evaluations e ON j.id = e.job_id
+            {where_clause}
+        """
+
+        query_sql = f"""
+            SELECT
+                j.id, j.external_id, j.source, j.source_name, j.title, j.company,
+                j.raw_url, j.canonical_url, j.location, j.state, j.posted_at,
+                j.created_at, j.updated_at,
+                e.score as eval_score, e.eligible as eval_eligible,
+                e.matched_skills_json, e.missing_skills_json, e.reasoning as eval_reasoning,
+                t.pdf_path as cv_pdf_path,
+                a.state as app_state, a.screenshot_path, a.confirmation_text, a.applied_at
+            FROM jobs j
+            LEFT JOIN evaluations e ON j.id = e.job_id
+            LEFT JOIN tailored_cvs t ON j.id = t.job_id
+            LEFT JOIN applications a ON j.id = a.job_id
+            {where_clause}
+            ORDER BY j.id DESC
+            LIMIT ? OFFSET ?
+        """
+
+        with self._get_connection() as conn:
+            cur = conn.execute(count_sql, tuple(params))
+            total = cur.fetchone()["total"]
+
+            query_params = list(params) + [page_size, offset]
+            cur = conn.execute(query_sql, tuple(query_params))
+            rows = cur.fetchall()
+
+            items = []
+            for r in rows:
+                matched = json.loads(r["matched_skills_json"] or "[]")
+                missing = json.loads(r["missing_skills_json"] or "[]")
+                items.append({
+                    "id": r["id"],
+                    "external_id": r["external_id"],
+                    "source": r["source"],
+                    "source_name": r["source_name"],
+                    "title": r["title"],
+                    "company": r["company"],
+                    "raw_url": r["raw_url"],
+                    "canonical_url": r["canonical_url"],
+                    "location": r["location"],
+                    "state": r["state"],
+                    "posted_at": r["posted_at"],
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                    "eval_score": r["eval_score"],
+                    "eval_eligible": bool(r["eval_eligible"]) if r["eval_eligible"] is not None else None,
+                    "matched_skills": matched,
+                    "missing_skills": missing,
+                    "eval_reasoning": r["eval_reasoning"],
+                    "cv_pdf_path": r["cv_pdf_path"],
+                    "app_state": r["app_state"],
+                    "screenshot_path": r["screenshot_path"],
+                    "confirmation_text": r["confirmation_text"],
+                    "applied_at": r["applied_at"],
+                })
+
+            return items, total
+
+    def get_job_detail(self, job_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch full job details including description, evaluation, CV, application, and audit log."""
+        job = self.get_job(job_id)
+        if not job:
+            return None
+
+        evaluation = self.get_evaluation(job_id)
+        tailored_cv = self.get_tailored_cv(job_id)
+        application = self.get_application(job_id)
+        audit_log = self.get_audit_log(job_id)
+
+        return {
+            "job": job.model_dump(),
+            "evaluation": evaluation.model_dump() if evaluation else None,
+            "tailored_cv": tailored_cv.model_dump() if tailored_cv else None,
+            "application": application.model_dump() if application else None,
+            "audit_log": [entry.model_dump() for entry in audit_log],
+        }
+
     def _row_to_job(self, row: sqlite3.Row) -> JobPosting:
         return JobPosting(
             id=row["id"],
@@ -662,3 +776,4 @@ class Storage:
             updated_at=row["updated_at"],
             metadata=json.loads(row["metadata_json"] or "{}"),
         )
+
