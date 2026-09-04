@@ -1,0 +1,197 @@
+"""24/7 Autonomous Pipeline Orchestrator with crash recovery, backoff, and stateful tracking."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import signal
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from job_hunt.automation.browser import BrowserApplicationEngine
+from job_hunt.cv.tailor import CVTailor
+from job_hunt.discovery.registry import SourceRegistry
+from job_hunt.evaluation.engine import EvaluationEngine
+from job_hunt.models import CandidateProfile, JobPosting, JobState
+from job_hunt.storage import Storage
+
+logger = logging.getLogger(__name__)
+
+
+class PipelineOrchestrator:
+    """End-to-end autonomous job discovery and application orchestrator."""
+
+    def __init__(
+        self,
+        storage: Optional[Storage] = None,
+        registry: Optional[SourceRegistry] = None,
+        eval_engine: Optional[EvaluationEngine] = None,
+        cv_tailor: Optional[CVTailor] = None,
+        browser_engine: Optional[BrowserApplicationEngine] = None,
+        profile: Optional[CandidateProfile] = None,
+        db_path: str = "data/jobs.db",
+        sources_path: str = "config/sources.yaml",
+    ):
+        self.storage = storage or Storage(db_path)
+        self.registry = registry or SourceRegistry()
+        self.eval_engine = eval_engine or EvaluationEngine()
+        self.cv_tailor = cv_tailor or CVTailor()
+        self.browser_engine = browser_engine or BrowserApplicationEngine()
+        self.sources_path = sources_path
+        self._running = False
+
+        if profile is None:
+            # Default candidate profile
+            self.profile = CandidateProfile(
+                full_name="Alex Rivera",
+                first_name="Alex",
+                last_name="Rivera",
+                email="alex.rivera.dev@example.com",
+                phone="+1-555-0199",
+                location="San Francisco, CA, USA",
+                years_of_experience=6,
+                verified_skills=[
+                    "Python", "FastAPI", "PostgreSQL", "Docker", "AWS",
+                    "Redis", "Distributed Systems", "Kubernetes", "CI/CD"
+                ],
+                allowed_metrics=["40%", "10k", "99.9%"],
+            )
+        else:
+            self.profile = profile
+
+    def stop(self) -> None:
+        """Signal the orchestrator loop to stop gracefully."""
+        logger.info("Graceful shutdown requested.")
+        self._running = False
+
+    async def run_discovery_stage(self, max_sources: Optional[int] = None) -> int:
+        """Stage 1 & 2: Discover and deduplicate jobs from configured sources."""
+        sources = self.registry.load_sources_file(self.sources_path)
+        if max_sources:
+            sources = sources[:max_sources]
+
+        logger.info("Starting discovery across %d sources...", len(sources))
+        postings = await self.registry.discover_all(sources=sources)
+        new_jobs = 0
+        for p in postings:
+            _, is_new = self.storage.add_job(p)
+            if is_new:
+                new_jobs += 1
+
+        logger.info("Discovery complete. Discovered %d jobs (%d new)", len(postings), new_jobs)
+        return new_jobs
+
+    def run_evaluation_stage(self, limit: int = 100) -> int:
+        """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs."""
+        pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
+        evaluated_count = 0
+        for job in pending_jobs:
+            eval_result = self.eval_engine.evaluate(job, self.profile)
+            self.storage.save_evaluation(eval_result)
+            evaluated_count += 1
+
+        logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
+        return evaluated_count
+
+    def run_cv_stage(self, limit: int = 50) -> int:
+        """Stage 6 & 7: Generate fact-checked tailored CVs for eligible jobs."""
+        eligible_jobs = self.storage.get_jobs_by_state(JobState.ELIGIBLE, limit=limit)
+        tailored_count = 0
+        for job in eligible_jobs:
+            tailored_cv = self.cv_tailor.generate_tailored_cv(job, self.profile)
+            self.storage.save_tailored_cv(tailored_cv)
+            tailored_count += 1
+
+        logger.info("CV tailoring complete. Tailored %d CVs.", tailored_count)
+        return tailored_count
+
+    async def run_application_stage(self, limit: int = 10, dry_run: bool = True) -> int:
+        """Stage 8 & 9: Launch browser automation to fill and submit applications."""
+        tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
+        # Also process retry_pending jobs
+        retry_jobs = self.storage.get_jobs_by_state(JobState.RETRY_PENDING, limit=limit)
+        queue = tailored_jobs + retry_jobs
+
+        processed = 0
+        # Write candidate CV to temporary file for upload
+        cv_dir = Path("data/cvs")
+        cv_dir.mkdir(parents=True, exist_ok=True)
+        cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
+        cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
+
+        for job in queue:
+            # Mark application started
+            self.storage.update_job_state(
+                job.id,
+                JobState.APPLICATION_STARTED,
+                details="Starting automated browser application session",
+            )
+            record = await self.browser_engine.fill_and_submit(
+                job,
+                self.profile,
+                resume_file_path=str(cv_file),
+                dry_run=dry_run,
+            )
+            self.storage.record_application(record)
+            processed += 1
+
+        logger.info("Application stage complete. Processed %d applications.", processed)
+        return processed
+
+    def recover_stuck_jobs(self, timeout_minutes: int = 15) -> int:
+        """Check for and recover jobs left hanging from unexpected crashes."""
+        count = self.storage.recover_stuck_jobs(timeout_minutes=timeout_minutes)
+        if count > 0:
+            logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
+        return count
+
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = 10) -> Dict[str, Any]:
+        """Execute one complete end-to-end pipeline iteration."""
+        # 0. Recover any stuck jobs from previous runs
+        recovered = self.recover_stuck_jobs()
+
+        # 1. Discovery
+        new_jobs = await self.run_discovery_stage(max_sources=max_sources)
+
+        # 2. Evaluation
+        evaluated = self.run_evaluation_stage()
+
+        # 3. Tailored CV
+        tailored = self.run_cv_stage()
+
+        # 4. Applications
+        applied = await self.run_application_stage(dry_run=dry_run)
+
+        stats = self.storage.get_summary_stats()
+        return {
+            "recovered_stuck": recovered,
+            "new_jobs_discovered": new_jobs,
+            "jobs_evaluated": evaluated,
+            "cvs_tailored": tailored,
+            "applications_processed": applied,
+            "database_stats": stats,
+        }
+
+    async def start_continuous_loop(self, interval_seconds: int = 3600, dry_run: bool = True) -> None:
+        """Run 24/7 continuous autonomous job-hunting loop."""
+        self._running = True
+        logger.info("Starting 24/7 continuous autonomous loop (cycle interval: %ds)...", interval_seconds)
+
+        while self._running:
+            try:
+                logger.info("--- Starting Pipeline Cycle ---")
+                results = await self.run_cycle(dry_run=dry_run)
+                logger.info("Cycle results: %s", results)
+            except Exception as e:
+                logger.error("Unexpected error in pipeline cycle: %s", e, exc_info=True)
+
+            logger.info("Sleeping for %d seconds before next cycle...", interval_seconds)
+            try:
+                for _ in range(interval_seconds):
+                    if not self._running:
+                        break
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
+
+        logger.info("Continuous pipeline loop terminated.")

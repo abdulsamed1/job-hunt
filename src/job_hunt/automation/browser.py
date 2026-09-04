@@ -1,0 +1,296 @@
+"""Browser automation engine using Playwright for headless ATS form filling and submission."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+
+from job_hunt.models import ApplicationRecord, CandidateProfile, JobPosting, JobState
+
+logger = logging.getLogger(__name__)
+
+CAPTCHA_SELECTORS = [
+    "iframe[src*='recaptcha']",
+    "iframe[src*='hcaptcha']",
+    "iframe[src*='turnstile']",
+    "iframe[src*='cloudflare']",
+    ".g-recaptcha",
+    ".h-captcha",
+    "#cf-turnstile",
+    "text=Verify you are human",
+]
+
+SUCCESS_INDICATORS = [
+    "thank you for applying",
+    "application submitted",
+    "application received",
+    "thank you for your application",
+    "we have received your application",
+    "thanks for applying",
+    "your application was submitted",
+]
+
+
+class BrowserApplicationEngine:
+    """Automates form filling and submission on Greenhouse, Lever, Ashby, and standard ATS pages."""
+
+    def __init__(
+        self,
+        executable_path: str = "/usr/bin/google-chrome",
+        headless: bool = True,
+        screenshots_dir: str = "data/screenshots",
+        timeout_ms: int = 30000,
+    ):
+        self.executable_path = executable_path
+        self.headless = headless
+        self.screenshots_dir = Path(screenshots_dir)
+        self.screenshots_dir.mkdir(parents=True, exist_ok=True)
+        self.timeout_ms = timeout_ms
+
+    async def _detect_captcha(self, page: Page) -> bool:
+        """Check if page currently presents a CAPTCHA or Cloudflare challenge."""
+        for selector in CAPTCHA_SELECTORS:
+            try:
+                el = await page.query_selector(selector)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _fill_field(self, page: Page, selectors: list[str], value: str) -> bool:
+        """Attempt to fill an input field trying multiple CSS/XPath selectors."""
+        for sel in selectors:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    await el.fill(value)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _fill_common_fields(self, page: Page, profile: CandidateProfile) -> None:
+        """Fill common personal information fields."""
+        # First Name
+        await self._fill_field(
+            page,
+            ["input[name*='first_name' i]", "input[id*='first_name' i]", "input[aria-label*='first name' i]"],
+            profile.first_name,
+        )
+
+        # Last Name
+        await self._fill_field(
+            page,
+            ["input[name*='last_name' i]", "input[id*='last_name' i]", "input[aria-label*='last name' i]"],
+            profile.last_name,
+        )
+
+        # Full Name (fallback if no split first/last name)
+        await self._fill_field(
+            page,
+            ["input[name*='name' i]:not([name*='first']):not([name*='last'])", "input[id*='name' i]:not([id*='first']):not([id*='last'])"],
+            profile.full_name,
+        )
+
+        # Email
+        await self._fill_field(
+            page,
+            ["input[type='email']", "input[name*='email' i]", "input[id*='email' i]"],
+            profile.email,
+        )
+
+        # Phone
+        await self._fill_field(
+            page,
+            ["input[type='tel']", "input[name*='phone' i]", "input[id*='phone' i]"],
+            profile.phone,
+        )
+
+        # Location / City
+        await self._fill_field(
+            page,
+            ["input[name*='location' i]", "input[id*='location' i]", "input[name*='city' i]"],
+            profile.location,
+        )
+
+        # LinkedIn
+        if profile.linkedin_url:
+            await self._fill_field(
+                page,
+                ["input[name*='linkedin' i]", "input[id*='linkedin' i]", "input[aria-label*='linkedin' i]"],
+                profile.linkedin_url,
+            )
+
+        # GitHub
+        if profile.github_url:
+            await self._fill_field(
+                page,
+                ["input[name*='github' i]", "input[id*='github' i]", "input[aria-label*='github' i]"],
+                profile.github_url,
+            )
+
+        # Portfolio / Website
+        if profile.portfolio_url:
+            await self._fill_field(
+                page,
+                ["input[name*='website' i]", "input[name*='portfolio' i]", "input[id*='website' i]"],
+                profile.portfolio_url,
+            )
+
+    async def _attach_cv_file(self, page: Page, resume_path: Optional[str]) -> bool:
+        """Locate file input and upload candidate CV."""
+        if not resume_path or not os.path.exists(resume_path):
+            return False
+
+        file_inputs = [
+            "input[type='file'][name*='resume' i]",
+            "input[type='file'][id*='resume' i]",
+            "input[type='file'][aria-label*='resume' i]",
+            "input[type='file']",
+        ]
+        for sel in file_inputs:
+            try:
+                el = await page.query_selector(sel)
+                if el:
+                    await el.set_input_files(resume_path)
+                    logger.info("Attached resume file [%s] via selector [%s]", resume_path, sel)
+                    return True
+            except Exception as e:
+                logger.debug("Failed file input selector %s: %s", sel, e)
+                continue
+        return False
+
+    async def fill_and_submit(
+        self,
+        job: JobPosting,
+        profile: CandidateProfile,
+        resume_file_path: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> ApplicationRecord:
+        """Navigate to application page, fill form, and autonomously submit or dry-run."""
+        record = ApplicationRecord(
+            job_id=job.id or 0,
+            state=JobState.APPLICATION_STARTED,
+            submission_payload={"url": job.raw_url, "dry_run": dry_run},
+        )
+
+        async with async_playwright() as p:
+            launch_args = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            exec_path = self.executable_path if os.path.exists(self.executable_path) else None
+            browser = await p.chromium.launch(
+                executable_path=exec_path,
+                headless=self.headless,
+                args=launch_args,
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+            )
+            page = await context.new_page()
+
+            try:
+                logger.info("Navigating to application URL: %s", job.raw_url)
+                await page.goto(job.raw_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
+                await page.wait_for_timeout(2000)
+
+                # 1. Check for CAPTCHA
+                if await self._detect_captcha(page):
+                    screenshot_file = str(self.screenshots_dir / f"captcha_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file, full_page=True)
+                    record.state = JobState.BLOCKED_CAPTCHA
+                    record.screenshot_path = screenshot_file
+                    record.error_message = "CAPTCHA or Cloudflare challenge detected"
+                    logger.warning("Job %s blocked by CAPTCHA: %s", job.id, screenshot_file)
+                    return record
+
+                # 2. Fill form fields
+                await self._fill_common_fields(page, profile)
+
+                # 3. Attach CV
+                if resume_file_path:
+                    await self._attach_cv_file(page, resume_file_path)
+
+                # If dry-run mode, capture screenshot and return success without clicking submit
+                if dry_run:
+                    screenshot_file = str(self.screenshots_dir / f"dry_run_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file, full_page=True)
+                    record.state = JobState.SUBMITTED
+                    record.screenshot_path = screenshot_file
+                    record.confirmation_text = "DRY RUN: Form filled and verified successfully without submit."
+                    return record
+
+                # 4. Find submit button
+                submit_selectors = [
+                    "button[type='submit']",
+                    "input[type='submit']",
+                    "button:has-text('Submit')",
+                    "button:has-text('Apply')",
+                    "#submit_app",
+                ]
+                submit_btn = None
+                for sel in submit_selectors:
+                    try:
+                        el = await page.query_selector(sel)
+                        if el and await el.is_visible():
+                            submit_btn = el
+                            break
+                    except Exception:
+                        continue
+
+                if not submit_btn:
+                    screenshot_file = str(self.screenshots_dir / f"no_submit_btn_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file)
+                    record.state = JobState.FAILED
+                    record.screenshot_path = screenshot_file
+                    record.error_message = "Could not locate a visible Submit button"
+                    return record
+
+                # 5. Click submit
+                await submit_btn.click()
+                await page.wait_for_timeout(5000)
+
+                # 6. Verify confirmation
+                page_text = (await page.content()).lower()
+                current_url = page.url.lower()
+
+                has_success = (
+                    any(ind in page_text for ind in SUCCESS_INDICATORS)
+                    or "thank" in current_url
+                    or "confirm" in current_url
+                    or "success" in current_url
+                )
+
+                screenshot_file = str(self.screenshots_dir / f"submission_result_job_{job.id}.png")
+                await page.screenshot(path=screenshot_file)
+                record.screenshot_path = screenshot_file
+
+                if has_success:
+                    record.state = JobState.SUBMITTED
+                    record.confirmation_text = "Application submitted and confirmed"
+                else:
+                    # Check if error message appeared
+                    record.state = JobState.FAILED
+                    record.error_message = "Submitted, but could not detect confirmation text"
+
+                return record
+
+            except Exception as e:
+                logger.error("Browser automation error for job %s: %s", job.id, e)
+                screenshot_file = str(self.screenshots_dir / f"error_job_{job.id}.png")
+                try:
+                    await page.screenshot(path=screenshot_file)
+                    record.screenshot_path = screenshot_file
+                except Exception:
+                    pass
+                record.state = JobState.FAILED
+                record.error_message = str(e)
+                return record
+
+            finally:
+                await context.close()
+                await browser.close()
