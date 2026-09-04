@@ -211,6 +211,177 @@ class BrowserApplicationEngine:
                 continue
         return False
 
+    async def _get_element_label(self, page: Page, el) -> str:
+        """Infer human label or question prompt for an input, textarea, or select."""
+        try:
+            aria_label = await el.get_attribute("aria-label")
+            if aria_label:
+                return aria_label.strip()
+
+            placeholder = await el.get_attribute("placeholder")
+            if placeholder:
+                return placeholder.strip()
+
+            el_id = await el.get_attribute("id")
+            if el_id:
+                lbl = await page.query_selector(f"label[for='{el_id}']")
+                if lbl:
+                    txt = await lbl.inner_text()
+                    if txt.strip():
+                        return txt.strip()
+
+            parent_lbl = await el.evaluate("el => el.closest('label') ? el.closest('label').innerText : ''")
+            if parent_lbl and parent_lbl.strip():
+                return parent_lbl.strip()
+
+            fg_label = await el.evaluate("""el => {
+                const group = el.closest('.form-group, .field, .application-question, div[class*="question"], fieldset');
+                if (group) {
+                    const l = group.querySelector('label, legend, .label, h3, h4, span[class*="label"]');
+                    return l ? l.innerText : '';
+                }
+                return '';
+            }""")
+            if fg_label and fg_label.strip():
+                return fg_label.strip()
+
+            name_attr = await el.get_attribute("name")
+            if name_attr:
+                return name_attr.replace("_", " ").title()
+
+        except Exception:
+            pass
+        return ""
+
+    def _resolve_question_answer(self, label: str, profile: CandidateProfile) -> Optional[str]:
+        """Resolve answer to an application question based on profile data and custom answers."""
+        if not label:
+            return None
+
+        lbl_lower = label.lower()
+
+        # Check explicit custom_answers first
+        for k, v in profile.custom_answers.items():
+            if k.lower() in lbl_lower or lbl_lower in k.lower():
+                return v
+
+        # Work Authorization / Legal Right to Work
+        if any(w in lbl_lower for w in ["authorized to work", "legally authorized", "right to work", "work permit", "work eligibility"]):
+            return "Yes"
+
+        # Sponsorship
+        if any(w in lbl_lower for w in ["sponsorship", "visa sponsorship", "require sponsorship", "require a visa"]):
+            return "No" if not profile.sponsorship_required else "Yes"
+
+        # Remote / Relocation
+        if any(w in lbl_lower for w in ["remote", "work remotely", "telecommute"]):
+            return "Yes"
+        if any(w in lbl_lower for w in ["willing to relocate", "relocation"]):
+            return "Open to remote worldwide" if profile.open_to_remote else "No"
+
+        # Years of Experience
+        if any(w in lbl_lower for w in ["years of experience", "how many years", "total experience"]):
+            return str(profile.years_of_experience)
+
+        # Notice Period / Start Date
+        if any(w in lbl_lower for w in ["notice period", "how soon can you start", "available to start", "start date"]):
+            return "Immediate / 2 weeks"
+
+        # Salary / Compensation Expectations
+        if any(w in lbl_lower for w in ["salary", "compensation", "desired pay"]):
+            return "Competitive / Negotiable"
+
+        # Current Location
+        if any(w in lbl_lower for w in ["current location", "where are you based", "city and country", "residence"]):
+            return profile.location
+
+        # Voluntary Self-Identification / Demographics
+        if any(w in lbl_lower for w in ["gender", "race", "ethnicity", "veteran", "disability", "sexual orientation"]):
+            return "I choose not to disclose"
+
+        return None
+
+    async def _fill_questionnaire(self, page: Page, profile: CandidateProfile) -> Dict[str, str]:
+        """Dynamically detect and answer custom questions, dropdowns, and radios."""
+        answers_captured: Dict[str, str] = {}
+
+        # 1. Custom text inputs and textareas
+        custom_inputs = await page.query_selector_all("input[type='text'], textarea")
+        for inp in custom_inputs:
+            try:
+                val = await inp.input_value()
+                if val:
+                    continue
+
+                label_text = await self._get_element_label(page, inp)
+                if not label_text:
+                    continue
+
+                ans = self._resolve_question_answer(label_text, profile)
+                if ans:
+                    await inp.fill(ans)
+                    answers_captured[label_text] = ans
+            except Exception:
+                continue
+
+        # 2. Dropdowns (<select>)
+        selects = await page.query_selector_all("select")
+        for sel in selects:
+            try:
+                label_text = await self._get_element_label(page, sel)
+                ans = self._resolve_question_answer(label_text, profile)
+
+                options = await sel.query_selector_all("option")
+                opt_texts = [await o.inner_text() for o in options]
+
+                target_option = None
+                if ans:
+                    ans_lower = ans.lower()
+                    for t in opt_texts:
+                        if t.strip().lower() == ans_lower or ans_lower in t.strip().lower():
+                            target_option = t.strip()
+                            break
+
+                if not target_option and any(w in label_text.lower() for w in ["gender", "race", "veteran", "disability"]):
+                    for t in opt_texts:
+                        if any(d in t.lower() for d in ["decline", "prefer not", "choose not"]):
+                            target_option = t.strip()
+                            break
+
+                if target_option:
+                    await sel.select_option(label=target_option)
+                    answers_captured[label_text or "select"] = target_option
+            except Exception:
+                continue
+
+        # 3. Radio button groups
+        radios = await page.query_selector_all("input[type='radio']")
+        handled_groups = set()
+        for radio in radios:
+            try:
+                group_name = await radio.get_attribute("name")
+                if not group_name or group_name in handled_groups:
+                    continue
+                handled_groups.add(group_name)
+
+                group_label = await self._get_element_label(page, radio)
+                ans = self._resolve_question_answer(group_label, profile)
+                if not ans:
+                    continue
+
+                group_radios = await page.query_selector_all(f"input[type='radio'][name='{group_name}']")
+                for r in group_radios:
+                    r_lbl = await self._get_element_label(page, r)
+                    r_val = (await r.get_attribute("value") or "").lower()
+                    if ans.lower() in r_lbl.lower() or ans.lower() == r_val:
+                        await r.check()
+                        answers_captured[group_label or group_name] = ans
+                        break
+            except Exception:
+                continue
+
+        return answers_captured
+
     async def fill_and_submit(
         self,
         job: JobPosting,
@@ -226,7 +397,6 @@ class BrowserApplicationEngine:
         )
 
         async with async_playwright() as p:
-            # Stealth launch arguments to avoid bot detection
             launch_args = [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -246,6 +416,14 @@ class BrowserApplicationEngine:
                 timezone_id="America/New_York",
             )
             page = await context.new_page()
+
+            # Inject stealth evasions to mask Playwright/Selenium traces
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                window.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            """)
 
             try:
                 logger.info("Navigating to application URL: %s", job.raw_url)
@@ -267,6 +445,12 @@ class BrowserApplicationEngine:
 
                 # 2. Fill form fields
                 await self._fill_common_fields(page, profile)
+
+                # 2b. Fill dynamic ATS questionnaire (custom questions, radios, dropdowns)
+                answers = await self._fill_questionnaire(page, profile)
+                if answers:
+                    record.submission_payload["answers"] = answers
+                    logger.info("Answered %d dynamic form questions on job %s", len(answers), job.id)
 
                 # 3. Attach CV
                 if resume_file_path:

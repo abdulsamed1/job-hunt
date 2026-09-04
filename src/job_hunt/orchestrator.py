@@ -8,12 +8,15 @@ import signal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import httpx
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
+from job_hunt.liveness import LivenessDetector
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, JobPosting, JobState
+from job_hunt.reposts import RepostDetector
 from job_hunt.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -60,6 +63,8 @@ class PipelineOrchestrator:
             use_llm=self.use_llm,
         )
         self.browser_engine = browser_engine or BrowserApplicationEngine()
+        self.liveness = LivenessDetector()
+        self.repost_detector = RepostDetector()
 
         if profile is None:
             prof_path = Path("config/candidate_profile.json")
@@ -76,6 +81,8 @@ class PipelineOrchestrator:
                     phone="+1-555-0199",
                     location="San Francisco, CA, USA",
                     years_of_experience=6,
+                    work_authorization="Authorized to work in Egypt, Remote Worldwide",
+                    open_to_remote=True,
                     verified_skills=[
                         "Python", "FastAPI", "PostgreSQL", "Docker", "AWS",
                         "Redis", "Distributed Systems", "Kubernetes", "CI/CD"
@@ -91,12 +98,11 @@ class PipelineOrchestrator:
         self._running = False
 
     async def run_discovery_stage(self, max_sources: Optional[int] = None) -> int:
-        """Stage 1 & 2: Discover and deduplicate jobs from configured sources."""
+        """Stage 1 & 2: Discover jobs across all sources and deduplicate."""
         sources = self.registry.load_sources_file(self.sources_path)
         if max_sources:
             sources = sources[:max_sources]
 
-        logger.info("Starting discovery across %d sources...", len(sources))
         postings = await self.registry.discover_all(sources=sources)
         new_jobs = 0
         for p in postings:
@@ -111,10 +117,18 @@ class PipelineOrchestrator:
         """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs asynchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
         evaluated_count = 0
-        for job in pending_jobs:
-            eval_result = await self.eval_engine.evaluate_async(job, self.profile)
-            self.storage.save_evaluation(eval_result)
-            evaluated_count += 1
+        async with httpx.AsyncClient() as client:
+            for job in pending_jobs:
+                # Zero-token liveness check (filter dead/filled postings before spending LLM tokens)
+                is_live, liveness_reason = await self.liveness.check_url_async(job.raw_url, client=client)
+                if not is_live:
+                    logger.info("Job %s (%s - %s) filtered out by liveness: %s", job.id, job.company, job.title, liveness_reason)
+                    self.storage.update_job_state(job.id, JobState.PRE_FILTERED_OUT, details=liveness_reason, force=True)
+                    continue
+
+                eval_result = await self.eval_engine.evaluate_async(job, self.profile)
+                self.storage.save_evaluation(eval_result)
+                evaluated_count += 1
 
         logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
         return evaluated_count
@@ -180,6 +194,13 @@ class PipelineOrchestrator:
                 if not cv_file.exists():
                     cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
                 resume_path = str(cv_file.resolve())
+
+            # Fast liveness check before launching browser session
+            is_live, liveness_reason = await self.liveness.check_url_async(job.raw_url)
+            if not is_live:
+                logger.warning("Job %s is no longer active: %s", job.id, liveness_reason)
+                self.storage.update_job_state(job.id, JobState.FAILED, details=f"Liveness check: {liveness_reason}", force=True)
+                continue
 
             self.storage.update_job_state(
                 job.id,
