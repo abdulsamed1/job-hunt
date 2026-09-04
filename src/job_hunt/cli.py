@@ -8,7 +8,7 @@ import logging
 import signal
 import sys
 
-
+from job_hunt.llm.client import FreeLLMClient
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
@@ -31,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = subparsers.add_parser("status", help="Display current tracker statistics and state summary")
     p_status.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
+    # llm-status
+    p_llm = subparsers.add_parser("llm-status", help="Check FreeLLMAPI connectivity and available models")
+    p_llm.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
+
     # scan
     p_scan = subparsers.add_parser("scan", help="Discover and deduplicate jobs from sources")
     p_scan.add_argument("--sources", default="config/sources.yaml", help="Path to sources YAML")
@@ -41,12 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval = subparsers.add_parser("evaluate", help="Pre-filter and evaluate discovered jobs")
     p_eval.add_argument("--limit", type=int, default=100, help="Max jobs to evaluate")
     p_eval.add_argument("--threshold", type=float, default=70.0, help="Eligibility score threshold")
+    p_eval.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
+    p_eval.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic scoring only")
     p_eval.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     # tailor
     p_tailor = subparsers.add_parser("tailor", help="Generate fact-verified tailored CVs for eligible jobs")
     p_tailor.add_argument("--job-id", type=int, default=None, help="Tailor for specific job ID")
     p_tailor.add_argument("--limit", type=int, default=50, help="Max CVs to generate")
+    p_tailor.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
+    p_tailor.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic tailoring only")
     p_tailor.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     # apply
@@ -61,6 +69,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--interval", type=int, default=3600, help="Cycle interval in seconds (default: 3600)")
     p_run.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
     p_run.add_argument("--sources-limit", type=int, default=None, help="Limit sources per cycle")
+    p_run.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
+    p_run.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic evaluation only")
     p_run.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     return parser
@@ -82,6 +92,20 @@ def cmd_status(args: argparse.Namespace) -> None:
     print("======================================================================\n")
 
 
+def cmd_llm_status(args: argparse.Namespace) -> None:
+    client = FreeLLMClient(base_url=args.llm_url)
+    alive = client.is_alive()
+    print("\n======================= FREELLMAPI STATUS =======================")
+    print(f"Endpoint: {client.base_url}")
+    print(f"Service Alive: {'YES [ACTIVE]' if alive else 'NO [OFFLINE]'}")
+    if alive:
+        print("Model Routing: Dynamic Auto-Failover (MemOS, Groq, Cerebras, SambaNova)")
+        print("Inference Cost: $0.00 / token (Free Tier Aggregation)")
+    else:
+        print("Note: System will use deterministic heuristic scoring as zero-cost fallback.")
+    print("=================================================================\n")
+
+
 def cmd_scan(args: argparse.Namespace) -> None:
     orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources)
     new_jobs = asyncio.run(orch.run_discovery_stage(max_sources=args.limit))
@@ -89,66 +113,73 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db)
+    llm_client = FreeLLMClient(base_url=args.llm_url) if not args.no_llm else None
+    orch = PipelineOrchestrator(
+        db_path=args.db,
+        llm_client=llm_client,
+        use_llm=not args.no_llm,
+    )
     orch.eval_engine.min_score_threshold = args.threshold
-    count = orch.run_evaluation_stage(limit=args.limit)
+    count = asyncio.run(orch.run_evaluation_stage_async(limit=args.limit))
     print(f"Evaluation completed: {count} jobs processed.")
 
 
 def cmd_tailor(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db)
+    llm_client = FreeLLMClient(base_url=args.llm_url) if not args.no_llm else None
+    orch = PipelineOrchestrator(
+        db_path=args.db,
+        llm_client=llm_client,
+        use_llm=not args.no_llm,
+    )
     count = orch.run_cv_stage(limit=args.limit)
-    print(f"CV Tailoring completed: {count} tailored CVs produced and fact-checked.")
+    print(f"CV tailoring completed: {count} CVs generated.")
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
     orch = PipelineOrchestrator(db_path=args.db)
-    dry_run = not args.live
-    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=dry_run))
-    mode = "DRY-RUN" if dry_run else "LIVE"
-    print(f"Application stage completed ({mode}): {count} applications processed.")
+    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live))
+    mode = "LIVE" if args.live else "DRY-RUN"
+    print(f"Application stage completed: {count} applications processed ({mode} mode).")
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db)
-    dry_run = not args.live
+    llm_client = FreeLLMClient(base_url=args.llm_url) if not args.no_llm else None
+    orch = PipelineOrchestrator(
+        db_path=args.db,
+        llm_client=llm_client,
+        use_llm=not args.no_llm,
+    )
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    def handle_signal():
+    def sig_handler(sig, frame):
+        logger.info("Termination signal received. Shutting down loop...")
         orch.stop()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, handle_signal)
-        except NotImplementedError:
-            pass
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
 
-    try:
-        loop.run_until_complete(
-            orch.start_continuous_loop(interval_seconds=args.interval, dry_run=dry_run)
-        )
-    finally:
-        loop.close()
+    logger.info("Starting autonomous 24/7 daemon loop (mode=%s)...", "LIVE" if args.live else "DRY-RUN")
+    asyncio.run(orch.start_continuous_loop(interval_seconds=args.interval, dry_run=not args.live))
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.command == "status":
-        cmd_status(args)
-    elif args.command == "scan":
-        cmd_scan(args)
-    elif args.command == "evaluate":
-        cmd_evaluate(args)
-    elif args.command == "tailor":
-        cmd_tailor(args)
-    elif args.command == "apply":
-        cmd_apply(args)
-    elif args.command == "run":
-        cmd_run(args)
+    dispatch = {
+        "status": cmd_status,
+        "llm-status": cmd_llm_status,
+        "scan": cmd_scan,
+        "evaluate": cmd_evaluate,
+        "tailor": cmd_tailor,
+        "apply": cmd_apply,
+        "run": cmd_run,
+    }
+
+    fn = dispatch.get(args.command)
+    if fn:
+        fn(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

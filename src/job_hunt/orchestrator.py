@@ -12,6 +12,7 @@ from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
+from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, JobPosting, JobState
 from job_hunt.storage import Storage
 
@@ -29,16 +30,36 @@ class PipelineOrchestrator:
         cv_tailor: Optional[CVTailor] = None,
         browser_engine: Optional[BrowserApplicationEngine] = None,
         profile: Optional[CandidateProfile] = None,
+        llm_client: Optional[FreeLLMClient] = None,
+        use_llm: bool = True,
         db_path: str = "data/jobs.db",
         sources_path: str = "config/sources.yaml",
     ):
         self.storage = storage or Storage(db_path)
         self.registry = registry or SourceRegistry()
-        self.eval_engine = eval_engine or EvaluationEngine()
-        self.cv_tailor = cv_tailor or CVTailor()
-        self.browser_engine = browser_engine or BrowserApplicationEngine()
         self.sources_path = sources_path
         self._running = False
+        self.use_llm = use_llm
+
+        # Configure LLM client if enabled
+        if self.use_llm:
+            self.llm_client = llm_client or FreeLLMClient()
+            try:
+                self.llm_client.ensure_server_running()
+            except Exception as e:
+                logger.warning("Could not verify or auto-start FreeLLMAPI: %s", e)
+        else:
+            self.llm_client = None
+
+        self.eval_engine = eval_engine or EvaluationEngine(
+            llm_client=self.llm_client,
+            use_llm=self.use_llm,
+        )
+        self.cv_tailor = cv_tailor or CVTailor(
+            llm_client=self.llm_client,
+            use_llm=self.use_llm,
+        )
+        self.browser_engine = browser_engine or BrowserApplicationEngine()
 
         if profile is None:
             prof_path = Path("config/candidate_profile.json")
@@ -49,18 +70,18 @@ class PipelineOrchestrator:
             else:
                 self.profile = CandidateProfile(
                     full_name="Alex Rivera",
-                first_name="Alex",
-                last_name="Rivera",
-                email="alex.rivera.dev@example.com",
-                phone="+1-555-0199",
-                location="San Francisco, CA, USA",
-                years_of_experience=6,
-                verified_skills=[
-                    "Python", "FastAPI", "PostgreSQL", "Docker", "AWS",
-                    "Redis", "Distributed Systems", "Kubernetes", "CI/CD"
-                ],
-                allowed_metrics=["40%", "10k", "99.9%"],
-            )
+                    first_name="Alex",
+                    last_name="Rivera",
+                    email="alex.rivera.dev@example.com",
+                    phone="+1-555-0199",
+                    location="San Francisco, CA, USA",
+                    years_of_experience=6,
+                    verified_skills=[
+                        "Python", "FastAPI", "PostgreSQL", "Docker", "AWS",
+                        "Redis", "Distributed Systems", "Kubernetes", "CI/CD"
+                    ],
+                    allowed_metrics=["40%", "10k", "99.9%"],
+                )
         else:
             self.profile = profile
 
@@ -86,8 +107,20 @@ class PipelineOrchestrator:
         logger.info("Discovery complete. Discovered %d jobs (%d new)", len(postings), new_jobs)
         return new_jobs
 
+    async def run_evaluation_stage_async(self, limit: int = 100) -> int:
+        """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs asynchronously."""
+        pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
+        evaluated_count = 0
+        for job in pending_jobs:
+            eval_result = await self.eval_engine.evaluate_async(job, self.profile)
+            self.storage.save_evaluation(eval_result)
+            evaluated_count += 1
+
+        logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
+        return evaluated_count
+
     def run_evaluation_stage(self, limit: int = 100) -> int:
-        """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs."""
+        """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs synchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
         evaluated_count = 0
         for job in pending_jobs:
@@ -113,12 +146,10 @@ class PipelineOrchestrator:
     async def run_application_stage(self, limit: int = 10, dry_run: bool = True) -> int:
         """Stage 8 & 9: Launch browser automation to fill and submit applications."""
         tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
-        # Also process retry_pending jobs
         retry_jobs = self.storage.get_jobs_by_state(JobState.RETRY_PENDING, limit=limit)
         queue = tailored_jobs + retry_jobs
 
         processed = 0
-        # Prefer verified candidate PDF if available
         custom_pdf = Path("Abdulsamed_Hamdy.pdf")
         if custom_pdf.exists():
             resume_path = str(custom_pdf.resolve())
@@ -130,7 +161,6 @@ class PipelineOrchestrator:
             resume_path = str(cv_file)
 
         for job in queue:
-            # Mark application started
             self.storage.update_job_state(
                 job.id,
                 JobState.APPLICATION_STARTED,
@@ -157,14 +187,14 @@ class PipelineOrchestrator:
 
     async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = 10) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
-        # 0. Recover any stuck jobs from previous runs
+        # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
 
         # 1. Discovery
         new_jobs = await self.run_discovery_stage(max_sources=max_sources)
 
         # 2. Evaluation
-        evaluated = self.run_evaluation_stage()
+        evaluated = await self.run_evaluation_stage_async()
 
         # 3. Tailored CV
         tailored = self.run_cv_stage()

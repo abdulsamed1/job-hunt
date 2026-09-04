@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import List, Optional, Set, Tuple
+
+from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, JobPosting, TailoredCV
+
+logger = logging.getLogger(__name__)
 
 
 class FactVerificationError(ValueError):
@@ -14,8 +19,13 @@ class FactVerificationError(ValueError):
 class CVTailor:
     """Generates tailored CVs from verified candidate facts and validates strict truthfulness."""
 
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        llm_client: Optional[FreeLLMClient] = None,
+        use_llm: bool = True,
+    ):
+        self.llm_client = llm_client
+        self.use_llm = use_llm
 
     def verify_cv_facts(self, cv_markdown: str, profile: CandidateProfile) -> Tuple[bool, List[str]]:
         """Strict verification gate: ensure generated CV contains NO hallucinated facts.
@@ -61,7 +71,6 @@ class CVTailor:
 
         # 2. Verify company names
         verified_companies = {e.company.lower() for e in profile.verified_experiences}
-        # In experience section, any ### <Title> - <Company> must be in verified_companies
         for m in re.finditer(r"###\s+([^-]+)\s*-\s*([^\n]+)", cv_markdown):
             comp = m.group(2).strip().lower()
             if comp not in verified_companies:
@@ -144,16 +153,38 @@ class CVTailor:
             links.append(f"[LinkedIn]({profile.linkedin_url})")
         if profile.github_url:
             links.append(f"[GitHub]({profile.github_url})")
+        if profile.portfolio_url:
+            links.append(f"[Portfolio]({profile.portfolio_url})")
         if links:
             lines.append(" | ".join(links))
 
-        # Tailored summary emphasizing job-relevant verified skills
-        matched_skills = [s for s in profile.verified_skills if s.lower() in job_keywords]
-        skill_highlight = f" specializing in {', '.join(matched_skills[:4])}" if matched_skills else ""
+        # Check for LLM tailored summary first
+        summary_text: Optional[str] = None
+        if self.use_llm and self.llm_client:
+            try:
+                llm_summary = self.llm_client.tailor_summary_sync(job, profile)
+                if llm_summary:
+                    # Test if the generated summary satisfies the strict fact check
+                    test_lines = lines + ["\n## Summary", llm_summary]
+                    passed, _ = self.verify_cv_facts("\n".join(test_lines), profile)
+                    if passed:
+                        summary_text = llm_summary
+            except Exception as e:
+                logger.warning("LLM CV summary tailoring failed, using deterministic summary: %s", e)
+
+        if not summary_text:
+            matched_skills = [s for s in profile.verified_skills if s.lower() in job_keywords]
+            skill_highlight = f" specializing in {', '.join(matched_skills[:4])}" if matched_skills else ""
+            summary_text = (
+                f"Software Engineer with {profile.years_of_experience}+ years of experience{skill_highlight}. "
+                f"Proven track record delivering scalable systems and high-impact engineering solutions."
+            )
+
         lines.append("\n## Summary")
-        lines.append(f"Software Engineer with {profile.years_of_experience}+ years of experience{skill_highlight}. Proven track record delivering scalable systems and high-impact engineering solutions.")
+        lines.append(summary_text)
 
         # Skills section: order matched skills first, followed by remaining verified skills
+        matched_skills = [s for s in profile.verified_skills if s.lower() in job_keywords]
         other_skills = [s for s in profile.verified_skills if s not in matched_skills]
         ordered_skills = matched_skills + other_skills
         lines.append("\n## Technical Skills")
@@ -196,7 +227,6 @@ class CVTailor:
         # Run verification gate
         passed, log = self.verify_cv_facts(candidate_cv_markdown, profile)
         if not passed:
-            # Fallback to master CV to maintain 100% truthfulness
             log.append("Tailored CV failed fact check! Falling back to verified Master CV.")
             candidate_cv_markdown = self.build_master_cv(profile)
             passed = True

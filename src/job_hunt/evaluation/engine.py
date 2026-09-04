@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, EvaluationResult, JobPosting
+
+logger = logging.getLogger(__name__)
 
 # Positive role patterns for Software Engineer & related roles
 SWE_ROLE_PATTERNS = [
@@ -55,10 +60,17 @@ CLEARANCE_PATTERNS = [
 
 
 class EvaluationEngine:
-    """Evaluates job postings against a candidate profile using pre-filters and scoring."""
+    """Evaluates job postings against a candidate profile using pre-filters, LLM, and heuristic fallback."""
 
-    def __init__(self, min_score_threshold: float = 70.0):
+    def __init__(
+        self,
+        min_score_threshold: float = 70.0,
+        llm_client: Optional[FreeLLMClient] = None,
+        use_llm: bool = True,
+    ):
         self.min_score_threshold = min_score_threshold
+        self.llm_client = llm_client
+        self.use_llm = use_llm
 
     def pre_filter(self, job: JobPosting, profile: CandidateProfile) -> Tuple[bool, Optional[str]]:
         """Run fast deterministic pre-filters on title, clearance, and location."""
@@ -83,8 +95,8 @@ class EvaluationEngine:
         return True, None
 
     def evaluate(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
-        """Evaluate a job against candidate profile, computing match score and eligibility."""
-        # 1. First run pre-filter
+        """Synchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
+        # 1. Run pre-filter
         passed, reason = self.pre_filter(job, profile)
         if not passed:
             return EvaluationResult(
@@ -98,13 +110,87 @@ class EvaluationEngine:
                 pre_filter_reason=reason,
             )
 
-        # 2. Extract technical keywords from job description
+        # 2. Try LLM evaluation if enabled and client provided
+        if self.use_llm and self.llm_client:
+            try:
+                llm_data = self.llm_client.evaluate_job_sync(job, profile)
+                if llm_data and isinstance(llm_data, dict) and "score" in llm_data:
+                    res = self._build_llm_result(job.id, llm_data)
+                    if res is not None:
+                        return res
+            except Exception as e:
+                logger.warning("LLM evaluation failed, using deterministic fallback: %s", e)
+
+        # 3. Deterministic scoring fallback
+        return self._evaluate_deterministic(job, profile)
+
+    async def evaluate_async(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
+        """Asynchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
+        passed, reason = self.pre_filter(job, profile)
+        if not passed:
+            return EvaluationResult(
+                job_id=job.id,
+                score=0.0,
+                eligible=False,
+                matched_skills=[],
+                missing_skills=[],
+                reasoning=f"Pre-filtered out: {reason}",
+                pre_filtered=True,
+                pre_filter_reason=reason,
+            )
+
+        if self.use_llm and self.llm_client:
+            try:
+                llm_data = await self.llm_client.evaluate_job(job, profile)
+                if llm_data and isinstance(llm_data, dict) and "score" in llm_data:
+                    res = self._build_llm_result(job.id, llm_data)
+                    if res is not None:
+                        return res
+            except Exception as e:
+                logger.warning("Async LLM evaluation failed, using deterministic fallback: %s", e)
+
+        return self._evaluate_deterministic(job, profile)
+
+    def _build_llm_result(self, job_id: Optional[int], data: Dict[str, Any]) -> Optional[EvaluationResult]:
+        """Validate and transform LLM output into an EvaluationResult."""
+        try:
+            raw_score = float(data.get("score", 0.0))
+            score = max(0.0, min(100.0, round(raw_score, 1)))
+            is_eligible = score >= self.min_score_threshold
+
+            matched = [str(s) for s in data.get("matched_skills", []) if isinstance(s, (str, int))]
+            missing = [str(s) for s in data.get("missing_skills", []) if isinstance(s, (str, int))]
+
+            reasoning_parts = []
+            if data.get("reasoning"):
+                reasoning_parts.append(str(data["reasoning"]))
+            if data.get("seniority_fit"):
+                reasoning_parts.append(f"Seniority: {data['seniority_fit']}")
+            if data.get("location_fit"):
+                reasoning_parts.append(f"Location: {data['location_fit']}")
+
+            reasoning = " | ".join(reasoning_parts) or f"AI Evaluated match score: {score}/100"
+
+            return EvaluationResult(
+                job_id=job_id,
+                score=score,
+                eligible=is_eligible,
+                matched_skills=matched,
+                missing_skills=missing[:10],
+                reasoning=f"[AI-Evaluated] {reasoning}",
+                pre_filtered=False,
+            )
+        except Exception as e:
+            logger.debug("Failed to build LLM result from data: %s", e)
+            return None
+
+    def _evaluate_deterministic(self, job: JobPosting, profile: CandidateProfile) -> EvaluationResult:
+        """Deterministic keyword and heuristic scoring fallback."""
         text_to_scan = f"{job.title} {job.description}".lower()
 
         matched_skills: List[str] = []
         missing_skills: List[str] = []
 
-        # Candidate verified skills check
         verified_skills_lower = {s.lower(): s for s in profile.verified_skills}
 
         for skill_lower, skill_original in verified_skills_lower.items():
@@ -112,7 +198,6 @@ class EvaluationEngine:
             if re.search(pattern, text_to_scan):
                 matched_skills.append(skill_original)
 
-        # Expanded keyword vocabulary
         common_tech_keywords = [
             "python", "go", "golang", "rust", "java", "c++", "c", "assembly", "rtos",
             "embedded", "kernel", "typescript", "javascript", "react", "node", "django",
@@ -126,7 +211,6 @@ class EvaluationEngine:
                 if kw not in [m.lower() for m in matched_skills]:
                     missing_skills.append(kw)
 
-        # 3. Calculate score components
         # A) Skill match ratio (weight 55)
         if matched_skills and missing_skills:
             total = len(matched_skills) + len(missing_skills)
@@ -134,12 +218,11 @@ class EvaluationEngine:
         elif matched_skills and not missing_skills:
             skill_score = 55.0
         elif not matched_skills and missing_skills:
-            skill_score = 0.0  # Zero match when requirements detected but none satisfied
+            skill_score = 0.0
         else:
-            skill_score = 30.0  # General baseline when no specific tech mentioned
+            skill_score = 30.0
 
         # B) Seniority match (weight 25)
-        # Match "10+ years" or "5 years of experience"
         yoe_match = re.search(r"(\d+)\+?\s*years?", text_to_scan)
         seniority_score = 25.0
         if yoe_match:
@@ -179,6 +262,6 @@ class EvaluationEngine:
             eligible=is_eligible,
             matched_skills=matched_skills,
             missing_skills=missing_skills[:10],
-            reasoning=reasoning,
+            reasoning=f"[Deterministic] {reasoning}",
             pre_filtered=False,
         )
