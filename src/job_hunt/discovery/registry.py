@@ -15,6 +15,7 @@ from job_hunt.discovery.adapters.greenhouse import GreenhouseAdapter
 from job_hunt.discovery.adapters.lever import LeverAdapter
 from job_hunt.discovery.adapters.smartrecruiters import SmartRecruitersAdapter
 from job_hunt.discovery.adapters.workday import WorkdayAdapter
+from job_hunt.discovery.adapters.web import UniversalWebAdapter
 from job_hunt.discovery.base import DiscoveryAdapter
 from job_hunt.models import JobPosting
 
@@ -32,6 +33,7 @@ class SourceRegistry:
             SmartRecruitersAdapter(),
             WorkdayAdapter(),
             FeedAdapter(),
+            UniversalWebAdapter(),
         ]
         self._adapter_map = {a.adapter_id: a for a in self.adapters}
 

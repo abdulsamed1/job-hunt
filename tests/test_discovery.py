@@ -95,3 +95,53 @@ async def test_source_isolation_on_failure():
     # GoodSource should successfully yield posting
     assert len(results[1]) == 1
     assert results[1][0].title == "SWE"
+
+
+@pytest.mark.asyncio
+async def test_universal_web_adapter_schema_org():
+    """Verify UniversalWebAdapter parses Schema.org JobPosting JSON-LD."""
+    from job_hunt.discovery.adapters.web import UniversalWebAdapter
+
+    sample_html = """
+    <html>
+      <head>
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "JobPosting",
+          "title": "Senior Rust / Web3 Developer",
+          "hiringOrganization": {
+            "@type": "Organization",
+            "name": "CryptoStartup"
+          },
+          "jobLocation": {
+            "@type": "Place",
+            "address": {
+              "addressLocality": "Remote",
+              "addressCountry": "Global"
+            }
+          },
+          "url": "https://web3jobs.example/job/rust-dev-123",
+          "description": "Build high throughput distributed systems in Rust."
+        }
+        </script>
+      </head>
+      <body><h1>Job Board</h1></body>
+    </html>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = UniversalWebAdapter()
+        postings = await adapter.fetch({"name": "Web3Portal", "url": "https://web3jobs.example"}, client)
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Senior Rust / Web3 Developer"
+    assert p.company == "CryptoStartup"
+    assert p.canonical_url == "https://web3jobs.example/job/rust-dev-123"
+    assert p.location == "Remote, Global"
+    assert "Rust" in p.description

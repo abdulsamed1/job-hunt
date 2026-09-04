@@ -629,3 +629,160 @@ sources:
 - adapter: feed
   name: weworkremotely
   url: https://weworkremotely.com/categories/remote-programming-jobs.json
+- name: Calyptus
+  url: https://calyptus.co/
+- name: Degen Crypto Jobs
+  url: https://degencryptojobs.com/
+- name: CryptoJobs.com
+  url: https://cryptojobs.com/
+- name: Solana Ecosystem Jobs
+  url: https://jobs.solana.com/
+- name: Web3internships
+  url: https://www.web3internships.com/
+- name: Ton Jobs
+  url: https://jobs.ton.org/jobs
+- name: Web3.career
+  url: https://web3.career/
+- name: CryptoJobsList
+  url: https://cryptojobslist.com/
+- name: Cryptocurrency Jobs
+  url: https://cryptocurrencyjobs.co/
+- name: Blockchain Works
+  url: https://blockchain.works-hub.com/
+- name: Ethereum Jobs
+  url: https://ethgigs.com/
+- name: DeFi Jobs
+  url: https://defi.jobs/
+- name: BitcoinJobs
+  url: https://bitcoinjobs.com/
+- name: CryptoJobs
+  url: https://crypto.jobs/
+- name: Remote3
+  url: https://remote3.co/
+- name: Web3 Army
+  url: https://web3army.xyz/
+- name: useWeb3 Jobs
+  url: https://www.useweb3.xyz/jobs
+- name: Crypto Recruit
+  url: https://cryptorecruit.com/
+- name: Blockchain Job Board
+  url: https://blockchainjobboard.com/
+- name: CryptoJobsDB
+  url: https://cryptojobsdb.com/
+- name: CryptoJobLand
+  url: https://cryptojob.land/
+- name: Web3 Jobs
+  url: https://web3jobs.ai/
+- adapter: greenhouse
+  name: Chainlink Labs Careers
+  url: https://boards.greenhouse.io/chainlink
+- name: Binance Careers
+  url: https://www.binance.com/en/careers
+- name: CryptoJobsDaily
+  url: https://cryptojobsdaily.com/
+- name: NFT Jobs
+  url: https://nftjobs.com/
+- name: Crypto Careers
+  url: https://crypto-careers.com/
+- name: CryptoJobSearch
+  url: https://cryptojobsearch.com/
+- name: Web3 Talent
+  url: https://web3talent.com/
+- name: Blocktribe
+  url: https://blocktribe.com/
+- name: Blockchain Developers
+  url: https://blockchaindevelopers.io/
+- name: Solidity Jobs
+  url: https://solidityjobs.com/
+- name: SmartContractJobs
+  url: https://smartcontractjobs.com/
+- name: Aave Careers
+  url: https://aave.com/careers/
+- name: CryptoJobHunt
+  url: https://cryptojobhunt.com/
+- name: Stellar Jobs
+  url: https://www.stellar.org/careers
+- name: PompCryptoJobs
+  url: https://pompcryptojobs.com/
+- name: "Remote \U0001F48E Web3 Jobs"
+  url: https://web3.career/remote-jobs
+- name: Arc (formerly Vettery)
+  url: https://arc.dev/
+- name: AngelList Talent
+  url: https://angel.co/talent
+- name: Wellfound (formerly AngelList)
+  url: https://wellfound.com/
+- name: Toptal
+  url: https://www.toptal.com/
+- name: Hired
+  url: https://hired.com/
+- name: Gun.io
+  url: https://www.gun.io/
+- name: YCombinator Jobs
+  url: https://www.workatastartup.com/
+- name: Working Nomads
+  url: https://www.workingnomads.com/jobs
+- name: FlexJobs
+  url: https://www.flexjobs.com/
+- name: PowerToFly
+  url: https://powertofly.com/
+- name: Remote.co
+  url: https://remote.co/
+- name: Jobspresso
+  url: https://jobspresso.co/
+- adapter: feed
+  name: Remotive
+  url: https://remotive.com/api/remote-jobs
+- name: JustRemote
+  url: https://justremote.co/
+- name: DailyRemote
+  url: https://dailyremote.com/
+- name: RemoteLeaf
+  url: https://remoteleaf.com/
+- name: RemoteMore
+  url: https://remotemore.com/
+- name: Vanhack
+  url: https://vanhack.com/
+- name: Talent.io
+  url: https://www.talent.io/
+- name: NodeFlair
+  url: https://nodeflair.com/
+- name: Stack Overflow Jobs
+  url: https://stackoverflow.com/jobs
+- name: LinkedIn Jobs
+  url: https://www.linkedin.com/jobs/
+- name: Indeed
+  url: https://www.indeed.com/
+- name: Glassdoor
+  url: https://www.glassdoor.com/
+- name: Dice
+  url: https://www.dice.com/
+- name: HackerRank Jobs
+  url: https://www.hackerrank.com/jobs
+- name: Gitcoin
+  url: https://gitcoin.co/
+- name: DAO Jobs
+  url: https://daojobs.io/
+- name: https://ethglobal.com/auth?useredirect=/jobs
+  url: https://ethglobal.com/auth?use_redirect=/jobs
+- name: WUZZUF
+  url: https://wuzzuf.net/
+- name: Bayt
+  url: https://www.bayt.com/
+- name: GulfTalent
+  url: https://www.gulftalent.com/
+- adapter: feed
+  name: SwissDev Jobs
+  url: https://swissdevjobs.ch/api/jobsLight
+- name: Jobbatical
+  url: https://jobbatical.com/
+- name: Eurojobs
+  url: https://www.eurojobs.com/
+- name: JobsDB
+  url: https://www.jobsdb.com/
+- name: TokyoDev
+  url: https://www.tokyodev.com/
+- name: JobStreet
+  url: https://www.jobstreet.com/
+- name: https://www.jobberman.com/jobs?q=blockchain
+  url: https://www.jobberman.com/jobs?q=blockchain
