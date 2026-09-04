@@ -101,6 +101,7 @@ class Storage:
                     content_markdown TEXT NOT NULL,
                     verification_passed INTEGER NOT NULL,
                     verification_log_json TEXT DEFAULT '[]',
+                    pdf_path TEXT,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
@@ -132,6 +133,11 @@ class Storage:
                 CREATE INDEX IF NOT EXISTS idx_audit_job_id ON audit_log(job_id);
                 """
             )
+            # Migration check for existing databases
+            cursor = conn.execute("PRAGMA table_info(tailored_cvs)")
+            cols = {row["name"] for row in cursor.fetchall()}
+            if "pdf_path" not in cols:
+                conn.execute("ALTER TABLE tailored_cvs ADD COLUMN pdf_path TEXT")
             conn.commit()
 
     def add_job(self, job: JobPosting) -> Tuple[JobPosting, bool]:
@@ -358,14 +364,15 @@ class Storage:
                 """
                 INSERT OR REPLACE INTO tailored_cvs (
                     job_id, content_markdown, verification_passed,
-                    verification_log_json, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    verification_log_json, pdf_path, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     cv.job_id,
                     cv.content_markdown,
                     1 if cv.verification_passed else 0,
                     json.dumps(cv.verification_log),
+                    cv.pdf_path,
                     now,
                 ),
             )
@@ -389,6 +396,7 @@ class Storage:
                 content_markdown=row["content_markdown"],
                 verification_passed=bool(row["verification_passed"]),
                 verification_log=json.loads(row["verification_log_json"] or "[]"),
+                pdf_path=row["pdf_path"] if "pdf_path" in row.keys() else None,
                 created_at=row["created_at"],
             )
 
