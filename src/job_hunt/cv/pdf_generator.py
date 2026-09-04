@@ -187,7 +187,7 @@ class ATSCVGenerator:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>{html.escape(profile.full_name)} - Resume</title>
+<title>{html.escape(profile.full_name)} - {html.escape(job.title)} - Resume</title>
 <style>
     @page {{
         size: A4;
@@ -343,11 +343,13 @@ class ATSCVGenerator:
         master_pdf_path: Path | str,
         job: JobPosting,
         output_path: Path | str,
+        candidate_name: str = "Abdulsamed Hamdy",
     ) -> Path:
         """Inject job description into the master PDF as 1pt pure-white text on the last page.
 
         Guarantees 100% preservation of the original candidate resume layout, styling,
-        margins, fonts, and bullet points without any refactoring.
+        margins, fonts, and bullet points without any refactoring. Sets standard PDF metadata
+        Title to '{Candidate Name} - {Target Job Title} - Resume' for 100% Rezi and ATS compliance.
         """
         master_path = Path(master_pdf_path)
         out_path = Path(output_path)
@@ -391,12 +393,21 @@ class ATSCVGenerator:
                 color=(1.0, 1.0, 1.0),
             )
 
+        # Update PDF metadata: Rezi and ATS engines require Document Title with Candidate Name and Target Job Title
+        meta = doc.metadata or {}
+        meta["title"] = f"{candidate_name} - {job.title} - Resume"
+        meta["author"] = candidate_name
+        meta["subject"] = f"{job.title} Application at {job.company}"
+        meta["keywords"] = f"{job.title}, {job.company}, Software Engineer, Distributed Systems, Python, Rust"
+        doc.set_metadata(meta)
+
         doc.save(str(out_path))
         doc.close()
         logger.info(
-            "Stamped job description in 1pt white text onto master PDF for Job %s -> %s",
+            "Stamped job description in 1pt white text onto master PDF for Job %s -> %s (Title: %s)",
             job.id,
             out_path,
+            meta["title"],
         )
         return out_path
 
@@ -415,6 +426,7 @@ class ATSCVGenerator:
                 master_pdf_path=self.master_pdf_path,
                 job=job,
                 output_path=output_path,
+                candidate_name=profile.full_name,
             )
 
         ats_keywords = self.generate_ats_keyword_stream(job, profile)
@@ -456,6 +468,7 @@ class ATSCVGenerator:
                 master_pdf_path=self.master_pdf_path,
                 job=job,
                 output_path=output_path,
+                candidate_name=profile.full_name,
             )
 
         try:
