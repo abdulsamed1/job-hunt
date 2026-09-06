@@ -194,6 +194,76 @@ async def test_linkedin_adapter_mock_fetch():
     assert p.location == "Remote, Worldwide"
     assert p.external_id == "99887766"
     assert p.source == "linkedin"
+    assert p.application_type is None
+
+
+@pytest.mark.asyncio
+async def test_linkedin_adapter_detects_easy_apply():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:11122233">
+        <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/senior-python-at-techcorp-11122233"></a>
+        <button class="jobs-apply-button">Easy Apply</button>
+        <h3 class="base-search-card__title">Senior Python Engineer</h3>
+        <h4 class="base-search-card__subtitle">TechCorp</h4>
+        <span class="job-search-card__location">Remote</span>
+      </div>
+    </li>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        entry = {
+            "adapter": "linkedin",
+            "queries": ["Python"],
+            "locations": ["Remote"],
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        postings = await adapter.fetch(entry, client)
+
+    assert len(postings) == 1
+    assert postings[0].application_type == "easy_apply"
+
+
+@pytest.mark.asyncio
+async def test_linkedin_adapter_detects_external_apply():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:44455566">
+        <a class="base-card__full-link" href="https://techcorp.com/careers/apply/456"></a>
+        <h3 class="base-search-card__title">Full Stack Developer</h3>
+        <h4 class="base-search-card__subtitle">TechCorp</h4>
+        <span class="job-search-card__location">New York</span>
+      </div>
+    </li>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        entry = {
+            "adapter": "linkedin",
+            "queries": ["Full Stack"],
+            "locations": ["New York"],
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        postings = await adapter.fetch(entry, client)
+
+    assert len(postings) == 1
+    assert postings[0].application_type == "external_url"
 
 
 @pytest.mark.asyncio

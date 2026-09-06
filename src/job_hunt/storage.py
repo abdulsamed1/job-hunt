@@ -58,6 +58,7 @@ class Storage:
                     salary_min REAL,
                     salary_max REAL,
                     salary_currency TEXT,
+                    application_type TEXT,
                     state TEXT NOT NULL DEFAULT 'DISCOVERED',
                     posted_at TEXT,
                     created_at TEXT NOT NULL,
@@ -138,6 +139,10 @@ class Storage:
             cols = {row["name"] for row in cursor.fetchall()}
             if "pdf_path" not in cols:
                 conn.execute("ALTER TABLE tailored_cvs ADD COLUMN pdf_path TEXT")
+            cursor = conn.execute("PRAGMA table_info(jobs)")
+            job_cols = {row["name"] for row in cursor.fetchall()}
+            if "application_type" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN application_type TEXT")
             conn.commit()
 
     def add_job(self, job: JobPosting) -> Tuple[JobPosting, bool]:
@@ -184,8 +189,8 @@ class Storage:
                     external_id, source, source_name, title, company,
                     raw_url, canonical_url, canonical_url_hash, role_fingerprint,
                     content_hash, location, description, salary_min, salary_max,
-                    salary_currency, state, posted_at, created_at, updated_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    salary_currency, application_type, state, posted_at, created_at, updated_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.external_id,
@@ -203,6 +208,7 @@ class Storage:
                     job.salary_min,
                     job.salary_max,
                     job.salary_currency,
+                    job.application_type,
                     job.state.value,
                     job.posted_at,
                     now,
@@ -790,6 +796,7 @@ class Storage:
             salary_min=row["salary_min"],
             salary_max=row["salary_max"],
             salary_currency=row["salary_currency"],
+            application_type=row["application_type"],
             state=JobState(row["state"]),
             posted_at=row["posted_at"],
             created_at=row["created_at"],

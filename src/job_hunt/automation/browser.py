@@ -622,29 +622,82 @@ class BrowserApplicationEngine:
             pass
         return False
 
+    async def _try_linkedin_external_apply(self, page: Page) -> bool:
+        """Handle LinkedIn's 'Apply with external URL' - navigates to the ATS site."""
+        for sel in LINKEDIN_EASY_APPLY_SELECTORS + [
+            "a[href*='apply' i]:not([href*='linkedin' i])",
+        ]:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    await self._drop_new_tabs(page)
+                    await el.click(timeout=5000)
+                    await page.wait_for_timeout(3000)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _fill_linkedin_easy_apply_side_panel(
+        self, page: Page, profile: CandidateProfile
+    ) -> bool:
+        """Fill the LinkedIn Easy Apply side panel form fields."""
+        try:
+            await self._fill_common_fields(page, profile)
+            await self._fill_linkedin_skills(page, profile)
+            await page.wait_for_timeout(1000)
+
+            # Look for submit button inside the side panel
+            submit_selectors = [
+                "button:has-text('Submit easy apply')",
+                "button:has-text('Submit application')",
+                "button:has-text('Apply')",
+                "button:has-text('Next')",
+                "button:has-text('Continue')",
+            ]
+            for sel in submit_selectors:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    await el.click(timeout=3000)
+                    await page.wait_for_timeout(2000)
+                    return True
+            return True
+        except Exception:
+            return False
+
+    async def _detect_linkedin_easy_apply_panel(self, page: Page) -> bool:
+        """Check if LinkedIn Easy Apply side panel is open."""
+        panel_selectors = [
+            '[data-control-name="jobapply-details"]',
+            ".jobs-easy-apply-container",
+            "[class*='apply-container']",
+            ".artdeco-modal",
+            ".artdeco-overlay",
+        ]
+        for sel in panel_selectors:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
     async def _try_linkedin_easy_apply(self, page: Page) -> bool:
         """Handle LinkedIn's 'Easy Apply' flow which uses a side panel React modal."""
         for sel in LINKEDIN_EASY_APPLY_SELECTORS:
             try:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
-                    # Wait for any modal animation
                     await page.wait_for_timeout(1000)
                     await el.click(timeout=5000)
                     await page.wait_for_timeout(3000)
-                    # Check if side panel opened
-                    side_panel = await page.query_selector('[data-control-name="jobapply-details"]')
-                    if not side_panel:
-                        side_panel = await page.query_selector('.jobs-easy-apply-container, [class*="apply-container"]')
-                    if side_panel:
+                    if await self._detect_linkedin_easy_apply_panel(page):
                         logger.info("LinkedIn Easy Apply panel opened successfully")
-                        await page.wait_for_timeout(2000)
                         return True
-                    # Fallback: check for iframe overlay
                     iframe = await page.query_selector('iframe[src*="linkedin"]')
                     if iframe:
                         logger.info("LinkedIn application iframe detected")
-                        await page.wait_for_timeout(2000)
                         return True
                     return True
             except Exception:
@@ -797,7 +850,7 @@ class BrowserApplicationEngine:
                 is_linkedin = "linkedin.com" in job.raw_url.lower()
 
                 if is_linkedin:
-                    logger.info("LinkedIn job detected - using LinkedIn-specific application flow")
+                    logger.info("LinkedIn job detected - application type: %s", job.application_type or "unknown")
 
                 # 1. Check for CAPTCHA (including Cloudflare Turnstile) and attempt resolution
                 captcha_detected = await self._detect_captcha(page) or (is_linkedin and await self._detect_cloudflare_turnstile(page))
@@ -818,39 +871,93 @@ class BrowserApplicationEngine:
                         logger.warning("Job %s blocked by CAPTCHA: %s", job.id, screenshot_file)
                         return record
 
-                # 2. Handle LinkedIn Easy Apply flow
+                # 2. Handle LinkedIn application types
                 if is_linkedin:
-                    easy_apply_opened = await self._try_linkedin_easy_apply(page)
-                    if easy_apply_opened:
-                        logger.info("LinkedIn Easy Apply opened - filling skills and form")
-                        await self._fill_common_fields(page, profile)
-                        await self._fill_linkedin_skills(page, profile)
-                        await page.wait_for_timeout(2000)
-
-                # 3. Check if form inputs exist; if not, trigger 'Apply' CTA or follow direct ATS link
-                if not is_linkedin:
-                    initial_inputs = await page.query_selector_all("input[type='text'], input[type='email']")
-                    if len(initial_inputs) < 2:
-                        logger.info("No direct form inputs on landing page for Job %s. Triggering Apply CTA...", job.id)
-                        triggered = await self._try_apply_trigger(page)
-                        if triggered:
+                    if job.application_type == "external_url":
+                        logger.info("LinkedIn External Apply - navigating to external ATS")
+                        external_opened = await self._try_linkedin_external_apply(page)
+                        if external_opened:
                             await self._drop_new_tabs(page)
                             await self._dismiss_cookie_consent(page)
+                            ctx = await self._locate_active_form_context(page)
+                            await self._fill_common_fields(ctx, profile)
+                            answers = await self._fill_questionnaire(ctx, profile)
+                            if answers:
+                                record.submission_payload["answers"] = answers
+                            if resume_file_path:
+                                await self._attach_cv_file(ctx, resume_file_path)
+                            submit_btn, found = await self._handle_steppers_and_submit(ctx, page, profile)
+                        else:
+                            record.state = JobState.FAILED
+                            record.error_message = "Could not navigate to external ATS from LinkedIn"
+                            return record
+                    elif job.application_type == "easy_apply":
+                        logger.info("LinkedIn Easy Apply - clicking Easy Apply button")
+                        easy_apply_opened = await self._try_linkedin_easy_apply(page)
+                        if easy_apply_opened:
+                            logger.info("LinkedIn Easy Apply opened - filling side panel")
+                            await self._fill_linkedin_easy_apply_side_panel(page, profile)
+                            await page.wait_for_timeout(2000)
+                        else:
+                            record.state = JobState.FAILED
+                            record.error_message = "Could not open LinkedIn Easy Apply panel"
+                            return record
+                    else:
+                        logger.info("LinkedIn apply type unknown - trying Easy Apply first, then external")
+                        easy_apply_opened = await self._try_linkedin_easy_apply(page)
+                        if easy_apply_opened:
+                            await self._fill_linkedin_easy_apply_side_panel(page, profile)
+                        else:
+                            external_opened = await self._try_linkedin_external_apply(page)
+                            if external_opened:
+                                ctx = await self._locate_active_form_context(page)
+                                await self._fill_common_fields(ctx, profile)
+                                submit_btn, found = await self._handle_steppers_and_submit(ctx, page, profile)
 
-                # 4. Locate active form context (top page or embedded iframe)
-                if not is_linkedin:
-                    ctx = await self._locate_active_form_context(page)
+                    # Check for success after LinkedIn flow
+                    if record.state not in (JobState.FAILED, JobState.BLOCKED_CAPTCHA):
+                        if dry_run:
+                            screenshot_file = str(self.screenshots_dir / f"dry_run_job_{job.id}.png")
+                            await page.screenshot(path=screenshot_file, full_page=True)
+                            record.state = JobState.SUBMITTED
+                            record.screenshot_path = screenshot_file
+                            record.confirmation_text = "DRY RUN: LinkedIn application filled and verified without submit."
+                        else:
+                            page_text = await page.content()
+                            has_success = any(ind in page_text.lower() for ind in SUCCESS_INDICATORS)
+                            screenshot_file = str(self.screenshots_dir / f"linkedin_result_job_{job.id}.png")
+                            await page.screenshot(path=screenshot_file)
+                            record.screenshot_path = screenshot_file
+                            if has_success:
+                                record.state = JobState.SUBMITTED
+                                record.confirmation_text = "LinkedIn application submitted and confirmed"
+                            else:
+                                record.state = JobState.APPLICATION_STARTED
+                                record.confirmation_text = "LinkedIn application processed"
+                    return record
 
-                # 4. Fill form fields
+                # Non-LinkedIn flow: check if form inputs exist; if not, trigger 'Apply' CTA
+                initial_inputs = await page.query_selector_all("input[type='text'], input[type='email']")
+                if len(initial_inputs) < 2:
+                    logger.info("No direct form inputs on landing page for Job %s. Triggering Apply CTA...", job.id)
+                    triggered = await self._try_apply_trigger(page)
+                    if triggered:
+                        await self._drop_new_tabs(page)
+                        await self._dismiss_cookie_consent(page)
+
+                # Locate active form context (top page or embedded iframe)
+                ctx = await self._locate_active_form_context(page)
+
+                # Fill form fields
                 await self._fill_common_fields(ctx, profile)
 
-                # 5. Fill dynamic questionnaire (questions, radios, dropdowns, comboboxes)
+                # Fill dynamic questionnaire (questions, radios, dropdowns, comboboxes)
                 answers = await self._fill_questionnaire(ctx, profile)
                 if answers:
                     record.submission_payload["answers"] = answers
                     logger.info("Answered %d dynamic form questions on job %s", len(answers), job.id)
 
-                # 6. Attach CV file
+                # Attach CV file
                 if resume_file_path:
                     await self._attach_cv_file(ctx, resume_file_path)
 
@@ -863,7 +970,7 @@ class BrowserApplicationEngine:
                     record.confirmation_text = "DRY RUN: Form filled and verified successfully without submit."
                     return record
 
-                # 7. Handle multi-step forms and locate final submit button
+                # Handle multi-step forms and locate final submit button
                 submit_btn, found = await self._handle_steppers_and_submit(ctx, page, profile)
 
                 if not submit_btn:

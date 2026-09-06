@@ -237,6 +237,18 @@ class LinkedInAdapter(DiscoveryAdapter):
             if description_snippet:
                 description += f" Description: {description_snippet}"
 
+            # Detect application type: Easy Apply vs External URL
+            application_type = None
+            easy_apply_btn = card.find("button", string=lambda t: t and "easy apply" in t.lower().strip())
+            if easy_apply_btn:
+                application_type = "easy_apply"
+            else:
+                # Check if the full-link points to an external ATS (not a LinkedIn view page)
+                if link_elem and "href" in link_elem.attrs:
+                    href = link_elem["href"].split("?")[0]
+                    if "linkedin.com/jobs/view" not in href:
+                        application_type = "external_url"
+
             posting = JobPosting(
                 external_id=external_id or None,
                 source="linkedin",
@@ -251,6 +263,7 @@ class LinkedInAdapter(DiscoveryAdapter):
                 location=location,
                 description=description,
                 posted_at=posted_at or None,
+                application_type=application_type,
                 metadata={"source_platform": "linkedin", "remote_flag": not entry.get("remote_only", False)},
             )
             postings.append(posting)

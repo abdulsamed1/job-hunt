@@ -100,6 +100,7 @@ class JobPosting(BaseModel):
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
     salary_currency: Optional[str] = None
+    application_type: Optional[str] = None  # "easy_apply" | "external_url" | None
     state: JobState = JobState.DISCOVERED
     posted_at: Optional[str] = None
     created_at: Optional[str] = Field(
