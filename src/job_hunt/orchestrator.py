@@ -177,6 +177,7 @@ class PipelineOrchestrator:
                 role_fingerprint=job.role_fingerprint,
                 company=job.company,
                 title=job.title,
+                external_id=job.external_id,
             )
             if is_dup:
                 logger.warning(

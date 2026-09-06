@@ -37,6 +37,8 @@ BOT_CHALLENGE_PATTERNS = [
     re.compile(r"verify you are (?:a )?human", re.IGNORECASE),
     re.compile(r"attention required.*cloudflare", re.IGNORECASE),
     re.compile(r"\bcf-ray\b", re.IGNORECASE),
+    re.compile(r"turnstile", re.IGNORECASE),
+    re.compile(r"cf-turnstile", re.IGNORECASE),
 ]
 
 DEFAULT_HEADERS = {

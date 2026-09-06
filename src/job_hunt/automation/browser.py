@@ -83,6 +83,31 @@ ATS_LINK_PATTERNS = [
     "/application",
 ]
 
+LINKEDIN_EASY_APPLY_SELECTORS = [
+    "button:has-text('Easy Apply')",
+    "button:has-text('Apply')",
+    "a:has-text('Easy Apply')",
+    "button:has-text('Apply now')",
+    '[data-control-name="jobapply"]',
+    ".jobs-apply-button",
+    "button.applying-btn",
+]
+
+LINKEDIN_SKILL_TAG_SELECTORS = [
+    ".jobs-search-results__skill-pill",
+    '[data-control-name="jobapply-skills"]',
+    ".artdeco-tag-list",
+]
+
+CLOUDFLARE_TURNSTILE_SELECTORS = [
+    "iframe[src*='turnstile']",
+    "#cf-turnstile",
+    ".cf-turnstile",
+    "div[id^='cf-turnstile']",
+    "div[class*='turnstile']",
+    "div[class*='Cloudflare']",
+]
+
 
 class BrowserApplicationEngine:
     """Automates form filling and submission on Greenhouse, Lever, Ashby, and standard ATS pages."""
@@ -566,6 +591,87 @@ class BrowserApplicationEngine:
 
         return answers_captured
 
+    async def _detect_cloudflare_turnstile(self, page: Page) -> bool:
+        """Check if page presents a Cloudflare Turnstile challenge."""
+        for selector in CLOUDFLARE_TURNSTILE_SELECTORS:
+            try:
+                el = await page.query_selector(selector)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _handle_cloudflare_turnstile(self, page: Page) -> bool:
+        """Attempt to resolve Cloudflare Turnstile challenge."""
+        try:
+            # Try clicking the Turnstile iframe
+            turnstile_frame = await page.query_selector("iframe[src*='turnstile']")
+            if turnstile_frame:
+                await turnstile_frame.click(timeout=3000)
+                await page.wait_for_timeout(2000)
+                return True
+            # Try the challenge container
+            for sel in CLOUDFLARE_TURNSTILE_SELECTORS[1:]:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    await el.click(timeout=3000)
+                    await page.wait_for_timeout(2000)
+                    return True
+        except Exception:
+            pass
+        return False
+
+    async def _try_linkedin_easy_apply(self, page: Page) -> bool:
+        """Handle LinkedIn's 'Easy Apply' flow which uses a side panel React modal."""
+        for sel in LINKEDIN_EASY_APPLY_SELECTORS:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    # Wait for any modal animation
+                    await page.wait_for_timeout(1000)
+                    await el.click(timeout=5000)
+                    await page.wait_for_timeout(3000)
+                    # Check if side panel opened
+                    side_panel = await page.query_selector('[data-control-name="jobapply-details"]')
+                    if not side_panel:
+                        side_panel = await page.query_selector('.jobs-easy-apply-container, [class*="apply-container"]')
+                    if side_panel:
+                        logger.info("LinkedIn Easy Apply panel opened successfully")
+                        await page.wait_for_timeout(2000)
+                        return True
+                    # Fallback: check for iframe overlay
+                    iframe = await page.query_selector('iframe[src*="linkedin"]')
+                    if iframe:
+                        logger.info("LinkedIn application iframe detected")
+                        await page.wait_for_timeout(2000)
+                        return True
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _fill_linkedin_skills(self, page: Page, profile: CandidateProfile) -> bool:
+        """Add skills tags on LinkedIn's application form if present."""
+        skills_added = 0
+        for skill in profile.verified_skills[:5]:
+            try:
+                # Look for skill input/combobox
+                skill_input = await page.query_selector(
+                    'input[placeholder*="skill" i], input[placeholder*="search" i], [role="combobox"]'
+                )
+                if skill_input and await skill_input.is_visible():
+                    await skill_input.fill(skill)
+                    await page.wait_for_timeout(500)
+                    # Press Enter to add the tag
+                    await page.keyboard.press("Enter")
+                    await page.wait_for_timeout(500)
+                    skills_added += 1
+                    logger.info("Added LinkedIn skill tag: %s", skill)
+            except Exception:
+                continue
+        return skills_added > 0
+
     async def _handle_steppers_and_submit(
         self,
         ctx: Union[Page, Frame],
@@ -586,16 +692,17 @@ class BrowserApplicationEngine:
                 "button:has-text('Apply')",
                 "button:has-text('Send Application')",
                 "button:has-text('Complete Application')",
+                "button:has-text('Continue application')",
                 "#submit_app",
                 "[data-qa='btn-submit']",
+                "button:has-text('Save and Continue')",
             ]
             for sel in submit_selectors:
                 try:
                     el = await ctx.query_selector(sel)
                     if el and await el.is_visible():
                         txt = (await el.inner_text() or await el.get_attribute("value") or "").lower()
-                        # Verify it is an actual submit button and not just a Next button
-                        if any(w in txt for w in ["submit", "apply", "send", "finish"]):
+                        if any(w in txt for w in ["submit", "apply", "send", "finish", "continue"]):
                             return el, True
                 except Exception:
                     continue
@@ -606,8 +713,10 @@ class BrowserApplicationEngine:
                 "button:has-text('Continue')",
                 "button:has-text('Save & Continue')",
                 "button:has-text('Review')",
+                "button:has-text('Next Step')",
                 "input[value*='Next' i]",
                 "input[value*='Continue' i]",
+                "button:has-text('Save and continue')",
             ]
             next_btn = None
             for sel in next_selectors:
@@ -623,7 +732,6 @@ class BrowserApplicationEngine:
                 logger.info("Stepper progress: clicking Next / Continue on step %d", step + 1)
                 await next_btn.click()
                 await page.wait_for_timeout(2000)
-                # Fill fields on the next step
                 await self._fill_common_fields(ctx, profile)
                 await self._fill_questionnaire(ctx, profile)
             else:
@@ -685,10 +793,22 @@ class BrowserApplicationEngine:
                 # Auto-dismiss cookie/GDPR consent banner
                 await self._dismiss_cookie_consent(page)
 
-                # 1. Check for CAPTCHA and attempt resolution
-                if await self._detect_captcha(page):
+                # Detect if this is a LinkedIn job page
+                is_linkedin = "linkedin.com" in job.raw_url.lower()
+
+                if is_linkedin:
+                    logger.info("LinkedIn job detected - using LinkedIn-specific application flow")
+
+                # 1. Check for CAPTCHA (including Cloudflare Turnstile) and attempt resolution
+                captcha_detected = await self._detect_captcha(page) or (is_linkedin and await self._detect_cloudflare_turnstile(page))
+                if captcha_detected:
                     logger.info("CAPTCHA detected on job %s. Attempting automated resolution...", job.id)
-                    solved = await self._attempt_captcha_resolution(page)
+                    if is_linkedin:
+                        turnstile_solved = await self._handle_cloudflare_turnstile(page)
+                        if turnstile_solved:
+                            await page.wait_for_timeout(2000)
+                            captcha_detected = await self._detect_captcha(page) or await self._detect_cloudflare_turnstile(page)
+                    solved = await self._attempt_captcha_resolution(page) if captcha_detected else False
                     if not solved:
                         screenshot_file = str(self.screenshots_dir / f"captcha_job_{job.id}.png")
                         await page.screenshot(path=screenshot_file, full_page=True)
@@ -698,17 +818,28 @@ class BrowserApplicationEngine:
                         logger.warning("Job %s blocked by CAPTCHA: %s", job.id, screenshot_file)
                         return record
 
-                # 2. Check if form inputs exist; if not, trigger 'Apply' CTA or follow direct ATS link
-                initial_inputs = await page.query_selector_all("input[type='text'], input[type='email']")
-                if len(initial_inputs) < 2:
-                    logger.info("No direct form inputs on landing page for Job %s. Triggering Apply CTA...", job.id)
-                    triggered = await self._try_apply_trigger(page)
-                    if triggered:
-                        await self._drop_new_tabs(page)
-                        await self._dismiss_cookie_consent(page)
+                # 2. Handle LinkedIn Easy Apply flow
+                if is_linkedin:
+                    easy_apply_opened = await self._try_linkedin_easy_apply(page)
+                    if easy_apply_opened:
+                        logger.info("LinkedIn Easy Apply opened - filling skills and form")
+                        await self._fill_common_fields(page, profile)
+                        await self._fill_linkedin_skills(page, profile)
+                        await page.wait_for_timeout(2000)
 
-                # 3. Locate active form context (top page or embedded iframe)
-                ctx = await self._locate_active_form_context(page)
+                # 3. Check if form inputs exist; if not, trigger 'Apply' CTA or follow direct ATS link
+                if not is_linkedin:
+                    initial_inputs = await page.query_selector_all("input[type='text'], input[type='email']")
+                    if len(initial_inputs) < 2:
+                        logger.info("No direct form inputs on landing page for Job %s. Triggering Apply CTA...", job.id)
+                        triggered = await self._try_apply_trigger(page)
+                        if triggered:
+                            await self._drop_new_tabs(page)
+                            await self._dismiss_cookie_consent(page)
+
+                # 4. Locate active form context (top page or embedded iframe)
+                if not is_linkedin:
+                    ctx = await self._locate_active_form_context(page)
 
                 # 4. Fill form fields
                 await self._fill_common_fields(ctx, profile)

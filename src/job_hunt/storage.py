@@ -529,15 +529,18 @@ class Storage:
         role_fingerprint: Optional[str] = None,
         company: Optional[str] = None,
         title: Optional[str] = None,
+        external_id: Optional[str] = None,
         window_days: int = 90,
     ) -> Tuple[bool, Optional[str]]:
         """Strict check to guarantee NO duplicate applications are ever submitted.
 
         Checks across:
         1. Specific job ID.
-        2. Canonical URL hash.
-        3. Role fingerprint (normalized company + role).
-        4. Same company and title within window_days.
+        2. Canonical URL hash (most precise).
+        3. External ID (LinkedIn job posting ID).
+        4. Same company + title + location within window_days (most conservative).
+        Role fingerprint is NOT used alone to prevent false positives on
+        different job postings at the same company with the same role title.
         """
         threshold = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
         with self._get_connection() as conn:
@@ -551,7 +554,7 @@ class Storage:
                 if row:
                     return True, f"Application already submitted for Job ID {job_id} on {row['applied_at']}"
 
-            # 2. Check by canonical URL hash
+            # 2. Check by canonical URL hash (exact match)
             if canonical_url_hash:
                 cursor = conn.execute(
                     """
@@ -567,38 +570,55 @@ class Storage:
                 if row:
                     return True, f"Application already submitted for identical canonical URL (Job ID {row['id']} on {row['applied_at']})"
 
-            # 3. Check by role fingerprint
-            if role_fingerprint:
+            # 3. Check by external_id (LinkedIn job posting ID)
+            if external_id:
                 cursor = conn.execute(
                     """
                     SELECT j.id, a.applied_at
                     FROM jobs j
                     JOIN applications a ON j.id = a.job_id
-                    WHERE j.role_fingerprint = ? AND a.state = 'SUBMITTED'
+                    WHERE j.external_id = ? AND a.state = 'SUBMITTED'
                     LIMIT 1
                     """,
-                    (role_fingerprint,),
+                    (external_id,),
                 )
                 row = cursor.fetchone()
                 if row:
-                    return True, f"Application already submitted for role fingerprint {role_fingerprint} (Job ID {row['id']} on {row['applied_at']})"
+                    return True, f"Application already submitted for external ID {external_id} (Job ID {row['id']} on {row['applied_at']})"
 
-            # 4. Check by company + title within window_days
+            # 4. Check by canonical URL hash + role fingerprint COMBINED (not role alone)
+            if canonical_url_hash and role_fingerprint:
+                cursor = conn.execute(
+                    """
+                    SELECT j.id, a.applied_at
+                    FROM jobs j
+                    JOIN applications a ON j.id = a.job_id
+                    WHERE j.canonical_url_hash = ? AND j.role_fingerprint = ? AND a.state = 'SUBMITTED'
+                    LIMIT 1
+                    """,
+                    (canonical_url_hash, role_fingerprint),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return True, f"Application already submitted for matching URL+fingerprint (Job ID {row['id']} on {row['applied_at']})"
+
+            # 5. Check by company + title + location within window_days (most conservative)
             if company and title:
                 cursor = conn.execute(
                     """
-                    SELECT j.id, j.title, j.company, a.applied_at
+                    SELECT j.id, j.title, j.company, j.location, a.applied_at
                     FROM jobs j
                     JOIN applications a ON j.id = a.job_id
                     WHERE LOWER(j.company) = LOWER(?) AND LOWER(j.title) = LOWER(?)
+                      AND j.location = COALESCE(?, j.location)
                       AND a.state = 'SUBMITTED' AND a.applied_at >= ?
                     LIMIT 1
                     """,
-                    (company.strip(), title.strip(), threshold),
+                    (company.strip(), title.strip(), None, threshold),
                 )
                 row = cursor.fetchone()
                 if row:
-                    return True, f"Application already submitted to {row['company']} for '{row['title']}' within past {window_days} days on {row['applied_at']}"
+                    return True, f"Application already submitted to {row['company']} for '{row['title']}' at {row['location']} within past {window_days} days on {row['applied_at']}"
 
         return False, None
 

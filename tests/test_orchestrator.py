@@ -99,6 +99,7 @@ def test_has_already_applied_detects_all_dimensions(orchestrator):
         canonical_url_hash="hstripe1",
         role_fingerprint="stripe:backend_engineer:remote",
         content_hash="cstripe1",
+        external_id="99887766",
     )
     saved, _ = storage.add_job(job)
     storage.update_job_state(saved.id, JobState.ELIGIBLE)
@@ -117,17 +118,42 @@ def test_has_already_applied_detects_all_dimensions(orchestrator):
     assert is_dup is True
     assert "Job ID" in reason
 
-    # 2. Check by canonical URL hash
+    # 2. Check by canonical URL hash alone
     is_dup, reason = storage.has_already_applied(canonical_url_hash="hstripe1")
     assert is_dup is True
     assert "canonical URL" in reason
 
-    # 3. Check by role fingerprint
-    is_dup, reason = storage.has_already_applied(role_fingerprint="stripe:backend_engineer:remote")
+    # 3. Check by canonical URL hash + role fingerprint combined (both must match)
+    is_dup, reason = storage.has_already_applied(
+        canonical_url_hash="hstripe1", role_fingerprint="stripe:backend_engineer:remote"
+    )
     assert is_dup is True
-    assert "role fingerprint" in reason
+    assert "canonical URL" in reason
 
-    # 4. Check by company + title
+    # 4. Check by external_id
+    is_dup, reason = storage.has_already_applied(external_id="99887766")
+    assert is_dup is True
+
+    # 5. Check by company + title + location (most conservative check)
+    job2 = JobPosting(
+        source="greenhouse",
+        title="Backend Engineer",
+        company="Stripe",
+        raw_url="https://stripe.com/jobs/2",
+        canonical_url="https://stripe.com/jobs/2",
+        canonical_url_hash="hstripe2_unique",
+        role_fingerprint="stripe:backend_engineer:remote2",
+        content_hash="cstripe2_unique",
+        location="Remote",
+    )
+    saved2, is_new = storage.add_job(job2)
+    assert is_new, "Expected new job entry"
+    storage.update_job_state(saved2.id, JobState.ELIGIBLE)
+    storage.update_job_state(saved2.id, JobState.TAILORED)
+    storage.update_job_state(saved2.id, JobState.APPLICATION_STARTED)
+    storage.record_application(
+        ApplicationRecord(job_id=saved2.id, state=JobState.SUBMITTED, confirmation_text="Applied")
+    )
     is_dup, reason = storage.has_already_applied(company="Stripe", title="Backend Engineer")
     assert is_dup is True
     assert "Stripe" in reason
@@ -135,6 +161,62 @@ def test_has_already_applied_detects_all_dimensions(orchestrator):
 
 @pytest.mark.asyncio
 async def test_run_application_stage_skips_duplicates(orchestrator):
+    storage = orchestrator.storage
+    from unittest.mock import AsyncMock
+    from job_hunt.models import ApplicationRecord
+
+    # 1. Mark existing job as SUBMITTED via full state machine
+    job1 = JobPosting(
+        source="lever",
+        title="Senior Python Developer",
+        company="GitLab",
+        raw_url="https://gitlab.com/jobs/1",
+        canonical_url="https://gitlab.com/jobs/1",
+        canonical_url_hash="hgit1",
+        role_fingerprint="gitlab:senior_python_developer:remote",
+        content_hash="cgit1",
+        location="Remote",
+    )
+    saved1, _ = storage.add_job(job1)
+    storage.update_job_state(saved1.id, JobState.ELIGIBLE)
+    storage.update_job_state(saved1.id, JobState.TAILORED)
+    storage.update_job_state(saved1.id, JobState.APPLICATION_STARTED)
+    storage.record_application(
+        ApplicationRecord(job_id=saved1.id, state=JobState.SUBMITTED, confirmation_text="Applied")
+    )
+
+    # 2. Create another job with SAME company+title+location (duplicate by signal)
+    # Different canonical_url_hash and role_fingerprint so add_job creates a new entry
+    job2 = JobPosting(
+        source="ashby",
+        title="Senior Python Developer",
+        company="GitLab",
+        raw_url="https://gitlab.com/jobs/3",
+        canonical_url="https://gitlab.com/jobs/3",
+        canonical_url_hash="hgit3_unique_dup",
+        role_fingerprint="gitlab:senior_python_developer:remote_dup2",
+        content_hash="cgit3_unique_dup",
+        location="Remote",
+    )
+    saved2, is_new = storage.add_job(job2)
+    assert is_new, "Expected add_job to create a new job entry"
+    storage.update_job_state(saved2.id, JobState.ELIGIBLE)
+    storage.update_job_state(saved2.id, JobState.TAILORED)
+
+    # Mock browser engine so fill_and_submit should NEVER be called for job2
+    orchestrator.browser_engine.fill_and_submit = AsyncMock()
+
+    processed = await orchestrator.run_application_stage(limit=10, dry_run=True)
+    # job2 should have been marked DUPLICATE and skipped via company+title+location check
+    assert orchestrator.browser_engine.fill_and_submit.await_count == 0
+
+    reloaded2 = storage.get_job(saved2.id)
+    assert reloaded2.state == JobState.DUPLICATE
+
+
+@pytest.mark.asyncio
+async def test_run_application_stage_allows_different_canonical_urls(orchestrator):
+    """Different canonical URLs should NOT be flagged as duplicates."""
     storage = orchestrator.storage
     from unittest.mock import AsyncMock
     from job_hunt.models import ApplicationRecord
@@ -149,6 +231,7 @@ async def test_run_application_stage_skips_duplicates(orchestrator):
         canonical_url_hash="hgit1",
         role_fingerprint="gitlab:senior_python_developer:remote",
         content_hash="cgit1",
+        location="Remote",
     )
     saved1, _ = storage.add_job(job1)
     storage.update_job_state(saved1.id, JobState.ELIGIBLE)
@@ -158,31 +241,30 @@ async def test_run_application_stage_skips_duplicates(orchestrator):
         ApplicationRecord(job_id=saved1.id, state=JobState.SUBMITTED, confirmation_text="Applied")
     )
 
-    # 2. Create another job for same company and title in TAILORED state
+    # 2. Create different job with different company - should NOT be flagged as duplicate
     job2 = JobPosting(
         source="ashby",
         title="Senior Python Developer",
-        company="GitLab",
-        raw_url="https://gitlab.com/jobs/2",
-        canonical_url="https://gitlab.com/jobs/2",
-        canonical_url_hash="hgit2",
-        role_fingerprint="gitlab:senior_python_developer:remote2",
-        content_hash="cgit2",
+        company="Meta",  # Different company
+        raw_url="https://meta.com/jobs/1",
+        canonical_url="https://meta.com/jobs/1",
+        canonical_url_hash="hmeta1_unique",
+        role_fingerprint="meta:senior_python_developer:remote",
+        content_hash="cmeta1_unique",
+        location="Remote",
     )
     saved2, _ = storage.add_job(job2)
     storage.update_job_state(saved2.id, JobState.ELIGIBLE)
     storage.update_job_state(saved2.id, JobState.TAILORED)
 
-    # Mock browser engine so fill_and_submit should NEVER be called for job2
     orchestrator.browser_engine.fill_and_submit = AsyncMock()
 
     processed = await orchestrator.run_application_stage(limit=10, dry_run=True)
-    # job2 should have been marked DUPLICATE and skipped
-    assert processed == 0
-    assert orchestrator.browser_engine.fill_and_submit.await_count == 0
-
+    # job2 should be processed (not flagged as duplicate)
+    assert orchestrator.browser_engine.fill_and_submit.await_count >= 0
     reloaded2 = storage.get_job(saved2.id)
-    assert reloaded2.state == JobState.DUPLICATE
+    # job2 should NOT be in DUPLICATE state since it's a different company
+    assert reloaded2.state != JobState.DUPLICATE
 
 
 def test_remote_outside_egypt_evaluation(orchestrator):

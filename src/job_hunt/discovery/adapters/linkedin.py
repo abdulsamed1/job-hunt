@@ -23,6 +23,13 @@ from job_hunt.dedup import (
 from job_hunt.discovery.base import DiscoveryAdapter
 from job_hunt.models import JobPosting
 
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.linkedin.com/jobs/",
+}
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_QUERIES = [
@@ -34,6 +41,12 @@ DEFAULT_QUERIES = [
     "Distributed Systems Engineer",
     "Cloud Infrastructure Engineer",
     "Senior Software Engineer",
+    "DevOps Engineer",
+    "ML Engineer",
+    "Data Engineer",
+    "Site Reliability Engineer",
+    "Platform Engineer",
+    "Infrastructure Engineer",
 ]
 
 DEFAULT_LOCATIONS = [
@@ -43,6 +56,10 @@ DEFAULT_LOCATIONS = [
     "European Union",
     "United Kingdom",
     "Germany",
+    "Canada",
+    "Netherlands",
+    "Singapore",
+    "Australia",
 ]
 
 USER_AGENTS = [
@@ -58,7 +75,18 @@ USER_AGENTS = [
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
         "(KHTML, like Gecko) Version/17.2 Safari/605.1.15"
     ),
+    (
+        "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 "
+        "Firefox/123.0"
+    ),
+    (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"
+    ),
 ]
+
+MAX_RETRIES = 3
+RETRY_DELAY_BASE = 2.0  # exponential backoff base in seconds
 
 
 class LinkedInAdapter(DiscoveryAdapter):
@@ -72,18 +100,19 @@ class LinkedInAdapter(DiscoveryAdapter):
     async def fetch(
         self, entry: Dict[str, Any], client: httpx.AsyncClient
     ) -> List[JobPosting]:
-        """Fetch jobs from LinkedIn matching search matrix with polite pacing."""
+        """Fetch jobs from LinkedIn matching search matrix with adaptive pacing."""
         import random
 
         queries = entry.get("queries") or DEFAULT_QUERIES
         locations = entry.get("locations") or DEFAULT_LOCATIONS
-        remote_only = entry.get("remote_only", True)
-        past_24h_only = entry.get("past_24h_only", True)
-        max_pages = entry.get("max_pages_per_query", 5)
-        target_count = entry.get("target_jobs_count", 500)
+        remote_only = entry.get("remote_only", False)
+        past_24h_only = entry.get("past_24h_only", False)
+        max_pages = entry.get("max_pages_per_query", 10)
+        target_count = entry.get("target_jobs_count", 1000)
 
         postings: List[JobPosting] = []
         seen_urls = set()
+        rate_limit_delay = 1.0  # Start with 1s, increase on 429
 
         search_tasks = []
         for kw in queries:
@@ -93,10 +122,11 @@ class LinkedInAdapter(DiscoveryAdapter):
                     search_tasks.append((kw, loc, start))
 
         logger.info(
-            "Starting LinkedIn discovery: %d search batches scheduled (target: %d jobs, past_24h=%s)...",
+            "Starting LinkedIn discovery: %d search batches scheduled (target: %d jobs, past_24h=%s, remote_only=%s)...",
             len(search_tasks),
             target_count,
             past_24h_only,
+            remote_only,
         )
 
         for kw, loc, start in search_tasks:
@@ -108,11 +138,12 @@ class LinkedInAdapter(DiscoveryAdapter):
                 "keywords": kw,
                 "location": loc,
                 "start": start,
+                "count": 10,
             }
             if remote_only:
-                params["f_WT"] = "2"  # LinkedIn filter for Remote
+                params["f_WT"] = "2"
             if past_24h_only:
-                params["f_TPR"] = "r86400"  # LinkedIn filter for past 24h
+                params["f_TPR"] = "r86400"
 
             url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?{urllib.parse.urlencode(params)}"
             headers = {
@@ -120,29 +151,44 @@ class LinkedInAdapter(DiscoveryAdapter):
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Referer": "https://www.linkedin.com/jobs/",
+                "Connection": "keep-alive",
             }
 
-            try:
-                resp = await client.get(url, headers=headers, timeout=12.0, follow_redirects=True)
-                if resp.status_code == 429:
-                    logger.warning("LinkedIn rate limited (429), pausing 3 seconds before continuing...")
-                    await asyncio.sleep(3.0)
-                    continue
-                elif resp.status_code != 200:
-                    logger.debug("LinkedIn query (%s, %s, %d) returned status %d", kw, loc, start, resp.status_code)
-                    continue
+            for attempt in range(MAX_RETRIES):
+                try:
+                    resp = await client.get(url, headers=headers, timeout=15.0, follow_redirects=True)
+                    if resp.status_code == 429:
+                        delay = rate_limit_delay * (2 ** attempt)
+                        logger.warning("LinkedIn rate limited (429), backing off for %.1fs", delay)
+                        await asyncio.sleep(delay)
+                        rate_limit_delay = min(rate_limit_delay * 2, 30.0)
+                        continue
+                    elif resp.status_code != 200:
+                        logger.debug("LinkedIn query (%s, %s, %d) returned status %d", kw, loc, start, resp.status_code)
+                        break
 
-                batch = self._parse_job_cards(resp.text, entry)
-                for job in batch:
-                    if job.canonical_url not in seen_urls:
-                        seen_urls.add(job.canonical_url)
-                        postings.append(job)
+                    batch = self._parse_job_cards(resp.text, entry)
+                    if not batch and len(postings) < target_count:
+                        logger.debug("No job cards parsed for (%s, %s, %d) - LinkedIn may have changed HTML", kw, loc, start)
 
-            except Exception as exc:
-                logger.debug("LinkedIn query (%s, %s, %d) failed: %s", kw, loc, start, exc)
+                    for job in batch:
+                        if job.canonical_url not in seen_urls:
+                            seen_urls.add(job.canonical_url)
+                            postings.append(job)
 
-            # Polite pacing between queries
-            await asyncio.sleep(0.6)
+                    rate_limit_delay = max(rate_limit_delay * 0.5, 0.6)
+                    break
+
+                except Exception as exc:
+                    logger.debug("LinkedIn query (%s, %s, %d) attempt %d failed: %s", kw, loc, start, attempt + 1, exc)
+                    if attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY_BASE * (2 ** attempt))
+
+            # Adaptive pacing: slow down if we're getting too many results, speed up if not
+            if len(postings) > target_count * 0.8:
+                await asyncio.sleep(0.3)
+            else:
+                await asyncio.sleep(rate_limit_delay)
 
         logger.info("LinkedIn discovery completed: %d unique jobs harvested.", len(postings))
         return postings
@@ -180,10 +226,16 @@ class LinkedInAdapter(DiscoveryAdapter):
                 else (time_elem.get_text(strip=True) if time_elem else "")
             )
 
+            # Try to find job description snippet in the card
+            description_elem = card.find("div", class_="base-search-card__description")
+            description_snippet = description_elem.get_text(strip=True) if description_elem else ""
+
             description = (
                 f"{title} position at {company}. Location: {location}. "
                 f"Discovered via LinkedIn Jobs. Posted: {posted_at}."
             )
+            if description_snippet:
+                description += f" Description: {description_snippet}"
 
             posting = JobPosting(
                 external_id=external_id or None,
@@ -199,7 +251,7 @@ class LinkedInAdapter(DiscoveryAdapter):
                 location=location,
                 description=description,
                 posted_at=posted_at or None,
-                metadata={"source_platform": "linkedin", "remote_flag": True},
+                metadata={"source_platform": "linkedin", "remote_flag": not entry.get("remote_only", False)},
             )
             postings.append(posting)
 
@@ -212,14 +264,25 @@ class LinkedInAdapter(DiscoveryAdapter):
             resp = await client.get(
                 url,
                 headers=DEFAULT_HEADERS,
-                timeout=12.0,
+                timeout=15.0,
                 follow_redirects=True,
             )
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")
-                markup = soup.find("div", class_="show-more-less-html__markup")
+                # Try multiple selectors for LinkedIn's changing HTML structure
+                markup = (
+                    soup.find("div", class_="show-more-less-html__markup")
+                    or soup.find("div", class_="description__text")
+                    or soup.find("div", class_="jobs-description-text")
+                )
                 if markup:
                     return markup.get_text(separator="\n", strip=True)
+                # Fallback: look for any large text content blocks
+                for tag in soup.find_all("div"):
+                    if tag.get("class") and any("description" in c.lower() for c in tag.get("class", [])):
+                        text = tag.get_text(separator="\n", strip=True)
+                        if len(text) > 200:
+                            return text
         except Exception as exc:
             logger.debug("Failed to fetch full description for LinkedIn job %s: %s", job_id, exc)
         return None

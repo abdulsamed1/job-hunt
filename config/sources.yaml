@@ -7,21 +7,35 @@ sources:
   - Backend Engineer
   - Full Stack Engineer
   - Python Developer
-  - Go Engineer
+  - Blockchain
   - Distributed Systems Engineer
   - Cloud Infrastructure Engineer
   - Senior Software Engineer
+  - DevOps Engineer
+  - AI Engineer
+  - AI Developer
+  - Data Engineer
+  - Site Reliability Engineer
+  - Platform Engineer
+  - Infrastructure Engineer
   locations:
   - Worldwide
   - Remote
+  - Egypt
+  - Saudi Arabia
+  - UAE
   - United States
   - European Union
   - United Kingdom
   - Germany
-  remote_only: true
-  past_24h_only: true
-  max_pages_per_query: 5
-  target_jobs_count: 500
+  - Canada
+  - Netherlands
+  - Singapore
+  - Australia
+  remote_only: false
+  past_24h_only: false
+  max_pages_per_query: 10
+  target_jobs_count: 1000
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
