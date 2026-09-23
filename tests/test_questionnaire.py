@@ -10,7 +10,7 @@ def test_questionnaire_answer_resolution_defaults():
         full_name="Abdulsamed Hamdy",
         first_name="Abdulsamed",
         last_name="Hamdy",
-        email="abdalsamed71@gmail.com",
+        email="abdulsamedhamdy@gmail.com",
         phone="+201026046467",
         location="Cairo, Egypt",
         years_of_experience=4,
@@ -47,7 +47,7 @@ def test_questionnaire_custom_answers_override():
         full_name="Abdulsamed Hamdy",
         first_name="Abdulsamed",
         last_name="Hamdy",
-        email="abdalsamed71@gmail.com",
+        email="abdulsamedhamdy@gmail.com",
         phone="+201026046467",
         location="Cairo, Egypt",
         custom_answers={

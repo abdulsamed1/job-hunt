@@ -117,7 +117,7 @@ Edit `config/candidate_profile.json` with your verified skills, experience bulle
   "full_name": "Abdulsamed Hamdy",
   "first_name": "Abdulsamed",
   "last_name": "Hamdy",
-  "email": "abdalsamed71@gmail.com",
+  "email": "abdulsamedhamdy@gmail.com",
   "location": "Cairo, Egypt",
   "open_to_remote": true,
   "work_authorization": "Authorized to work in Egypt, Remote Worldwide",
