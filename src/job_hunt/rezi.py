@@ -51,9 +51,17 @@ def resolve_token(explicit: Optional[str] = None) -> str:
         return from_env
     if REZI_TOKEN_FILE.exists():
         try:
-            value = REZI_TOKEN_FILE.read_text(encoding="utf-8").strip()
-            if value:
-                return value
+            raw = REZI_TOKEN_FILE.read_text(encoding="utf-8").strip()
+            if raw:
+                # Token file written by scripts/rezi_login.py is JSON;
+                # a bare token string is also accepted.
+                try:
+                    data = json.loads(raw)
+                    if isinstance(data, dict) and data.get("access_token"):
+                        return str(data["access_token"])
+                except ValueError:
+                    pass
+                return raw
         except OSError as exc:
             logger.warning("Could not read Rezi token file: %s", exc)
     raise ReziNotConfigured(

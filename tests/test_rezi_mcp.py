@@ -119,8 +119,9 @@ async def test_rpc_error_raises_rezi_error():
         await client.list_resumes()
 
 
-def test_missing_token_raises_not_configured(monkeypatch):
+def test_missing_token_raises_not_configured(monkeypatch, tmp_path):
     monkeypatch.delenv("REZI_MCP_TOKEN", raising=False)
+    monkeypatch.chdir(tmp_path)  # no .rezi_token here
     with pytest.raises(ReziNotConfigured):
         ReziMCPClient(token=None)
 
@@ -144,3 +145,21 @@ def test_mcp_settings_snippet_has_no_secrets():
     assert "api.rezi.ai/mcp" in dumped
     assert "token" not in dumped.lower()
     assert "secret" not in dumped.lower()
+
+
+def test_token_file_json_extracts_access_token(tmp_path, monkeypatch):
+    import json as _json
+
+    monkeypatch.delenv("REZI_MCP_TOKEN", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".rezi_token").write_text(
+        _json.dumps({"access_token": "file-json-token", "obtained_at": 1})
+    )
+    assert ReziMCPClient(token=None).token == "file-json-token"
+
+
+def test_token_file_bare_string(tmp_path, monkeypatch):
+    monkeypatch.delenv("REZI_MCP_TOKEN", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".rezi_token").write_text("bare-token-xyz\n")
+    assert ReziMCPClient(token=None).token == "bare-token-xyz"
