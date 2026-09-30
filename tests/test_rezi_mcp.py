@@ -163,3 +163,35 @@ def test_token_file_bare_string(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".rezi_token").write_text("bare-token-xyz\n")
     assert ReziMCPClient(token=None).token == "bare-token-xyz"
+
+
+@pytest.mark.asyncio
+async def test_tool_result_content_blocks_unwrapped():
+    async def handler(request):
+        body = json.loads(request.content.decode())
+        if body.get("method") == "initialize":
+            return httpx.Response(200, json=_rpc_result(INIT_RESULT))
+        return httpx.Response(
+            200,
+            json=_rpc_result(
+                {"content": [{"type": "text", "text": json.dumps(RESUMES)}], "isError": False}
+            ),
+        )
+
+    client = _make_client(handler)
+    assert await client.list_resumes() == RESUMES["resumes"]
+
+
+@pytest.mark.asyncio
+async def test_tool_is_error_raises():
+    async def handler(request):
+        body = json.loads(request.content.decode())
+        if body.get("method") == "initialize":
+            return httpx.Response(200, json=_rpc_result(INIT_RESULT))
+        return httpx.Response(
+            200, json=_rpc_result({"content": [{"type": "text", "text": "nope"}], "isError": True})
+        )
+
+    client = _make_client(handler)
+    with pytest.raises(ReziError):
+        await client.list_resumes()

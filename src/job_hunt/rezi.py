@@ -292,7 +292,22 @@ class ReziMCPClient:
         self._initialized = True
 
     async def _call_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
-        return await self._rpc("tools/call", {"name": name, "arguments": arguments})
+        result = await self._rpc("tools/call", {"name": name, "arguments": arguments})
+        if isinstance(result, dict) and result.get("isError"):
+            raise ReziError(f"Rezi tool {name} reported an error: {result}")
+        if isinstance(result, dict) and isinstance(result.get("content"), list):
+            texts = [
+                block.get("text", "")
+                for block in result["content"]
+                if isinstance(block, dict) and block.get("type") == "text"
+            ]
+            if len(texts) == 1:
+                try:
+                    return json.loads(texts[0])
+                except ValueError:
+                    return texts[0]
+            return texts
+        return result
 
     async def list_resumes(self) -> List[Dict[str, Any]]:
         result = await self._call_tool("list_resumes", {})
