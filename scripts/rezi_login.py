@@ -23,6 +23,7 @@ import json
 import secrets
 import sys
 import threading
+import urllib.error
 import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -61,13 +62,9 @@ def _probe_www_authenticate(server_url: str) -> str:
     try:
         urllib.request.urlopen(req, timeout=20)
         return ""
-    except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+    except urllib.error.HTTPError as exc:
         if exc.code == 401:
             return exc.headers.get("WWW-Authenticate", "")
-        raise
-    except AttributeError:
-        import urllib.error
-
         raise
 
 
