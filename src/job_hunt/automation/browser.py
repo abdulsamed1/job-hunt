@@ -190,7 +190,7 @@ class BrowserApplicationEngine:
             return False
 
     async def _detect_linkedin_login_wall(self, page: Page) -> bool:
-        """Detect a LinkedIn auth wall (redirected to login / signup)."""
+        """Detect a LinkedIn auth wall (redirected to login / signup / guest wall)."""
         try:
             url = page.url.lower()
             if "linkedin.com/login" in url or "linkedin.com/signup" in url or "authwall" in url:
@@ -199,6 +199,11 @@ class BrowserApplicationEngine:
                 "form.login-form, #login_form, input#session_key"
             )
             if login_form and await login_form.is_visible():
+                return True
+            authwall = await page.query_selector(
+                ".authwall, div[class*='authwall'], div[class*='auth-wall']"
+            )
+            if authwall and await authwall.is_visible():
                 return True
         except Exception:
             pass
@@ -770,13 +775,26 @@ class BrowserApplicationEngine:
             return False
 
     async def _detect_linkedin_easy_apply_panel(self, page: Page) -> bool:
-        """Check if LinkedIn Easy Apply side panel is open."""
+        """Check if LinkedIn Easy Apply side panel is open.
+
+        Requires genuine apply-modal markers so the guest sign-in wall
+        (also an artdeco modal) is never mistaken for an application form.
+        """
+        try:
+            body_text = ""
+            modal = await page.query_selector(
+                ".artdeco-modal, .jobs-easy-apply-modal, [role='dialog']"
+            )
+            if modal and await modal.is_visible():
+                body_text = ((await modal.inner_text()) or "").lower()
+                if "apply to" in body_text or "easy apply" in body_text:
+                    return True
+        except Exception:
+            pass
         panel_selectors = [
             '[data-control-name="jobapply-details"]',
             ".jobs-easy-apply-container",
             "[class*='apply-container']",
-            ".artdeco-modal",
-            ".artdeco-overlay",
         ]
         for sel in panel_selectors:
             try:
@@ -787,9 +805,56 @@ class BrowserApplicationEngine:
                 continue
         return False
 
-    async def _try_linkedin_easy_apply(self, page: Page) -> bool:
-        """Handle LinkedIn's 'Easy Apply' flow which uses a side panel React modal."""
-        for sel in LINKEDIN_EASY_APPLY_SELECTORS:
+    async def _is_linkedin_logged_in(self, page: Page) -> bool:
+        """Check for logged-in navigation markers (avatar / Me menu / feed identity)."""
+        for sel in [
+            "img.global-nav__me-photo",
+            "a.global-nav__me-menu",
+            "div.feed-identity-module",
+            "button.global-nav__primary-link--active",
+        ]:
+            try:
+                el = await page.query_selector(sel)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    async def _verify_linkedin_target_job(self, page: Page, job: JobPosting) -> bool:
+        """Confirm the LinkedIn page shows the target posting, opening its card if needed.
+
+        Logged-in sessions often redirect guest /jobs/view URLs to a search view.
+        When the URL no longer carries our posting ID, click the card linking to it.
+        """
+        try:
+            if job.external_id and job.external_id in page.url:
+                return True
+            if not job.external_id:
+                return True
+            card_link = await page.query_selector(f"a[href*='{job.external_id}']")
+            if card_link and await card_link.is_visible():
+                logger.info("Opening target job card for posting %s", job.external_id)
+                await card_link.click(timeout=5000)
+                await page.wait_for_timeout(3000)
+                return job.external_id in page.url
+        except Exception:
+            pass
+        return job.external_id in (page.url or "") if job.external_id else True
+
+    async def _try_linkedin_easy_apply(self, page: Page, job: Optional[JobPosting] = None) -> bool:
+        """Handle LinkedIn's 'Easy Apply' flow which uses a side panel React modal.
+
+        The Apply button is scoped to the job-detail pane first so a search view
+        can never trigger an application for a neighboring job card.
+        """
+        scoped_selectors = [
+            ".jobs-unified-top-card button:has-text('Easy Apply')",
+            ".job-details-jobs-unified-top-card__container button:has-text('Easy Apply')",
+            "div.job-view-layout button:has-text('Easy Apply')",
+            "main button:has-text('Easy Apply')",
+        ]
+        for sel in scoped_selectors + LINKEDIN_EASY_APPLY_SELECTORS:
             try:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
@@ -807,6 +872,32 @@ class BrowserApplicationEngine:
             except Exception:
                 continue
         return False
+
+    async def _verify_easy_apply_modal_company(self, page: Page, job: JobPosting) -> bool:
+        """Confirm the open Easy Apply modal targets our company, not a neighbor card.
+
+        The modal heading reads 'Apply to {Company}'. A mismatch aborts the run
+        so a live submit can never go to the wrong employer.
+        """
+        try:
+            heading = await page.query_selector(
+                ".artdeco-modal h2, .jobs-easy-apply-modal h2, [role='dialog'] h2"
+            )
+            if heading is None:
+                return True  # no modal heading found; nothing to contradict
+            text = ((await heading.inner_text()) or "").strip().lower()
+            if not text:
+                return True
+            company_token = (job.company or "").split()[0].lower() if job.company else ""
+            if company_token and company_token not in text:
+                logger.warning(
+                    "Easy Apply modal mismatch: heading %r does not target %r",
+                    text, job.company,
+                )
+                return False
+            return True
+        except Exception:
+            return True
 
     async def _fill_linkedin_skills(self, page: Page, profile: CandidateProfile) -> bool:
         """Add skills tags on LinkedIn's application form if present."""
@@ -956,19 +1047,6 @@ class BrowserApplicationEngine:
                 # Auto-dismiss cookie/GDPR consent banner
                 await self._dismiss_cookie_consent(page)
 
-                # LinkedIn auth wall: Easy Apply needs a logged-in session
-                if is_linkedin and await self._detect_linkedin_login_wall(page):
-                    screenshot_file = str(self.screenshots_dir / f"linkedin_login_job_{job.id}.png")
-                    await page.screenshot(path=screenshot_file, full_page=True)
-                    record.state = JobState.FAILED
-                    record.screenshot_path = screenshot_file
-                    record.error_message = (
-                        "LinkedIn login required: no valid session "
-                        "(run scripts/linkedin_login.py on your machine first)"
-                    )
-                    logger.warning("Job %s blocked: %s", job.id, record.error_message)
-                    return record
-
                 # Detect if this is a LinkedIn job page
                 if is_linkedin:
                     logger.info("LinkedIn job detected - application type: %s", job.application_type or "unknown")
@@ -980,6 +1058,23 @@ class BrowserApplicationEngine:
                     record.error_message = (
                         "Blocked: LinkedIn submit requires human approval "
                         "(dry_run=False without linkedin_approved=True)"
+                    )
+                    logger.warning("Job %s blocked: %s", job.id, record.error_message)
+                    return record
+
+                # LinkedIn auth wall: Easy Apply needs a logged-in session
+                session_expected = is_linkedin and self.has_linkedin_session()
+                login_walled = is_linkedin and await self._detect_linkedin_login_wall(page)
+                session_invalid = session_expected and not await self._is_linkedin_logged_in(page)
+                if login_walled or session_invalid:
+                    screenshot_file = str(self.screenshots_dir / f"linkedin_login_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file, full_page=True)
+                    record.state = JobState.FAILED
+                    record.screenshot_path = screenshot_file
+                    record.error_message = (
+                        "LinkedIn session invalid or login wall present: "
+                        "re-run scripts/linkedin_login.py and verify the account "
+                        "is not challenged in a normal browser"
                     )
                     logger.warning("Job %s blocked: %s", job.id, record.error_message)
                     return record
@@ -1005,6 +1100,20 @@ class BrowserApplicationEngine:
 
                 # 2. Handle LinkedIn application types
                 if is_linkedin:
+                    # Canonical detail URL keeps logged-in sessions on the posting
+                    # instead of bouncing to a search view (wrong-job risk).
+                    if job.external_id:
+                        canonical_view = f"https://www.linkedin.com/jobs/view/{job.external_id}/"
+                        if job.external_id not in page.url:
+                            logger.info("Navigating to canonical LinkedIn posting view")
+                            await page.goto(canonical_view, timeout=self.timeout_ms, wait_until="domcontentloaded")
+                            await page.wait_for_timeout(2000)
+                            await self._drop_new_tabs(page)
+                            await self._dismiss_cookie_consent(page)
+                    if not await self._verify_linkedin_target_job(page, job):
+                        record.state = JobState.FAILED
+                        record.error_message = "LinkedIn page does not show the target posting"
+                        return record
                     if job.application_type == "external_url":
                         logger.info("LinkedIn External Apply - navigating to external ATS")
                         external_opened = await self._try_linkedin_external_apply(
@@ -1027,8 +1136,15 @@ class BrowserApplicationEngine:
                             return record
                     elif job.application_type == "easy_apply":
                         logger.info("LinkedIn Easy Apply - clicking Easy Apply button")
-                        easy_apply_opened = await self._try_linkedin_easy_apply(page)
+                        easy_apply_opened = await self._try_linkedin_easy_apply(page, job)
                         if easy_apply_opened:
+                            if not await self._verify_easy_apply_modal_company(page, job):
+                                screenshot_file = str(self.screenshots_dir / f"wrong_job_{job.id}.png")
+                                await page.screenshot(path=screenshot_file, full_page=True)
+                                record.state = JobState.FAILED
+                                record.screenshot_path = screenshot_file
+                                record.error_message = "Easy Apply opened for a different employer; aborted"
+                                return record
                             logger.info("LinkedIn Easy Apply opened - filling side panel")
                             await self._fill_linkedin_easy_apply_side_panel(page, profile)
                             await page.wait_for_timeout(2000)
@@ -1038,8 +1154,15 @@ class BrowserApplicationEngine:
                             return record
                     else:
                         logger.info("LinkedIn apply type unknown - trying Easy Apply first, then external")
-                        easy_apply_opened = await self._try_linkedin_easy_apply(page)
+                        easy_apply_opened = await self._try_linkedin_easy_apply(page, job)
                         if easy_apply_opened:
+                            if not await self._verify_easy_apply_modal_company(page, job):
+                                screenshot_file = str(self.screenshots_dir / f"wrong_job_{job.id}.png")
+                                await page.screenshot(path=screenshot_file, full_page=True)
+                                record.state = JobState.FAILED
+                                record.screenshot_path = screenshot_file
+                                record.error_message = "Easy Apply opened for a different employer; aborted"
+                                return record
                             await self._fill_linkedin_easy_apply_side_panel(page, profile)
                         else:
                             external_opened = await self._try_linkedin_external_apply(

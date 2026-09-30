@@ -64,6 +64,15 @@ def _mock_playwright_context():
 
     def _mock_query_selector(sel):
         """Return mock elements for LinkedIn-specific selectors."""
+        if "global-nav__me-photo" in sel or "feed-identity-module" in sel:
+            el = MagicMock()
+            el.is_visible = AsyncMock(return_value=True)
+            return el
+        if " h2" in sel:
+            el = MagicMock()
+            el.is_visible = AsyncMock(return_value=True)
+            el.inner_text = AsyncMock(return_value="Apply to TechCorp")
+            return el
         if "easy apply" in sel.lower() or "apply" in sel.lower() or "jobapply" in sel.lower():
             el = MagicMock()
             el.is_visible = AsyncMock(return_value=True)

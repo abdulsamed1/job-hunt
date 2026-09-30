@@ -3,20 +3,28 @@ sources:
   name: linkedin_remote_worldwide
   url: https://www.linkedin.com/jobs/
   queries:
-  - Backend Engineer
-  - Python Developer
   - Software Engineer
+  - Full Stack Engineer
+  - Backend Engineer
   locations:
-  - Worldwide
-  - Remote
+  - Middle East
   - Egypt
+  - United Arab Emirates
+  - Saudi Arabia
+  - European Union
+  - United Kingdom
+  - Germany
+  - Remote
   remote_only: false
-  past_24h_only: false
-  max_pages_per_query: 2
-  target_jobs_count: 50
+  past_24h_only: true
+  max_pages_per_query: 1
+  target_jobs_count: 60
   # Safety posture (ai-job-search best practices): LinkedIn guest endpoints are
   # personal-use only per LinkedIn ToS — keep volume low, dry-run by default,
   # and never auto-submit without explicit human approval.
+  # Proven campaign shape (2026-09-30 test-apply): MENA/EMEA software roles,
+  # 24h window, low pages. Bot must verify target job + modal company before
+  # any submit (wrong-job guard in automation/browser.py).
   linkedin_require_approval: true
 - adapter: greenhouse
   name: stripe

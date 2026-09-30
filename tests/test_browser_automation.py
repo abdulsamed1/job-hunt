@@ -348,3 +348,152 @@ async def test_fill_and_submit_uses_saved_linkedin_session(tmp_path):
 
     _, kwargs = mock_browser.new_context.call_args
     assert kwargs.get("storage_state") == str(state)
+
+
+@pytest.mark.asyncio
+async def test_verify_linkedin_target_job_url_match():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+    from job_hunt.models import JobPosting
+
+    engine = BrowserApplicationEngine(headless=True)
+    page = MagicMock()
+    page.url = "https://www.linkedin.com/jobs/view/4472305480/"
+    page.query_selector = AsyncMock()
+    job = JobPosting(
+        source="linkedin", title="T", company="Globant",
+        raw_url="https://eg.linkedin.com/jobs/view/x-4472305480",
+        canonical_url="https://eg.linkedin.com/jobs/view/x-4472305480",
+        canonical_url_hash="h-t", role_fingerprint="rf-t", content_hash="c-t",
+        external_id="4472305480",
+    )
+    assert await engine._verify_linkedin_target_job(page, job) is True
+    page.query_selector.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_linkedin_target_job_no_card_no_match():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+    from job_hunt.models import JobPosting
+
+    engine = BrowserApplicationEngine(headless=True)
+    page = MagicMock()
+    page.url = "https://www.linkedin.com/jobs/search/?keywords=x"
+    page.query_selector = AsyncMock(return_value=None)
+    job = JobPosting(
+        source="linkedin", title="T", company="Globant",
+        raw_url="https://eg.linkedin.com/jobs/view/x-4472305480",
+        canonical_url="https://eg.linkedin.com/jobs/view/x-4472305480",
+        canonical_url_hash="h-t2", role_fingerprint="rf-t2", content_hash="c-t2",
+        external_id="4472305480",
+    )
+    assert await engine._verify_linkedin_target_job(page, job) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_easy_apply_modal_company():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+    from job_hunt.models import JobPosting
+
+    engine = BrowserApplicationEngine(headless=True)
+    job = JobPosting(
+        source="linkedin", title="T", company="Globant",
+        raw_url="https://x", canonical_url="https://x",
+        canonical_url_hash="h-t3", role_fingerprint="rf-t3", content_hash="c-t3",
+    )
+
+    async def heading_page(text):
+        page = MagicMock()
+        if text is None:
+            page.query_selector = AsyncMock(return_value=None)
+        else:
+            el = MagicMock()
+            el.inner_text = AsyncMock(return_value=text)
+            page.query_selector = AsyncMock(return_value=el)
+        return page
+
+    assert await engine._verify_easy_apply_modal_company(await heading_page("Apply to Globant"), job) is True
+    assert await engine._verify_easy_apply_modal_company(await heading_page("Apply to Magnet"), job) is False
+    assert await engine._verify_easy_apply_modal_company(await heading_page(None), job) is True
+
+
+@pytest.mark.asyncio
+async def test_signin_modal_is_not_easy_apply_panel():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    engine = BrowserApplicationEngine(headless=True)
+
+    async def modal_only_for_dialog_selectors(sel):
+        if "artdeco-modal" in sel or "role='dialog'" in sel or "easy-apply-modal" in sel:
+            modal = MagicMock()
+            modal.is_visible = AsyncMock(return_value=True)
+            modal.inner_text = AsyncMock(return_value="Sign in to continue\nContinue with Google")
+            return modal
+        return None
+
+    page = MagicMock()
+    page.query_selector = AsyncMock(side_effect=modal_only_for_dialog_selectors)
+    assert await engine._detect_linkedin_easy_apply_panel(page) is False
+
+    async def apply_modal_for_dialog_selectors(sel):
+        if "artdeco-modal" in sel or "role='dialog'" in sel or "easy-apply-modal" in sel:
+            modal = MagicMock()
+            modal.is_visible = AsyncMock(return_value=True)
+            modal.inner_text = AsyncMock(return_value="Apply to Globant\nContact info")
+            return modal
+        return None
+
+    page.query_selector = AsyncMock(side_effect=apply_modal_for_dialog_selectors)
+    assert await engine._detect_linkedin_easy_apply_panel(page) is True
+
+
+@pytest.mark.asyncio
+async def test_invalid_session_blocks_linkedin_run(tmp_path):
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"cookies": [{"name": "li_at", "value": "stale"}]}))
+
+    page = MagicMock()
+    page.url = "https://www.linkedin.com/jobs/view/4472305480/"
+    page.goto = AsyncMock()
+    page.wait_for_timeout = AsyncMock()
+    page.add_init_script = AsyncMock()
+    page.screenshot = AsyncMock()
+    page.query_selector = AsyncMock(return_value=None)
+    page.query_selector_all = AsyncMock(return_value=[])
+    page.frames = []
+
+    ctx = MagicMock()
+    ctx.new_page = AsyncMock(return_value=page)
+    ctx.close = AsyncMock()
+    br = MagicMock()
+    br.new_context = AsyncMock(return_value=ctx)
+    br.close = AsyncMock()
+    pw = MagicMock()
+    pw.chromium.launch = AsyncMock(return_value=br)
+
+    with patch("job_hunt.automation.browser.async_playwright") as mock_pw_fn:
+        mock_pw_fn.return_value.__aenter__ = AsyncMock(return_value=pw)
+        mock_pw_fn.return_value.__aexit__ = AsyncMock(return_value=None)
+        engine = BrowserApplicationEngine(headless=True, linkedin_storage_state=str(state))
+        job = JobPosting(
+            source="linkedin", title="T", company="Globant",
+            raw_url="https://www.linkedin.com/jobs/view/4472305480/",
+            canonical_url="https://www.linkedin.com/jobs/view/4472305480/",
+            canonical_url_hash="h-sess", role_fingerprint="rf-sess", content_hash="c-sess",
+            application_type="easy_apply", external_id="4472305480",
+        )
+        profile = CandidateProfile(
+            full_name="A B", first_name="A", last_name="B",
+            email="a@b.com", phone="1", location="Remote",
+        )
+        record = await engine.fill_and_submit(job, profile, dry_run=True)
+
+    assert record.state == JobState.FAILED
+    assert "session" in (record.error_message or "").lower()
