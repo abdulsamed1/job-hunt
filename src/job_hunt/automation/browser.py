@@ -165,6 +165,7 @@ class BrowserApplicationEngine:
         timeout_ms: int = 30000,
         captcha_solver: Optional[CaptchaSolver] = None,
         require_linkedin_approval: bool = True,
+        linkedin_storage_state: Optional[str] = None,
     ):
         self.executable_path = executable_path
         self.headless = headless
@@ -173,6 +174,35 @@ class BrowserApplicationEngine:
         self.timeout_ms = timeout_ms
         self.captcha_solver = captcha_solver or CaptchaSolver()
         self.require_linkedin_approval = require_linkedin_approval
+        self.linkedin_storage_state = linkedin_storage_state or "data/linkedin_state.json"
+
+    def has_linkedin_session(self) -> bool:
+        """Check whether a saved LinkedIn login session exists and looks valid."""
+        try:
+            state_file = Path(self.linkedin_storage_state)
+            if not state_file.exists():
+                return False
+            import json
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+            cookies = data.get("cookies", [])
+            return any(c.get("name") == "li_at" for c in cookies)
+        except Exception:
+            return False
+
+    async def _detect_linkedin_login_wall(self, page: Page) -> bool:
+        """Detect a LinkedIn auth wall (redirected to login / signup)."""
+        try:
+            url = page.url.lower()
+            if "linkedin.com/login" in url or "linkedin.com/signup" in url or "authwall" in url:
+                return True
+            login_form = await page.query_selector(
+                "form.login-form, #login_form, input#session_key"
+            )
+            if login_form and await login_form.is_visible():
+                return True
+        except Exception:
+            pass
+        return False
 
     async def _drop_new_tabs(self, page: Page) -> None:
         """Force same-tab navigation across all frames (lessons from career-ops/diagnose.ts).
@@ -894,12 +924,17 @@ class BrowserApplicationEngine:
                 headless=self.headless,
                 args=launch_args,
             )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800},
-                locale="en-US",
-                timezone_id="America/New_York",
-            )
+            context_kwargs: Dict[str, Any] = {
+                "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "viewport": {"width": 1280, "height": 800},
+                "locale": "en-US",
+                "timezone_id": "America/New_York",
+            }
+            is_linkedin = "linkedin.com" in job.raw_url.lower()
+            if is_linkedin and self.has_linkedin_session():
+                context_kwargs["storage_state"] = self.linkedin_storage_state
+                logger.info("Using saved LinkedIn login session")
+            context = await browser.new_context(**context_kwargs)
             page = await context.new_page()
 
             # Inject stealth evasions to mask Playwright/Selenium traces
@@ -921,9 +956,20 @@ class BrowserApplicationEngine:
                 # Auto-dismiss cookie/GDPR consent banner
                 await self._dismiss_cookie_consent(page)
 
-                # Detect if this is a LinkedIn job page
-                is_linkedin = "linkedin.com" in job.raw_url.lower()
+                # LinkedIn auth wall: Easy Apply needs a logged-in session
+                if is_linkedin and await self._detect_linkedin_login_wall(page):
+                    screenshot_file = str(self.screenshots_dir / f"linkedin_login_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file, full_page=True)
+                    record.state = JobState.FAILED
+                    record.screenshot_path = screenshot_file
+                    record.error_message = (
+                        "LinkedIn login required: no valid session "
+                        "(run scripts/linkedin_login.py on your machine first)"
+                    )
+                    logger.warning("Job %s blocked: %s", job.id, record.error_message)
+                    return record
 
+                # Detect if this is a LinkedIn job page
                 if is_linkedin:
                     logger.info("LinkedIn job detected - application type: %s", job.application_type or "unknown")
 

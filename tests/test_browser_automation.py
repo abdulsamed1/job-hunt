@@ -258,3 +258,93 @@ async def test_try_apply_trigger_skips_unverified_hosts():
     assert await engine._try_apply_trigger(ats_page) is True
     ats_page.goto.assert_called_once()
     assert ats_page.goto.call_args[0][0] == "https://boards.greenhouse.io/co/jobs/1"
+
+
+def test_has_linkedin_session_checks_li_at_cookie(tmp_path):
+    import json
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    state = tmp_path / "state.json"
+    engine = BrowserApplicationEngine(headless=True, linkedin_storage_state=str(state))
+    assert engine.has_linkedin_session() is False
+
+    state.write_text(json.dumps({"cookies": [{"name": "JSESSIONID", "value": "x"}]}))
+    assert engine.has_linkedin_session() is False
+
+    state.write_text(json.dumps({"cookies": [{"name": "li_at", "value": "secret"}]}))
+    assert engine.has_linkedin_session() is True
+
+
+@pytest.mark.asyncio
+async def test_detect_linkedin_login_wall():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    engine = BrowserApplicationEngine(headless=True)
+
+    walled = MagicMock()
+    walled.url = "https://www.linkedin.com/login?trk=guest_homepage"
+    walled.query_selector = AsyncMock(return_value=None)
+    assert await engine._detect_linkedin_login_wall(walled) is True
+
+    form_page = MagicMock()
+    form_page.url = "https://www.linkedin.com/jobs/view/123"
+    form_el = MagicMock()
+    form_el.is_visible = AsyncMock(return_value=True)
+    form_page.query_selector = AsyncMock(return_value=form_el)
+    assert await engine._detect_linkedin_login_wall(form_page) is True
+
+    clean = MagicMock()
+    clean.url = "https://www.linkedin.com/jobs/view/123"
+    clean.query_selector = AsyncMock(return_value=None)
+    assert await engine._detect_linkedin_login_wall(clean) is False
+
+
+@pytest.mark.asyncio
+async def test_fill_and_submit_uses_saved_linkedin_session(tmp_path):
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"cookies": [{"name": "li_at", "value": "s"}]}))
+
+    mock_page = MagicMock()
+    mock_page.url = "https://www.linkedin.com/jobs/view/123"
+    mock_page.goto = AsyncMock()
+    mock_page.wait_for_timeout = AsyncMock()
+    mock_page.add_init_script = AsyncMock()
+    mock_page.screenshot = AsyncMock()
+    mock_page.query_selector = AsyncMock(return_value=None)
+    mock_page.query_selector_all = AsyncMock(return_value=[])
+    mock_page.frames = []
+    mock_page.content = AsyncMock(return_value="<html></html>")
+
+    mock_context = MagicMock()
+    mock_context.new_page = AsyncMock(return_value=mock_page)
+    mock_context.close = AsyncMock()
+    mock_browser = MagicMock()
+    mock_browser.new_context = AsyncMock(return_value=mock_context)
+    mock_browser.close = AsyncMock()
+    mock_pw = MagicMock()
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
+
+    with patch("job_hunt.automation.browser.async_playwright") as mock_pw_fn:
+        mock_pw_fn.return_value.__aenter__ = AsyncMock(return_value=mock_pw)
+        mock_pw_fn.return_value.__aexit__ = AsyncMock(return_value=None)
+        engine = BrowserApplicationEngine(headless=True, linkedin_storage_state=str(state))
+        job = JobPosting(
+            source="linkedin", title="T", company="C",
+            raw_url="https://www.linkedin.com/jobs/view/123",
+            canonical_url="https://www.linkedin.com/jobs/view/123",
+            canonical_url_hash="h-ss", role_fingerprint="rf-ss", content_hash="c-ss",
+            application_type="easy_apply",
+        )
+        profile = CandidateProfile(
+            full_name="A B", first_name="A", last_name="B",
+            email="a@b.com", phone="1", location="Remote",
+        )
+        await engine.fill_and_submit(job, profile, dry_run=True)
+
+    _, kwargs = mock_browser.new_context.call_args
+    assert kwargs.get("storage_state") == str(state)

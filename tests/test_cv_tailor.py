@@ -339,3 +339,27 @@ def test_verify_rendered_pdf_records_failures_in_log(profile, tmp_path):
     log2: list = []
     tailor._verify_rendered_pdf(str(good_pdf), profile, log2)
     assert log2 == []
+
+
+def test_fact_verification_accepts_hyphenated_titles():
+    from job_hunt.models import Experience as Exp
+
+    tailor = CVTailor(use_llm=False)
+    prof = CandidateProfile(
+        full_name="T U", first_name="T", last_name="U",
+        email="t@u.com", phone="+1-555-0100", location="Remote",
+        years_of_experience=3, verified_skills=["Python"],
+        verified_experiences=[
+            Exp(company="Eagles", title="Full-Stack Software Engineer",
+                start_date="2022", end_date="Present", bullets=["Built Python APIs."]),
+        ],
+    )
+    cv = tailor.build_master_cv(prof)
+    passed, violations = tailor.verify_cv_facts(cv, prof)
+    assert passed is True, violations
+
+    bad = cv.replace("### Full-Stack Software Engineer - Eagles",
+                      "### Full-Stack Software Engineer - EvilCorp")
+    passed2, violations2 = tailor.verify_cv_facts(bad, prof)
+    assert passed2 is False
+    assert any("evilcorp" in v.lower() for v in violations2)

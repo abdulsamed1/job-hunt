@@ -105,9 +105,9 @@ class CVTailor:
             if num not in source_numbers and not (len(num) == 4 and 2000 <= int(num) <= 2030):
                 violations.append(f"Unverified number or metric in CV: '{num}'")
 
-        # 2. Verify company names
+        # 2. Verify company names (greedy: titles may contain hyphens, company is last)
         verified_companies = {e.company.lower() for e in profile.verified_experiences}
-        for m in re.finditer(r"###\s+([^-]+)\s*-\s*([^\n]+)", cv_markdown):
+        for m in re.finditer(r"###\s+(.+)\s+-\s+([^\n]+)", cv_markdown):
             comp = m.group(2).strip().lower()
             if comp not in verified_companies:
                 violations.append(f"Unverified employer in CV: '{comp}'")
