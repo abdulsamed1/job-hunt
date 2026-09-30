@@ -404,19 +404,26 @@ async def test_verify_easy_apply_modal_company():
         canonical_url_hash="h-t3", role_fingerprint="rf-t3", content_hash="c-t3",
     )
 
-    async def heading_page(text):
+    async def modal_page(text):
+        async def side_effect(sel):
+            if "artdeco-modal" in sel or "role='dialog'" in sel or "easy-apply-modal" in sel:
+                if text is None:
+                    return None
+                el = MagicMock()
+                el.is_visible = AsyncMock(return_value=True)
+                el.inner_text = AsyncMock(return_value=text)
+                return el
+            return None
+
         page = MagicMock()
-        if text is None:
-            page.query_selector = AsyncMock(return_value=None)
-        else:
-            el = MagicMock()
-            el.inner_text = AsyncMock(return_value=text)
-            page.query_selector = AsyncMock(return_value=el)
+        page.query_selector = AsyncMock(side_effect=side_effect)
         return page
 
-    assert await engine._verify_easy_apply_modal_company(await heading_page("Apply to Globant"), job) is True
-    assert await engine._verify_easy_apply_modal_company(await heading_page("Apply to Magnet"), job) is False
-    assert await engine._verify_easy_apply_modal_company(await heading_page(None), job) is True
+    assert await engine._verify_easy_apply_modal_company(await modal_page("Apply to Globant"), job) is True
+    assert await engine._verify_easy_apply_modal_company(await modal_page("Apply to Magnet"), job) is False
+    # Sign-in modal carries no company claim -> nothing to contradict
+    assert await engine._verify_easy_apply_modal_company(await modal_page("Sign in to continue"), job) is True
+    assert await engine._verify_easy_apply_modal_company(await modal_page(None), job) is True
 
 
 @pytest.mark.asyncio
@@ -497,3 +504,27 @@ async def test_invalid_session_blocks_linkedin_run(tmp_path):
 
     assert record.state == JobState.FAILED
     assert "session" in (record.error_message or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_logged_in_detected_via_nav_items():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+
+    engine = BrowserApplicationEngine(headless=True)
+
+    async def nav_only(sel):
+        if "My Network" in sel or "Messaging" in sel:
+            el = MagicMock()
+            el.is_visible = AsyncMock(return_value=True)
+            return el
+        return None
+
+    page = MagicMock()
+    page.query_selector = AsyncMock(side_effect=nav_only)
+    assert await engine._is_linkedin_logged_in(page) is True
+
+    empty = MagicMock()
+    empty.query_selector = AsyncMock(return_value=None)
+    empty.wait_for_timeout = AsyncMock()
+    assert await engine._is_linkedin_logged_in(empty) is False

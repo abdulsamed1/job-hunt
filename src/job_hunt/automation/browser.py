@@ -523,6 +523,7 @@ class BrowserApplicationEngine:
         if not label:
             return None
 
+
         lbl_lower = label.lower()
 
         # Check explicit custom_answers first
@@ -805,21 +806,60 @@ class BrowserApplicationEngine:
                 continue
         return False
 
+    async def _settle_linkedin_page(self, page: Page) -> None:
+        """Let LinkedIn's SPA shell render before running marker checks.
+
+        A single fixed sleep flaps between logged-in shell and wall variants;
+        waiting on network idle plus a short settle removes most of the flake.
+        """
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(2500)
+
     async def _is_linkedin_logged_in(self, page: Page) -> bool:
-        """Check for logged-in navigation markers (avatar / Me menu / feed identity)."""
-        for sel in [
-            "img.global-nav__me-photo",
-            "a.global-nav__me-menu",
-            "div.feed-identity-module",
-            "button.global-nav__primary-link--active",
-        ]:
-            try:
-                el = await page.query_selector(sel)
-                if el and await el.is_visible():
-                    return True
-            except Exception:
-                continue
+        """Check for logged-in navigation markers, retrying while the SPA settles.
+
+        Uses auth-only nav items (My Network / Messaging / Me menu), which guest
+        pages never render — class-based avatar hooks alone miss valid sessions.
+        """
+        for attempt in range(3):
+            for sel in [
+                "img.global-nav__me-photo",
+                "a.global-nav__me-menu",
+                "div.feed-identity-module",
+                "button.global-nav__primary-link--active",
+                "a:has-text('My Network')",
+                "a:has-text('Messaging')",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        return True
+                except Exception:
+                    continue
+            await page.wait_for_timeout(2500)
         return False
+
+    async def _require_linkedin_session(self, page: Page, job: JobPosting) -> Optional[str]:
+        """Enforce a live LinkedIn session right before touching Easy Apply.
+
+        Returns an error message when the modal path cannot proceed, else None.
+        External-apply postings never reach this gate.
+        """
+        if not self.has_linkedin_session():
+            return (
+                "LinkedIn login required: no saved session "
+                "(run scripts/linkedin_login.py on your machine first)"
+            )
+        if not await self._is_linkedin_logged_in(page):
+            return (
+                "LinkedIn session invalid (account may be challenged): verify the "
+                "account in a normal browser, re-run scripts/linkedin_login.py, "
+                "and keep headless volume low"
+            )
+        return None
 
     async def _verify_linkedin_target_job(self, page: Page, job: JobPosting) -> bool:
         """Confirm the LinkedIn page shows the target posting, opening its card if needed.
@@ -876,23 +916,27 @@ class BrowserApplicationEngine:
     async def _verify_easy_apply_modal_company(self, page: Page, job: JobPosting) -> bool:
         """Confirm the open Easy Apply modal targets our company, not a neighbor card.
 
-        The modal heading reads 'Apply to {Company}'. A mismatch aborts the run
-        so a live submit can never go to the wrong employer.
+        The modal heading reads 'Apply to {Company}'. The company name is pulled
+        with a text pattern instead of a tag selector so heading-tag changes can
+        never silently skip the check. A mismatch aborts the run so a live submit
+        can never go to the wrong employer.
         """
         try:
-            heading = await page.query_selector(
-                ".artdeco-modal h2, .jobs-easy-apply-modal h2, [role='dialog'] h2"
+            modal = await page.query_selector(
+                ".artdeco-modal, .jobs-easy-apply-modal, [role='dialog']"
             )
-            if heading is None:
-                return True  # no modal heading found; nothing to contradict
-            text = ((await heading.inner_text()) or "").strip().lower()
-            if not text:
-                return True
+            if modal is None or not await modal.is_visible():
+                return True  # no modal found; nothing to contradict
+            text = ((await modal.inner_text()) or "").strip().lower()
+            match = re.search(r"apply to\s+([a-z0-9][a-z0-9 .&'-]{1,60})", text)
+            if not match:
+                return True  # no company claim found; nothing to contradict
+            modal_company = match.group(1).strip()
             company_token = (job.company or "").split()[0].lower() if job.company else ""
-            if company_token and company_token not in text:
+            if company_token and company_token not in modal_company:
                 logger.warning(
-                    "Easy Apply modal mismatch: heading %r does not target %r",
-                    text, job.company,
+                    "Easy Apply modal mismatch: modal targets %r, job is %r",
+                    modal_company, job.company,
                 )
                 return False
             return True
@@ -1031,14 +1075,28 @@ class BrowserApplicationEngine:
             # Inject stealth evasions to mask Playwright/Selenium traces
             await page.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                window.chrome = { runtime: {} };
+                window.chrome = { runtime: {}, csi: function(){}, loadTimes: function(){} };
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
                 Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
+                Object.defineProperty(navigator, 'platform', { get: () => 'Linux x86_64' });
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                const _query = window.navigator.permissions.query.bind(window.navigator.permissions);
+                window.navigator.permissions.query = (p) => (
+                    p.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : _query(p)
+                );
             """)
 
             try:
-                logger.info("Navigating to application URL: %s", job.raw_url)
-                await page.goto(job.raw_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
+                is_linkedin = "linkedin.com" in job.raw_url.lower()
+                start_url = job.raw_url
+                if is_linkedin and job.external_id:
+                    start_url = f"https://www.linkedin.com/jobs/view/{job.external_id}/"
+                logger.info("Navigating to application URL: %s", start_url)
+                await page.goto(start_url, timeout=self.timeout_ms, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2000)
 
                 # Strip target=_blank across all frames so navigation stays in-tab
@@ -1062,19 +1120,19 @@ class BrowserApplicationEngine:
                     logger.warning("Job %s blocked: %s", job.id, record.error_message)
                     return record
 
-                # LinkedIn auth wall: Easy Apply needs a logged-in session
-                session_expected = is_linkedin and self.has_linkedin_session()
-                login_walled = is_linkedin and await self._detect_linkedin_login_wall(page)
-                session_invalid = session_expected and not await self._is_linkedin_logged_in(page)
-                if login_walled or session_invalid:
+                # LinkedIn auth wall: hard-block only when the page itself is walled.
+                # Session validity is enforced lazily at the Easy Apply modal step:
+                # external-apply postings ("responses managed off LinkedIn") need
+                # no session — the guest page plus the outbound Apply link suffice.
+                await self._settle_linkedin_page(page)
+                if is_linkedin and await self._detect_linkedin_login_wall(page):
                     screenshot_file = str(self.screenshots_dir / f"linkedin_login_job_{job.id}.png")
                     await page.screenshot(path=screenshot_file, full_page=True)
                     record.state = JobState.FAILED
                     record.screenshot_path = screenshot_file
                     record.error_message = (
-                        "LinkedIn session invalid or login wall present: "
-                        "re-run scripts/linkedin_login.py and verify the account "
-                        "is not challenged in a normal browser"
+                        "LinkedIn login wall present: re-run scripts/linkedin_login.py "
+                        "and verify the account is not challenged in a normal browser"
                     )
                     logger.warning("Job %s blocked: %s", job.id, record.error_message)
                     return record
@@ -1136,6 +1194,12 @@ class BrowserApplicationEngine:
                             return record
                     elif job.application_type == "easy_apply":
                         logger.info("LinkedIn Easy Apply - clicking Easy Apply button")
+                        session_error = await self._require_linkedin_session(page, job)
+                        if session_error:
+                            record.state = JobState.FAILED
+                            record.error_message = session_error
+                            logger.warning("Job %s blocked: %s", job.id, session_error)
+                            return record
                         easy_apply_opened = await self._try_linkedin_easy_apply(page, job)
                         if easy_apply_opened:
                             if not await self._verify_easy_apply_modal_company(page, job):
@@ -1154,7 +1218,15 @@ class BrowserApplicationEngine:
                             return record
                     else:
                         logger.info("LinkedIn apply type unknown - trying Easy Apply first, then external")
-                        easy_apply_opened = await self._try_linkedin_easy_apply(page, job)
+                        session_error = await self._require_linkedin_session(page, job)
+                        if session_error:
+                            logger.info(
+                                "Easy Apply unavailable (%s); falling back to external link",
+                                session_error,
+                            )
+                            easy_apply_opened = False
+                        else:
+                            easy_apply_opened = await self._try_linkedin_easy_apply(page, job)
                         if easy_apply_opened:
                             if not await self._verify_easy_apply_modal_company(page, job):
                                 screenshot_file = str(self.screenshots_dir / f"wrong_job_{job.id}.png")

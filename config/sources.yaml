@@ -7,13 +7,14 @@ sources:
   - Full Stack Engineer
   - Backend Engineer
   locations:
-  - Middle East
+  - MENA
+  - EMEA
   - Egypt
   - United Arab Emirates
   - Saudi Arabia
   - European Union
   - United Kingdom
-  - Germany
+  - USA
   - Remote
   remote_only: false
   past_24h_only: true
