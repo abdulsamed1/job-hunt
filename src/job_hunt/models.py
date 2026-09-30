@@ -101,6 +101,7 @@ class JobPosting(BaseModel):
     salary_max: Optional[float] = None
     salary_currency: Optional[str] = None
     application_type: Optional[str] = None  # "easy_apply" | "external_url" | None
+    rezi_resume_id: Optional[str] = None  # Rezi-side resume created for this job, if any
     state: JobState = JobState.DISCOVERED
     posted_at: Optional[str] = None
     created_at: Optional[str] = Field(

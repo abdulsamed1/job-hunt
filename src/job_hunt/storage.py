@@ -59,6 +59,7 @@ class Storage:
                     salary_max REAL,
                     salary_currency TEXT,
                     application_type TEXT,
+                    rezi_resume_id TEXT,
                     state TEXT NOT NULL DEFAULT 'DISCOVERED',
                     posted_at TEXT,
                     created_at TEXT NOT NULL,
@@ -143,6 +144,8 @@ class Storage:
             job_cols = {row["name"] for row in cursor.fetchall()}
             if "application_type" not in job_cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN application_type TEXT")
+            if "rezi_resume_id" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN rezi_resume_id TEXT")
             conn.commit()
 
     def add_job(self, job: JobPosting) -> Tuple[JobPosting, bool]:
@@ -240,6 +243,30 @@ class Storage:
             )
             conn.commit()
             return job, True
+
+    def save_rezi_resume_id(self, job_id: int, rezi_resume_id: str) -> None:
+        """Record the Rezi-side resume ID created for a job (never the master ID)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE jobs SET rezi_resume_id = ?, updated_at = ? WHERE id = ?",
+                (rezi_resume_id, now, job_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO audit_log (job_id, from_state, to_state, timestamp, details)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (job_id, None, "REZI_MIRRORED", now, f"Rezi resume created: {rezi_resume_id}"),
+            )
+            conn.commit()
+
+    def get_rezi_resume_id(self, job_id: int) -> Optional[str]:
+        """Fetch the Rezi-side resume ID for a job, if any."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("SELECT rezi_resume_id FROM jobs WHERE id = ?", (job_id,))
+            row = cursor.fetchone()
+            return row["rezi_resume_id"] if row else None
 
     def get_job(self, job_id: int) -> Optional[JobPosting]:
         """Fetch job posting by id."""
@@ -797,6 +824,7 @@ class Storage:
             salary_max=row["salary_max"],
             salary_currency=row["salary_currency"],
             application_type=row["application_type"],
+            rezi_resume_id=row["rezi_resume_id"] if "rezi_resume_id" in row.keys() else None,
             state=JobState(row["state"]),
             posted_at=row["posted_at"],
             created_at=row["created_at"],

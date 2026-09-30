@@ -136,3 +136,22 @@ def test_evaluation_and_cv_persistence(storage):
     assert saved_cv is not None
     assert saved_cv.verification_passed is True
     assert storage.get_job(saved.id).state == JobState.TAILORED
+
+
+def test_rezi_resume_id_roundtrip(tmp_path):
+    from job_hunt.models import JobPosting
+    from job_hunt.storage import Storage
+
+    storage = Storage(tmp_path / "rezi.db")
+    job = JobPosting(
+        source="test", title="Backend Engineer", company="Co",
+        raw_url="https://example.com/1", canonical_url="https://example.com/1",
+        canonical_url_hash="h-rezi-1", role_fingerprint="rf-rezi-1", content_hash="c1",
+    )
+    saved, is_new = storage.add_job(job)
+    assert is_new is True
+    assert storage.get_rezi_resume_id(saved.id) is None
+
+    storage.save_rezi_resume_id(saved.id, "rezi-abc-123")
+    assert storage.get_rezi_resume_id(saved.id) == "rezi-abc-123"
+    assert storage.get_job(saved.id).rezi_resume_id == "rezi-abc-123"

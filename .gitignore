@@ -5,6 +5,9 @@ _bmad-output/
 __pycache__/
 *.pyc
 .env
+# Rezi: account config carries PII; tokens are password-equivalent
+config/rezi.json
+.rezi_token
 .pytest_cache/
 *.db
 *.sqlite3

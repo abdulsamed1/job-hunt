@@ -159,22 +159,87 @@ class PipelineOrchestrator:
         logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
         return evaluated_count
 
-    def run_cv_stage(self, limit: int = 50) -> int:
+    def run_cv_stage(
+        self,
+        limit: int = 50,
+        use_rezi: bool = False,
+        rezi_client: Optional[Any] = None,
+        rezi_max_per_run: int = 10,
+        generate_pdf: bool = True,
+    ) -> int:
         """Stage 6 & 7: Generate fact-checked tailored CVs for eligible jobs."""
         eligible_jobs = self.storage.get_jobs_by_state(JobState.ELIGIBLE, limit=limit)
         tailored_count = 0
+        rezi_done = 0
         for job in eligible_jobs:
-            tailored_cv = self.cv_tailor.generate_tailored_cv(job, self.profile)
+            tailored_cv = self.cv_tailor.generate_tailored_cv(
+                job, self.profile, generate_pdf=generate_pdf
+            )
             self.storage.save_tailored_cv(tailored_cv)
             tailored_count += 1
+            if use_rezi and rezi_done < rezi_max_per_run:
+                rezi_done += self._mirror_to_rezi(job, rezi_client=rezi_client)
 
         logger.info("CV tailoring complete. Tailored %d CVs.", tailored_count)
         return tailored_count
 
+    def _mirror_to_rezi(self, job: JobPosting, rezi_client: Optional[Any] = None) -> int:
+        """Mirror a tailored CV to Rezi (create-only). Returns 1 on success, else 0.
+
+        Any Rezi failure falls back to local-only silently-by-design: the local
+        tailored CV is already saved, so the pipeline never depends on Rezi.
+        """
+        try:
+            return asyncio.run(self._mirror_to_rezi_async(job, rezi_client))
+        except Exception as exc:  # ReziNotConfigured, ReziAuthExpired, ReziError
+            logger.warning("Rezi mirror skipped for job %s: %s", job.id, exc)
+            return 0
+
+    async def _mirror_to_rezi_async(
+        self, job: JobPosting, rezi_client: Optional[Any] = None
+    ) -> int:
+        from job_hunt.rezi import (
+            ReziMCPClient,
+            build_rezi_resume_data,
+        )
+
+        if job.id is not None and self.storage.get_rezi_resume_id(job.id):
+            logger.info("Job %s already mirrored to Rezi; skipping", job.id)
+            return 0
+
+        owns_client = rezi_client is None
+        client = rezi_client or ReziMCPClient()
+        try:
+            payload = build_rezi_resume_data(job, self.profile)
+            # Fact gate: payload must only contain verified profile facts
+            verified_skills = {s.lower() for s in (self.profile.verified_skills or [])}
+            payload_skills = [
+                s.get("name", "").lower() for s in payload["data"]["skills"].values()
+            ]
+            if any(s not in verified_skills for s in payload_skills):
+                logger.warning("Rezi payload failed fact gate for job %s; skipping", job.id)
+                return 0
+            created = await client.write_resume(payload)  # create: no resume_id
+            rezi_id = created.get("id")
+            if not rezi_id:
+                logger.warning("Rezi write returned no id for job %s", job.id)
+                return 0
+            read_back = await client.read_resume(rezi_id)
+            if read_back.get("name") != payload["name"]:
+                logger.warning("Rezi read-back name drift for job %s", job.id)
+                return 0
+            if job.id is not None:
+                self.storage.save_rezi_resume_id(job.id, rezi_id)
+            logger.info("Mirrored job %s to Rezi resume %s", job.id, rezi_id)
+            return 1
+        finally:
+            if owns_client:
+                await client.aclose()
+
     # Alias for web API & consistency
-    def run_tailoring_stage(self, limit: int = 50) -> int:
+    def run_tailoring_stage(self, limit: int = 50, use_rezi: bool = False) -> int:
         """Alias for run_cv_stage."""
-        return self.run_cv_stage(limit=limit)
+        return self.run_cv_stage(limit=limit, use_rezi=use_rezi)
 
     async def run_application_stage(self, limit: int = 10, dry_run: bool = True, linkedin_approved: bool = False) -> int:
         """Stage 8 & 9: Launch browser automation to fill and submit applications."""
@@ -247,7 +312,7 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
@@ -259,7 +324,7 @@ class PipelineOrchestrator:
         evaluated = await self.run_evaluation_stage_async()
 
         # 3. Tailored CV
-        tailored = self.run_cv_stage()
+        tailored = self.run_cv_stage(use_rezi=use_rezi)
 
         # 4. Applications (with strict duplicate avoidance)
         applied = await self.run_application_stage(dry_run=dry_run, linkedin_approved=linkedin_approved)
