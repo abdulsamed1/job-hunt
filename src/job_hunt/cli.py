@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--job-id", type=int, default=None, help="Apply to specific job ID")
     p_apply.add_argument("--limit", type=int, default=10, help="Max applications to process")
     p_apply.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
+    p_apply.add_argument("--linkedin-approved", action="store_true", help="Explicit human approval for live LinkedIn submits (required with --live on LinkedIn jobs)")
     p_apply.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     # run
@@ -76,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--interval", type=int, default=3600, help="Cycle interval in seconds (default: 3600)")
     p_run.add_argument("--once", action="store_true", help="Execute a single pipeline cycle and exit")
     p_run.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
+    p_run.add_argument("--linkedin-approved", action="store_true", help="Explicit human approval for live LinkedIn submits (required with --live on LinkedIn jobs)")
     p_run.add_argument("--sources-limit", type=int, default=None, help="Limit sources per cycle")
     p_run.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
     p_run.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic evaluation only")
@@ -201,12 +203,13 @@ def cmd_apply(args: argparse.Namespace) -> None:
             orch.profile,
             resume_file_path=resume_path,
             dry_run=not args.live,
+            linkedin_approved=args.linkedin_approved,
         ))
         orch.storage.record_application(record)
         print(f"Application stage completed for Job #{job.id} ({job.title}): {record.state} ({mode} mode).")
         return
 
-    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live))
+    count = asyncio.run(orch.run_application_stage(limit=args.limit, dry_run=not args.live, linkedin_approved=args.linkedin_approved))
     print(f"Application stage completed: {count} applications processed ({mode} mode).")
 
 
@@ -220,7 +223,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     if args.once:
         logger.info("Executing single autonomous pipeline cycle (mode=%s)...", "LIVE" if args.live else "DRY-RUN")
-        results = asyncio.run(orch.run_cycle(dry_run=not args.live, max_sources=args.sources_limit))
+        results = asyncio.run(orch.run_cycle(dry_run=not args.live, max_sources=args.sources_limit, linkedin_approved=args.linkedin_approved))
         print("\n==================== PIPELINE CYCLE SUMMARY ====================")
         for k, v in results.items():
             if k not in ("daily_metrics", "database_stats"):

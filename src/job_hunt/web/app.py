@@ -60,6 +60,7 @@ class ActionRequest(BaseModel):
     threshold: Optional[float] = 70.0
     live: Optional[bool] = False
     max_sources: Optional[int] = None
+    linkedin_approved: Optional[bool] = False
 
 
 async def _execute_async_action(action_name: str, coro_fn, *args, **kwargs):
@@ -292,6 +293,7 @@ async def api_action_apply(req: ActionRequest, background_tasks: BackgroundTasks
         orchestrator.run_application_stage,
         limit=req.limit or 10,
         dry_run=dry_run,
+        linkedin_approved=req.linkedin_approved or False,
     )
     return {"message": f"Applications initiated ({'LIVE' if req.live else 'DRY-RUN'})", "status": "started"}
 
@@ -309,6 +311,7 @@ async def api_action_cycle(req: ActionRequest, background_tasks: BackgroundTasks
         orchestrator.run_single_cycle,
         dry_run=dry_run,
         max_sources=req.max_sources,
+        linkedin_approved=req.linkedin_approved or False,
     )
     return {"message": f"Full pipeline cycle initiated ({'LIVE' if req.live else 'DRY-RUN'})", "status": "started"}
 

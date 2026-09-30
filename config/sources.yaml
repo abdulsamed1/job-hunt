@@ -3,39 +3,21 @@ sources:
   name: linkedin_remote_worldwide
   url: https://www.linkedin.com/jobs/
   queries:
-  - Software Engineer
   - Backend Engineer
-  - Full Stack Engineer
   - Python Developer
-  - Blockchain
-  - Distributed Systems Engineer
-  - Cloud Infrastructure Engineer
-  - Senior Software Engineer
-  - DevOps Engineer
-  - AI Engineer
-  - AI Developer
-  - Data Engineer
-  - Site Reliability Engineer
-  - Platform Engineer
-  - Infrastructure Engineer
+  - Software Engineer
   locations:
   - Worldwide
   - Remote
   - Egypt
-  - Saudi Arabia
-  - UAE
-  - United States
-  - European Union
-  - United Kingdom
-  - Germany
-  - Canada
-  - Netherlands
-  - Singapore
-  - Australia
   remote_only: false
   past_24h_only: false
-  max_pages_per_query: 10
-  target_jobs_count: 1000
+  max_pages_per_query: 2
+  target_jobs_count: 50
+  # Safety posture (ai-job-search best practices): LinkedIn guest endpoints are
+  # personal-use only per LinkedIn ToS — keep volume low, dry-run by default,
+  # and never auto-submit without explicit human approval.
+  linkedin_require_approval: true
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe

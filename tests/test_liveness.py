@@ -68,6 +68,32 @@ def test_liveness_detector_cloudflare_challenge_guard():
     assert "challenge" in reason.lower() or "cloudflare" in reason.lower()
 
 
+def test_liveness_linkedin_boilerplate_in_description_stays_live():
+    detector = LivenessDetector()
+    html = """
+    <html><body>
+      <div class="topcard"><h1>Senior Python Engineer</h1><button>Apply</button></div>
+      <div class="show-more-less-html__markup"><p>Note: we are "no longer accepting applications" for last year's intern role quoted here.</p></div>
+    </body></html>
+    """
+    is_live, reason = detector.check_html_content(html, "https://www.linkedin.com/jobs/view/123")
+    assert is_live is True
+
+
+def test_liveness_linkedin_topcard_banner_marks_expired():
+    detector = LivenessDetector()
+    html = """
+    <html><body>
+      <figure class="closed-job closed-job__flavor topcard__flavor-row">
+        <figcaption>No longer accepting applications</figcaption>
+      </figure>
+      <div class="show-more-less-html__markup"><p>Great role, now closed.</p></div>
+    </body></html>
+    """
+    is_live, reason = detector.check_html_content(html, "https://www.linkedin.com/jobs/view/123")
+    assert is_live is False
+
+
 @pytest.mark.asyncio
 async def test_liveness_async_http_404():
     detector = LivenessDetector()
@@ -81,3 +107,15 @@ async def test_liveness_async_http_404():
 
     assert is_live is False
     assert "404" in reason
+
+
+def test_liveness_linkedin_second_phrase_boilerplate_stays_live():
+    detector = LivenessDetector()
+    html = """
+    <html><body>
+      <div class="topcard"><h1>Open Backend Role</h1><button>Apply</button></div>
+      <div class="description__text"><p>A sister team notes their applications are closed for this cycle.</p></div>
+    </body></html>
+    """
+    is_live, _ = detector.check_html_content(html, "https://www.linkedin.com/jobs/view/456")
+    assert is_live is True

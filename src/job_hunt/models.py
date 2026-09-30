@@ -166,6 +166,7 @@ class CandidateProfile(BaseModel):
     years_of_experience: int = 5
     summary: Optional[str] = None
     verified_skills: List[str] = Field(default_factory=list)
+    languages: List[str] = Field(default_factory=list)  # working languages, e.g. ["English", "Arabic"]
     verified_experiences: List[Experience] = Field(default_factory=list)
     verified_projects: List[Project] = Field(default_factory=list)
     verified_education: List[Education] = Field(default_factory=list)

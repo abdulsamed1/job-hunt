@@ -89,6 +89,42 @@ MAX_RETRIES = 3
 RETRY_DELAY_BASE = 2.0  # exponential backoff base in seconds
 
 
+def jobage_to_tpr(days: int) -> Optional[str]:
+    """Convert a recency window in days to LinkedIn's f_TPR seconds value."""
+    if not days or days <= 0:
+        return None
+    return f"r{days * 86400}"
+
+
+def worktype_flag(mode: Optional[str]) -> Optional[str]:
+    """Map workplace-type filter to LinkedIn's f_WT flag: onsite=1, remote=2, hybrid=3."""
+    switch = (mode or "").lower()
+    if switch == "remote":
+        return "2"
+    if switch == "hybrid":
+        return "3"
+    if switch in ("onsite", "on-site"):
+        return "1"
+    return None
+
+
+def is_linkedin_job_active(html: str) -> bool:
+    """Check a LinkedIn guest detail page for the closed-job banner, scoped to the top card.
+
+    Recruiter boilerplate inside the description can quote phrases like "no longer
+    accepting applications" for *other* roles, so only markup before the description
+    block counts. Absence of a banner is absence of evidence, not proof of openness.
+    """
+    if not html or not html.strip():
+        return False
+    lowered = html.lower()
+    desc_start = lowered.find("show-more-less-html__markup")
+    if desc_start == -1:
+        desc_start = lowered.find("description__text")
+    topcard = lowered[:desc_start] if desc_start != -1 else lowered
+    return "closed-job__flavor" not in topcard and "no longer accepting applications" not in topcard
+
+
 class LinkedInAdapter(DiscoveryAdapter):
     """Discovers live software engineering jobs from LinkedIn public guest search."""
 
@@ -141,9 +177,9 @@ class LinkedInAdapter(DiscoveryAdapter):
                 "count": 10,
             }
             if remote_only:
-                params["f_WT"] = "2"
+                params["f_WT"] = worktype_flag("remote")
             if past_24h_only:
-                params["f_TPR"] = "r86400"
+                params["f_TPR"] = jobage_to_tpr(1)
 
             url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?{urllib.parse.urlencode(params)}"
             headers = {
@@ -158,7 +194,7 @@ class LinkedInAdapter(DiscoveryAdapter):
                 try:
                     resp = await client.get(url, headers=headers, timeout=15.0, follow_redirects=True)
                     if resp.status_code == 429:
-                        delay = rate_limit_delay * (2 ** attempt)
+                        delay = rate_limit_delay * (2 ** attempt) + random.uniform(0, 0.5)
                         logger.warning("LinkedIn rate limited (429), backing off for %.1fs", delay)
                         await asyncio.sleep(delay)
                         rate_limit_delay = min(rate_limit_delay * 2, 30.0)
@@ -182,13 +218,13 @@ class LinkedInAdapter(DiscoveryAdapter):
                 except Exception as exc:
                     logger.debug("LinkedIn query (%s, %s, %d) attempt %d failed: %s", kw, loc, start, attempt + 1, exc)
                     if attempt < MAX_RETRIES - 1:
-                        await asyncio.sleep(RETRY_DELAY_BASE * (2 ** attempt))
+                        await asyncio.sleep(RETRY_DELAY_BASE * (2 ** attempt) + random.uniform(0, 0.5))
 
             # Adaptive pacing: slow down if we're getting too many results, speed up if not
             if len(postings) > target_count * 0.8:
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.3 + random.uniform(0, 0.3))
             else:
-                await asyncio.sleep(rate_limit_delay)
+                await asyncio.sleep(rate_limit_delay + random.uniform(0, 0.4))
 
         logger.info("LinkedIn discovery completed: %d unique jobs harvested.", len(postings))
         return postings
@@ -200,75 +236,98 @@ class LinkedInAdapter(DiscoveryAdapter):
         postings: List[JobPosting] = []
 
         for card in cards:
-            title_elem = card.find("h3", class_="base-search-card__title")
-            company_elem = card.find("h4", class_="base-search-card__subtitle")
-            location_elem = card.find("span", class_="job-search-card__location")
-            link_elem = card.find("a", class_="base-card__full-link")
-            time_elem = card.find("time")
-
-            title = title_elem.get_text(strip=True) if title_elem else ""
-            company = company_elem.get_text(strip=True) if company_elem else ""
-            location = location_elem.get_text(strip=True) if location_elem else "Remote"
-            raw_url = link_elem["href"].split("?")[0] if link_elem and "href" in link_elem.attrs else ""
-
-            if not title or not raw_url:
+            try:
+                posting = self._parse_single_card(card, entry)
+            except Exception as exc:
+                logger.debug("Skipping malformed LinkedIn card: %s", exc)
                 continue
-
-            canon_url = normalize_url(raw_url)
-            external_id = (
-                card.get("data-entity-urn", "")
-                .replace("urn:li:jobPosting:", "")
-                .strip()
-            )
-            posted_at = (
-                time_elem.get("datetime")
-                if time_elem and time_elem.has_attr("datetime")
-                else (time_elem.get_text(strip=True) if time_elem else "")
-            )
-
-            # Try to find job description snippet in the card
-            description_elem = card.find("div", class_="base-search-card__description")
-            description_snippet = description_elem.get_text(strip=True) if description_elem else ""
-
-            description = (
-                f"{title} position at {company}. Location: {location}. "
-                f"Discovered via LinkedIn Jobs. Posted: {posted_at}."
-            )
-            if description_snippet:
-                description += f" Description: {description_snippet}"
-
-            # Detect application type: Easy Apply vs External URL
-            application_type = None
-            easy_apply_btn = card.find("button", string=lambda t: t and "easy apply" in t.lower().strip())
-            if easy_apply_btn:
-                application_type = "easy_apply"
-            else:
-                # Check if the full-link points to an external ATS (not a LinkedIn view page)
-                if link_elem and "href" in link_elem.attrs:
-                    href = link_elem["href"].split("?")[0]
-                    if "linkedin.com/jobs/view" not in href:
-                        application_type = "external_url"
-
-            posting = JobPosting(
-                external_id=external_id or None,
-                source="linkedin",
-                source_name=company or "LinkedIn",
-                title=title,
-                company=company or "LinkedIn Employer",
-                raw_url=raw_url,
-                canonical_url=canon_url,
-                canonical_url_hash=canonical_url_hash(canon_url),
-                role_fingerprint=compute_role_fingerprint(company, title, location),
-                content_hash=content_hash(description),
-                location=location,
-                description=description,
-                posted_at=posted_at or None,
-                application_type=application_type,
-                metadata={"source_platform": "linkedin", "remote_flag": not entry.get("remote_only", False)},
-            )
-            postings.append(posting)
+            if posting is not None:
+                postings.append(posting)
 
         return postings
+
+    def _parse_single_card(self, card: Any, entry: Dict[str, Any]) -> Optional[JobPosting]:
+        """Parse one job search card; returns None when the card carries no usable data."""
+        title_elem = card.find("h3", class_="base-search-card__title")
+        company_elem = card.find("h4", class_="base-search-card__subtitle")
+        location_elem = card.find("span", class_="job-search-card__location")
+        link_elem = card.find("a", class_="base-card__full-link")
+        time_elem = card.find("time")
+
+        title = title_elem.get_text(strip=True) if title_elem else ""
+        company = company_elem.get_text(strip=True) if company_elem else ""
+        location = location_elem.get_text(strip=True) if location_elem else "Remote"
+        raw_url = link_elem["href"].split("?")[0] if link_elem and "href" in link_elem.attrs else ""
+
+        if not title or not raw_url:
+            return None
+
+        canon_url = normalize_url(raw_url)
+        external_id = (
+            card.get("data-entity-urn", "")
+            .replace("urn:li:jobPosting:", "")
+            .strip()
+        )
+        posted_at = (
+            time_elem.get("datetime")
+            if time_elem and time_elem.has_attr("datetime")
+            else (time_elem.get_text(strip=True) if time_elem else "")
+        )
+
+        # Company profile URL when the subtitle carries an anchor
+        company_url = None
+        if company_elem:
+            company_link = company_elem.find("a", href=True)
+            if company_link:
+                company_url = company_link["href"].split("?")[0]
+
+        # Try to find job description snippet in the card
+        description_elem = card.find("div", class_="base-search-card__description")
+        description_snippet = description_elem.get_text(strip=True) if description_elem else ""
+
+        description = (
+            f"{title} position at {company}. Location: {location}. "
+            f"Discovered via LinkedIn Jobs. Posted: {posted_at}."
+        )
+        if description_snippet:
+            description += f" Description: {description_snippet}"
+
+        # Detect application type: Easy Apply vs External URL
+        application_type = None
+        easy_apply_btn = card.find("button", string=lambda t: t and "easy apply" in t.lower().strip())
+        if easy_apply_btn:
+            application_type = "easy_apply"
+        else:
+            # Check if the full-link points to an external ATS (not a LinkedIn view page)
+            if link_elem and "href" in link_elem.attrs:
+                href = link_elem["href"].split("?")[0]
+                if "linkedin.com/jobs/view" not in href:
+                    application_type = "external_url"
+
+        metadata: Dict[str, Any] = {
+            "source_platform": "linkedin",
+            "remote_flag": not entry.get("remote_only", False),
+        }
+        if company_url:
+            metadata["company_url"] = company_url
+
+        return JobPosting(
+            external_id=external_id or None,
+            source="linkedin",
+            source_name=company or "LinkedIn",
+            title=title,
+            company=company or "LinkedIn Employer",
+            raw_url=raw_url,
+            canonical_url=canon_url,
+            canonical_url_hash=canonical_url_hash(canon_url),
+            role_fingerprint=compute_role_fingerprint(company, title, location),
+            content_hash=content_hash(description),
+            location=location,
+            description=description,
+            posted_at=posted_at or None,
+            application_type=application_type,
+            metadata=metadata,
+        )
 
     async def fetch_full_description(self, job_id: str, client: httpx.AsyncClient) -> Optional[str]:
         """Fetch detailed job description text for a specific LinkedIn job ID."""

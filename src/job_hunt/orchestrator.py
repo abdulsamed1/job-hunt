@@ -62,7 +62,9 @@ class PipelineOrchestrator:
             llm_client=self.llm_client,
             use_llm=self.use_llm,
         )
-        self.browser_engine = browser_engine or BrowserApplicationEngine()
+        self.browser_engine = browser_engine or BrowserApplicationEngine(
+            require_linkedin_approval=self._linkedin_approval_required(),
+        )
         self.liveness = LivenessDetector()
         self.repost_detector = RepostDetector()
 
@@ -91,6 +93,18 @@ class PipelineOrchestrator:
                 )
         else:
             self.profile = profile
+
+    def _linkedin_approval_required(self) -> bool:
+        """Read the LinkedIn approval flag from sources config (default: required)."""
+        try:
+            sources = self.registry.load_sources_file(self.sources_path)
+            for entry in sources:
+                if isinstance(entry, dict) and entry.get("adapter") == "linkedin":
+                    if "linkedin_require_approval" in entry:
+                        return bool(entry["linkedin_require_approval"])
+        except Exception as e:
+            logger.warning("Could not read LinkedIn approval flag, defaulting to required: %s", e)
+        return True
 
     def stop(self) -> None:
         """Signal the orchestrator loop to stop gracefully."""
@@ -162,7 +176,7 @@ class PipelineOrchestrator:
         """Alias for run_cv_stage."""
         return self.run_cv_stage(limit=limit)
 
-    async def run_application_stage(self, limit: int = 10, dry_run: bool = True) -> int:
+    async def run_application_stage(self, limit: int = 10, dry_run: bool = True, linkedin_approved: bool = False) -> int:
         """Stage 8 & 9: Launch browser automation to fill and submit applications."""
         tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
         retry_jobs = self.storage.get_jobs_by_state(JobState.RETRY_PENDING, limit=limit)
@@ -218,6 +232,7 @@ class PipelineOrchestrator:
                 self.profile,
                 resume_file_path=resume_path,
                 dry_run=dry_run,
+                linkedin_approved=linkedin_approved,
             )
             self.storage.record_application(record)
             processed += 1
@@ -232,7 +247,7 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
@@ -247,7 +262,7 @@ class PipelineOrchestrator:
         tailored = self.run_cv_stage()
 
         # 4. Applications (with strict duplicate avoidance)
-        applied = await self.run_application_stage(dry_run=dry_run)
+        applied = await self.run_application_stage(dry_run=dry_run, linkedin_approved=linkedin_approved)
 
         stats = self.storage.get_summary_stats()
         daily_metrics = self.storage.get_daily_metrics()

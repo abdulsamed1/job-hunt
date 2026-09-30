@@ -58,6 +58,42 @@ CLEARANCE_PATTERNS = [
     re.compile(r"\bpolygraph\s+required\b", re.IGNORECASE),
 ]
 
+# Eligibility gate: explicit citizenship / residency / clearance bars.
+ELIGIBILITY_FAIL_PATTERNS = [
+    re.compile(r"must be (?:a )?citizens?(?: of [^.]+)?", re.IGNORECASE),
+    re.compile(r"citizenship (?:in|of) [a-z ]+ required", re.IGNORECASE),
+    re.compile(r"(?:permanent\s+residen\w+|full working rights).{0,40}required", re.IGNORECASE),
+    re.compile(r"only [a-z ]*citizens (?:may|can) apply", re.IGNORECASE),
+    re.compile(r"security clearance", re.IGNORECASE),
+]
+
+ELIGIBILITY_PASS_PATTERNS = [
+    re.compile(r"we sponsor", re.IGNORECASE),
+    re.compile(r"sponsorship available", re.IGNORECASE),
+    re.compile(r"international applicants welcome", re.IGNORECASE),
+    re.compile(r"visa holders considered", re.IGNORECASE),
+]
+
+# Languages checked as explicit job-condition requirements (not programming languages).
+KNOWN_LANGUAGES = [
+    "english", "danish", "norwegian", "swedish", "german", "french", "spanish",
+    "portuguese", "italian", "dutch", "polish", "arabic", "hindi", "chinese",
+    "mandarin", "japanese", "korean", "russian", "ukrainian", "turkish", "farsi",
+    "persian", "urdu", "hebrew", "greek", "czech", "slovak", "hungarian",
+    "romanian", "finnish", "croatian", "serbian", "bulgarian", "thai",
+    "vietnamese", "indonesian", "malay", "tagalog", "swahili", "bengali",
+]
+
+LANGUAGE_REQUIREMENT_TEMPLATES = [
+    r"fluent {lang}\b",
+    r"native {lang}\b",
+    r"{lang} (?:fluency|required|mandatory)\b",
+    r"must speak {lang}\b",
+    r"communicate .{{0,40}} in {lang}\b",
+    r"working language .{{0,20}}{lang}\b",
+    r"{lang} as (?:the )?working language\b",
+]
+
 
 STRICT_ONSITE_PATTERNS = [
     re.compile(r"\bno\s+remote\b", re.IGNORECASE),
@@ -87,6 +123,80 @@ class EvaluationEngine:
         self.min_score_threshold = min_score_threshold
         self.llm_client = llm_client
         self.use_llm = use_llm
+
+    def check_eligibility_gate(self, job: JobPosting) -> Tuple[str, Optional[str]]:
+        """Hard gate: explicit citizenship / residency / clearance bars.
+
+        Returns (verdict, quote). FAIL quotes the exact posting wording and must
+        stop scoring; PASS marks verified acceptance; UNVERIFIED means the posting
+        is silent and evaluation proceeds.
+        """
+        desc = job.description or ""
+        for pat in ELIGIBILITY_FAIL_PATTERNS:
+            match = pat.search(desc)
+            if match:
+                quote = match.group(0).strip()
+                # Negated or prospective contexts are not bars ("no clearance
+                # required", "able to obtain clearance").
+                prefix = desc[max(0, match.start() - 20):match.start()].lower()
+                if re.search(r"\b(no|not|without|none)\b", prefix):
+                    continue
+                if re.search(r"\b(obtain|eligible for|ability to obtain)\b", prefix):
+                    continue
+                return "FAIL", quote
+        for pat in ELIGIBILITY_PASS_PATTERNS:
+            match = pat.search(desc)
+            if match:
+                return "PASS", match.group(0).strip()
+        return "UNVERIFIED", None
+
+    def check_language_gate(
+        self, job: JobPosting, profile: CandidateProfile
+    ) -> Tuple[str, Optional[str]]:
+        """Hard gate: posting requires a working language the candidate never declared.
+
+        Returns (verdict, quote). FAIL quotes the requirement and must stop scoring.
+        Empty profile languages means no data to judge by -> UNVERIFIED (proceed).
+        Programming languages that are also verified skills (e.g. Python) are ignored.
+        """
+        declared = {lang.lower() for lang in (profile.languages or [])}
+        if not declared:
+            return "UNVERIFIED", None
+        text = f"{job.title} {job.description or ''}"
+        tech_skills = {s.lower() for s in (profile.verified_skills or [])}
+        required: List[str] = []
+        quotes: List[str] = []
+        for lang in KNOWN_LANGUAGES:
+            if lang in tech_skills:
+                continue
+            for template in LANGUAGE_REQUIREMENT_TEMPLATES:
+                match = re.search(template.format(lang=re.escape(lang)), text, re.IGNORECASE)
+                if match:
+                    required.append(lang)
+                    quotes.append(match.group(0).strip())
+                    break
+        if not required:
+            return "PASS", None
+        missing = [lang for lang in required if lang not in declared]
+        if missing:
+            idx = required.index(missing[0])
+            return "FAIL", quotes[idx]
+        return "PASS", quotes[0]
+
+    def _gate_rejection(
+        self, job: JobPosting, gate: str, verdict: str, quote: Optional[str]
+    ) -> EvaluationResult:
+        reason = f"{gate} gate {verdict}: '{quote}'" if quote else f"{gate} gate {verdict}"
+        return EvaluationResult(
+            job_id=job.id,
+            score=0.0,
+            eligible=False,
+            matched_skills=[],
+            missing_skills=[],
+            reasoning=f"Pre-filtered out: {reason}",
+            pre_filtered=True,
+            pre_filter_reason=reason,
+        )
 
     def pre_filter(self, job: JobPosting, profile: CandidateProfile) -> Tuple[bool, Optional[str]]:
         """Run fast deterministic pre-filters on title, clearance, and location."""
@@ -129,6 +239,13 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         """Synchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
+        # 0. Hard gates run before scoring (no LLM tokens spent on gated-out roles)
+        verdict, quote = self.check_eligibility_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Eligibility", verdict, quote)
+        verdict, quote = self.check_language_gate(job, profile)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Language", verdict, quote)
         # 1. Run pre-filter
         passed, reason = self.pre_filter(job, profile)
         if not passed:
@@ -165,6 +282,12 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         """Asynchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
+        verdict, quote = self.check_eligibility_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Eligibility", verdict, quote)
+        verdict, quote = self.check_language_gate(job, profile)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Language", verdict, quote)
         passed, reason = self.pre_filter(job, profile)
         if not passed:
             return EvaluationResult(

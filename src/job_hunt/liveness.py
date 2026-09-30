@@ -41,6 +41,24 @@ BOT_CHALLENGE_PATTERNS = [
     re.compile(r"cf-turnstile", re.IGNORECASE),
 ]
 
+# Boilerplate-prone patterns: recruiter descriptions quote these phrases for *other*
+# roles, so on LinkedIn detail pages they are evaluated against the top card only
+# (markup above the description block), never the full page text.
+_LINKEDIN_TOPCARD_ONLY = (
+    HARD_EXPIRED_PATTERNS[4],  # no longer accepting applications
+    HARD_EXPIRED_PATTERNS[9],  # applications closed
+)
+
+
+def _linkedin_topcard_text(normalized_html: str) -> str:
+    """Slice normalized LinkedIn HTML to the top card above the description block."""
+    lowered = normalized_html.lower()
+    desc_start = lowered.find("show-more-less-html__markup")
+    if desc_start == -1:
+        desc_start = lowered.find("description__text")
+    return normalized_html[:desc_start] if desc_start != -1 else normalized_html
+
+
 DEFAULT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -82,8 +100,22 @@ class LivenessDetector:
 
         normalized = normalize_for_liveness(html)
 
+        # LinkedIn detail pages: closed-banner check scoped to the top card, and
+        # boilerplate-prone phrases evaluated topcard-only to avoid false expiry
+        # from recruiter boilerplate quoting other closed roles in the description.
+        topcard_text = None
+        if "linkedin.com" in final_url.lower():
+            from job_hunt.discovery.adapters.linkedin import is_linkedin_job_active
+
+            if not is_linkedin_job_active(html):
+                return False, "LinkedIn posting expired / closed: closed-job banner in top card"
+            topcard_text = _linkedin_topcard_text(normalized)
+
         for pat in HARD_EXPIRED_PATTERNS:
-            match = pat.search(normalized)
+            haystack = normalized
+            if topcard_text is not None and pat in _LINKEDIN_TOPCARD_ONLY:
+                haystack = topcard_text
+            match = pat.search(haystack)
             if match:
                 matched_phrase = match.group(0).strip()
                 return False, f"Posting expired / closed: '{matched_phrase}'"

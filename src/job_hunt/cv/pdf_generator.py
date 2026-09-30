@@ -22,6 +22,48 @@ DEFAULT_CHROME_PATH = os.environ.get("CHROME_PATH", "/usr/bin/google-chrome")
 DEFAULT_MASTER_PDF = Path("/home/abdu/production/job-hunt/Abdulsamed_Hamdy.pdf")
 
 
+def verify_pdf_text_layer(
+    pdf_path: str | Path, profile: CandidateProfile
+) -> tuple[bool, List[str]]:
+    """Verify a compiled CV PDF the way an ATS parser sees it.
+
+    Extracts the embedded text layer with pymupdf and checks: text extracted at
+    all, email + phone present as literal text, no garbage glyphs, and dates
+    joined with ASCII hyphens (a Unicode dash drops the date on Workday import).
+    Returns (passed, checks) where checks names each failed condition.
+    """
+    checks: List[str] = []
+    try:
+        with pymupdf.open(str(pdf_path)) as doc:
+            text = "\n".join(page.get_text() for page in doc)
+    except Exception as exc:
+        return False, [f"could not open PDF: {exc}"]
+
+    if len(text.strip()) < 50:
+        checks.append("no extractable text layer")
+
+    if profile.email and profile.email.lower() not in text.lower():
+        checks.append(f"email '{profile.email}' not found as literal text")
+
+    profile_digits = re.sub(r"\D", "", profile.phone or "")
+    text_digits = re.sub(r"\D", "", text)
+    if len(profile_digits) < 7:
+        checks.append("profile phone too short to verify")
+    elif profile_digits[-7:] not in text_digits:
+        checks.append("phone digits not found as literal text")
+
+    if "\ufffd" in text or "(cid:" in text:
+        checks.append("garbage glyphs in text layer")
+
+    bad_dashes = re.findall(
+        r"\b(?:19|20)\d{2}\s*(?:[–—−]|[^\x00-\x7F\s])\s*(?:(?:19|20)\d{2}|Present)\b", text
+    )
+    if bad_dashes:
+        checks.append(f"non-ASCII dash in date ranges: {bad_dashes}")
+
+    return (len(checks) == 0), checks
+
+
 class ATSCVGenerator:
     """Generates professional, job-tailored PDFs preserving the candidate's master resume as single source of truth."""
 

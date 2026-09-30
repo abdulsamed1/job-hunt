@@ -13,6 +13,33 @@ from job_hunt.models import CandidateProfile, JobPosting, TailoredCV
 logger = logging.getLogger(__name__)
 
 
+TITLE_STOPWORDS = {
+    "senior", "junior", "lead", "staff", "principal", "engineer", "developer",
+    "remote", "hybrid", "onsite", "on-site", "full", "time", "and", "the",
+    "for", "with", "iii", "ii", "iv",
+}
+
+# Conservative synonym pairs only (abbreviation <-> canonical). Never invent coverage.
+KEYWORD_SYNONYMS = {
+    "k8s": "kubernetes",
+    "postgres": "postgresql",
+    "py": "python",
+    "tf": "terraform",
+    "ci": "ci/cd",
+}
+
+# Tech vocabulary for surfacing genuine gaps (preferred keywords). Only words in
+# this list, the profile skills, or the synonym map become table rows — plain
+# English words like "requires" or "experience" never do.
+TECH_VOCABULARY = {
+    "python", "go", "golang", "rust", "java", "typescript", "javascript", "react",
+    "node", "django", "fastapi", "flask", "kubernetes", "docker", "aws", "gcp",
+    "azure", "graphql", "sql", "postgresql", "mysql", "redis", "kafka",
+    "rabbitmq", "grpc", "linux", "terraform", "ci/cd", "ml", "etl", "spark",
+    "airflow", "prometheus", "grafana", "nginx", "elasticsearch",
+}
+
+
 class FactVerificationError(ValueError):
     """Raised when generated CV contains claims not verifiable from candidate profile."""
 
@@ -85,6 +112,34 @@ class CVTailor:
             if comp not in verified_companies:
                 violations.append(f"Unverified employer in CV: '{comp}'")
 
+        # 2b. Verify project/section headers: must be an employer, role title, or project
+        verified_projects = {p.name.lower() for p in profile.verified_projects}
+        role_titles = [e.title.lower() for e in profile.verified_experiences]
+        for m in re.finditer(r"###\s+([^\n\[]+)", cv_markdown):
+            header = m.group(1).strip()
+            header_name = re.split(r"\s+-\s+", header)[0].strip().lower()
+            if not header_name:
+                continue
+            known = (
+                header_name in verified_companies
+                or header_name in verified_projects
+                or any(header_name == t or header_name.startswith(t) or t in header_name for t in role_titles)
+            )
+            if not known:
+                violations.append(f"Unverified project or section in CV: '{header.strip()}'")
+
+        # 2c. Verify date ranges: every start/end token must exist in the verified source.
+        # Normalize unicode dashes first so "2021 – Present" cannot dodge the check.
+        datable_cv = re.sub(r"[–—−]", "-", cv_markdown)
+        for m in re.finditer(r"\*([^*\n]+?)\s+-\s+([^*\n|]+?)(?:\s*\|.*)?\*", datable_cv):
+            for token in (m.group(1).strip(), m.group(2).strip()):
+                tok_lower = token.lower()
+                if tok_lower in ("present", "current"):
+                    if "present" not in verified_source_text:
+                        violations.append(f"Unverified end date in CV: '{token}'")
+                elif token and tok_lower not in verified_source_text:
+                    violations.append(f"Unverified date in CV: '{token}'")
+
         # 3. Verify educational institutions
         verified_institutions = {ed.institution.lower() for ed in profile.verified_education}
         for ed in profile.verified_education:
@@ -92,6 +147,95 @@ class CVTailor:
 
         passed = len(violations) == 0
         return passed, violations
+
+    def _verify_rendered_pdf(
+        self, pdf_path_str: str, profile: CandidateProfile, log: List[str]
+    ) -> None:
+        """Run the ATS text-layer check on a rendered PDF and record failures in log."""
+        from job_hunt.cv.pdf_generator import verify_pdf_text_layer
+
+        pdf_ok, pdf_checks = verify_pdf_text_layer(pdf_path_str, profile)
+        if not pdf_ok:
+            log.append(f"ATS text-layer warnings: {'; '.join(pdf_checks)}")
+            logger.warning("ATS text-layer issues: %s", pdf_checks)
+
+    def keyword_coverage_table(
+        self, job: JobPosting, cv_markdown: str, profile: CandidateProfile
+    ) -> List[dict]:
+        """Map posting keywords to CV coverage without stuffing gaps.
+
+        Required = distinctive title words; preferred = description tech terms.
+        Status is one of: covered (verbatim in CV), synonym-only, missing (have it)
+        (profile supports it but CV omits it), missing (gap) (genuine gap: leave it).
+        """
+        title_words = [
+            w.lower()
+            for w in re.findall(r"\b[a-zA-Z][a-zA-Z0-9+#/.]*\b", job.title or "")
+            if len(w) > 2 and w.lower() not in TITLE_STOPWORDS
+        ]
+        desc_text = (job.description or "").lower()
+        verified_lower = {s.lower() for s in profile.verified_skills}
+        vocab = verified_lower | set(KEYWORD_SYNONYMS) | set(KEYWORD_SYNONYMS.values()) | TECH_VOCABULARY
+        preferred = sorted(
+            {w for w in re.findall(r"\b[a-z][a-z0-9+#/.]*\b", desc_text) if len(w) >= 2 and w in vocab}
+        )
+
+        cv_lower = cv_markdown.lower()
+        table: List[dict] = []
+        seen = set()
+        for kw in title_words + preferred:
+            if kw in seen:
+                continue
+            seen.add(kw)
+            priority = "required" if kw in title_words else "preferred"
+            if re.search(rf"\b{re.escape(kw)}\b", cv_lower):
+                status, note = "covered", "verbatim in CV"
+            else:
+                canonical = KEYWORD_SYNONYMS.get(kw, kw)
+                reverse = next((k for k, v in KEYWORD_SYNONYMS.items() if v == kw), None)
+                alt = canonical if canonical != kw else reverse
+                if alt and re.search(rf"\b{re.escape(alt)}\b", cv_lower):
+                    status, note = "synonym-only", f"present as '{alt}'"
+                elif kw in verified_lower or canonical in verified_lower or (alt and alt in verified_lower):
+                    status, note = "missing (have it)", "profile supports it; consider adding"
+                else:
+                    status, note = "missing (gap)", "genuine gap; leave missing"
+            table.append({"keyword": kw, "priority": priority, "status": status, "note": note})
+        return table
+
+    def trim_bullets(
+        self, bullets: List[str], job_keywords: Set[str], keep: int
+    ) -> Tuple[List[str], List[str]]:
+        """Relevance-weighted cutting: keep the `keep` highest-value bullets.
+
+        Value = keyword relevance first, uniqueness second (a bullet restating
+        what others already say is cut before a unique one). Returns (kept, cut).
+        """
+        if keep < 0:
+            raise ValueError("keep must be non-negative")
+        if len(bullets) <= keep:
+            return list(bullets), []
+
+        word_sets = [set(re.findall(r"\b\w+\b", b.lower())) for b in bullets]
+
+        def jaccard(a: Set[str], b: Set[str]) -> float:
+            if not a and not b:
+                return 1.0
+            union = a | b
+            return len(a & b) / len(union) if union else 0.0
+
+        scored = []
+        for i, (bullet, words) in enumerate(zip(bullets, word_sets)):
+            relevance = len(words.intersection(job_keywords))
+            overlaps = [jaccard(words, other) for j, other in enumerate(word_sets) if j != i]
+            uniqueness = 1.0 - (max(overlaps) if overlaps else 0.0)
+            scored.append((relevance * 10 + uniqueness, i, bullet))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        kept_idx = {idx for _, idx, _ in scored[:keep]}
+        kept = [b for i, b in enumerate(bullets) if i in kept_idx]
+        cut = [b for i, b in enumerate(bullets) if i not in kept_idx]
+        return kept, cut
 
     def build_master_cv(self, profile: CandidateProfile) -> str:
         """Construct the canonical fact-verified Master CV from profile facts."""
@@ -150,6 +294,7 @@ class CVTailor:
         profile: CandidateProfile,
         generate_pdf: bool = True,
         output_pdf_dir: str = "data/cvs",
+        max_bullets_per_role: Optional[int] = None,
     ) -> TailoredCV:
         """Generate a tailored CV highlighting relevant verified achievements for the job.
 
@@ -220,7 +365,10 @@ class CVTailor:
                 scored_bullets.append((overlap, bullet))
 
             scored_bullets.sort(key=lambda x: x[0], reverse=True)
-            for _, bullet in scored_bullets:
+            ordered = [bullet for _, bullet in scored_bullets]
+            if max_bullets_per_role is not None:
+                ordered, _ = self.trim_bullets(ordered, job_keywords, keep=max_bullets_per_role)
+            for bullet in ordered:
                 lines.append(f"- {bullet}")
 
         if profile.verified_projects:
@@ -250,6 +398,7 @@ class CVTailor:
         if generate_pdf and job.id:
             try:
                 from pathlib import Path
+                from job_hunt.cv.pdf_generator import verify_pdf_text_layer
                 out_path = Path(output_pdf_dir) / f"tailored_cv_{job.id}.pdf"
                 self.pdf_generator.generate_tailored_pdf_sync(
                     job=job,
@@ -258,6 +407,8 @@ class CVTailor:
                     tailored_summary=summary_text,
                 )
                 pdf_path_str = str(out_path.resolve())
+                # ATS text-layer verification on the compiled PDF
+                self._verify_rendered_pdf(pdf_path_str, profile, log)
             except Exception as e:
                 logger.warning("Could not render tailored PDF for Job %s: %s", job.id, e)
 

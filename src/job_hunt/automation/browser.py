@@ -108,6 +108,51 @@ CLOUDFLARE_TURNSTILE_SELECTORS = [
     "div[class*='Cloudflare']",
 ]
 
+# Hosts we trust for direct application-URL navigation.
+KNOWN_ATS_APEXES = (
+    "greenhouse.io",
+    "lever.co",
+    "myworkdayjobs.com",
+    "workday.com",
+    "ashbyhq.com",
+    "smartrecruiters.com",
+    "workable.com",
+)
+
+PORTAL_HOSTS = (
+    "linkedin.com",
+    "indeed.com",
+    "glassdoor.com",
+    "remoteok.com",
+)
+
+
+def classify_apply_host(url: str) -> str:
+    """Classify an apply URL host as "ats", "portal", or "unverified".
+
+    Matching is exact-apex or valid subdomain only, so look-alike prefix tricks
+    (evil-greenhouse.io), suffix spoofing (x.greenhouse.io.evil.com), and
+    userinfo tricks (greenhouse.io@evil.com) all fail closed to "unverified".
+    """
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return "unverified"
+    if parts.scheme not in ("http", "https"):
+        return "unverified"
+    host = (parts.hostname or "").lower()
+    if not host:
+        return "unverified"
+    for apex in KNOWN_ATS_APEXES:
+        if host == apex or host.endswith("." + apex):
+            return "ats"
+    for portal in PORTAL_HOSTS:
+        if host == portal or host.endswith("." + portal):
+            return "portal"
+    return "unverified"
+
 
 class BrowserApplicationEngine:
     """Automates form filling and submission on Greenhouse, Lever, Ashby, and standard ATS pages."""
@@ -119,6 +164,7 @@ class BrowserApplicationEngine:
         screenshots_dir: str = "data/screenshots",
         timeout_ms: int = 30000,
         captcha_solver: Optional[CaptchaSolver] = None,
+        require_linkedin_approval: bool = True,
     ):
         self.executable_path = executable_path
         self.headless = headless
@@ -126,6 +172,7 @@ class BrowserApplicationEngine:
         self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_ms = timeout_ms
         self.captcha_solver = captcha_solver or CaptchaSolver()
+        self.require_linkedin_approval = require_linkedin_approval
 
     async def _drop_new_tabs(self, page: Page) -> None:
         """Force same-tab navigation across all frames (lessons from career-ops/diagnose.ts).
@@ -177,6 +224,9 @@ class BrowserApplicationEngine:
                         continue
                     href = await link.get_attribute("href")
                     if href and href.startswith("http") and "submit" not in href.lower():
+                        if classify_apply_host(href) == "unverified":
+                            logger.warning("Skipping direct navigation to unverified host: %s", href)
+                            continue
                         logger.info("Following direct ATS application link: %s", href)
                         await page.goto(href, wait_until="domcontentloaded", timeout=self.timeout_ms)
                         await page.wait_for_timeout(2000)
@@ -622,18 +672,42 @@ class BrowserApplicationEngine:
             pass
         return False
 
-    async def _try_linkedin_external_apply(self, page: Page) -> bool:
-        """Handle LinkedIn's 'Apply with external URL' - navigates to the ATS site."""
+    async def _try_linkedin_external_apply(self, page: Page, allow_unverified: bool = False) -> bool:
+        """Handle LinkedIn's 'Apply with external URL' - navigates to the ATS site.
+
+        Untrusted-host guard: anchors pointing at hosts that are neither a known
+        ATS apex nor a known portal are skipped unless allow_unverified is set
+        (dry-run or explicit human approval). Postings are untrusted data and may
+        link anywhere.
+        """
         for sel in LINKEDIN_EASY_APPLY_SELECTORS + [
             "a[href*='apply' i]:not([href*='linkedin' i])",
         ]:
             try:
                 el = await page.query_selector(sel)
-                if el and await el.is_visible():
-                    await self._drop_new_tabs(page)
-                    await el.click(timeout=5000)
-                    await page.wait_for_timeout(3000)
-                    return True
+                if el is None:
+                    continue
+                try:
+                    visible = await el.is_visible()
+                except Exception:
+                    continue
+                if not visible:
+                    continue
+                href = None
+                try:
+                    href = await el.get_attribute("href")
+                except Exception:
+                    href = None
+                if href and href.strip().lower().startswith("http"):
+                    href = href.strip()
+                    host_kind = classify_apply_host(href)
+                    if host_kind == "unverified" and not allow_unverified:
+                        logger.warning("Refusing navigation to unverified apply host: %s", href)
+                        continue
+                await self._drop_new_tabs(page)
+                await el.click(timeout=5000)
+                await page.wait_for_timeout(3000)
+                return True
             except Exception:
                 continue
         return False
@@ -798,6 +872,7 @@ class BrowserApplicationEngine:
         profile: CandidateProfile,
         resume_file_path: Optional[str] = None,
         dry_run: bool = False,
+        linkedin_approved: bool = False,
     ) -> ApplicationRecord:
         """Navigate to application page, fill form, and autonomously submit or dry-run."""
         record = ApplicationRecord(
@@ -852,6 +927,17 @@ class BrowserApplicationEngine:
                 if is_linkedin:
                     logger.info("LinkedIn job detected - application type: %s", job.application_type or "unknown")
 
+                # LinkedIn approval gate: never submit without explicit human approval
+                # (dry-runs only fill + screenshot and are always allowed).
+                if is_linkedin and not dry_run and self.require_linkedin_approval and not linkedin_approved:
+                    record.state = JobState.FAILED
+                    record.error_message = (
+                        "Blocked: LinkedIn submit requires human approval "
+                        "(dry_run=False without linkedin_approved=True)"
+                    )
+                    logger.warning("Job %s blocked: %s", job.id, record.error_message)
+                    return record
+
                 # 1. Check for CAPTCHA (including Cloudflare Turnstile) and attempt resolution
                 captcha_detected = await self._detect_captcha(page) or (is_linkedin and await self._detect_cloudflare_turnstile(page))
                 if captcha_detected:
@@ -875,7 +961,9 @@ class BrowserApplicationEngine:
                 if is_linkedin:
                     if job.application_type == "external_url":
                         logger.info("LinkedIn External Apply - navigating to external ATS")
-                        external_opened = await self._try_linkedin_external_apply(page)
+                        external_opened = await self._try_linkedin_external_apply(
+                            page, allow_unverified=(dry_run or linkedin_approved)
+                        )
                         if external_opened:
                             await self._drop_new_tabs(page)
                             await self._dismiss_cookie_consent(page)
@@ -908,7 +996,9 @@ class BrowserApplicationEngine:
                         if easy_apply_opened:
                             await self._fill_linkedin_easy_apply_side_panel(page, profile)
                         else:
-                            external_opened = await self._try_linkedin_external_apply(page)
+                            external_opened = await self._try_linkedin_external_apply(
+                                page, allow_unverified=(dry_run or linkedin_approved)
+                            )
                             if external_opened:
                                 ctx = await self._locate_active_form_context(page)
                                 await self._fill_common_fields(ctx, profile)

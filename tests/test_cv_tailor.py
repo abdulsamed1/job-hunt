@@ -224,3 +224,118 @@ def test_stamp_job_description_on_master_pdf(tmp_path):
     assert "GlobalScale Inc" in out_text
     assert "Staff Backend Engineer" in out_text
     assert "distributed systems expert in Rust" in out_text
+
+
+def test_fact_verification_catches_unverified_project(profile):
+    tailor = CVTailor()
+    bad_cv = tailor.build_master_cv(profile) + "\n### SecretMoonshot\n*Stealth project*\n- Did secret things."
+    passed, violations = tailor.verify_cv_facts(bad_cv, profile)
+    assert passed is False
+    assert any("SecretMoonshot" in v for v in violations)
+
+
+def test_fact_verification_catches_date_mismatch(profile):
+    tailor = CVTailor()
+    bad_cv = tailor.build_master_cv(profile).replace("2021 - Present", "2021 - 2023")
+    passed, violations = tailor.verify_cv_facts(bad_cv, profile)
+    assert passed is False
+    assert any("2023" in v for v in violations)
+
+
+def test_keyword_coverage_table_statuses(profile):
+    tailor = CVTailor()
+    job = JobPosting(
+        source="test", title="Kubernetes Engineer", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        description="Requires Kubernetes and Terraform. Go experience preferred.",
+    )
+    cv = tailor.build_master_cv(profile)
+    table = tailor.keyword_coverage_table(job, cv, profile)
+    by_kw = {row["keyword"]: row for row in table}
+    assert by_kw["kubernetes"]["status"] == "covered"
+    assert by_kw["kubernetes"]["priority"] == "required"
+    assert by_kw["terraform"]["status"] == "missing (gap)"
+    assert by_kw["go"]["status"] in ("covered", "missing (have it)")
+    # No stuffed gaps: every covered keyword is verbatim in the CV text
+    for row in table:
+        if row["status"] == "covered":
+            assert row["keyword"].lower() in cv.lower()
+
+
+def test_trim_bullets_keeps_keyword_rich_lines():
+    tailor = CVTailor()
+    bullets = [
+        "Attended weekly team standup meetings.",
+        "Built Kubernetes operator in Go serving production traffic.",
+        "Updated internal wiki documentation pages.",
+    ]
+    kept, cut = tailor.trim_bullets(bullets, {"kubernetes", "go"}, keep=1)
+    assert kept == ["Built Kubernetes operator in Go serving production traffic."]
+    assert len(cut) == 2
+
+
+def _write_pdf(path, text: str):
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), text)
+    doc.save(str(path))
+    doc.close()
+
+
+def test_verify_pdf_text_layer_passes_clean_pdf(profile, tmp_path):
+    from job_hunt.cv.pdf_generator import verify_pdf_text_layer
+
+    pdf = tmp_path / "clean.pdf"
+    _write_pdf(pdf, f"Sam Taylor\nsam@example.com\n+1-555-0144\nAmazon 2021 - Present\nPython, Go")
+    passed, checks = verify_pdf_text_layer(str(pdf), profile)
+    assert passed is True, checks
+
+
+def test_verify_pdf_text_layer_catches_missing_email(profile, tmp_path):
+    from job_hunt.cv.pdf_generator import verify_pdf_text_layer
+
+    pdf = tmp_path / "noemail.pdf"
+    _write_pdf(pdf, "Sam Taylor\n+1-555-0144\nAmazon 2021 - Present")
+    passed, checks = verify_pdf_text_layer(str(pdf), profile)
+    assert passed is False
+    assert any("email" in c.lower() for c in checks)
+
+
+def test_verify_pdf_text_layer_catches_unicode_dash_dates(profile, tmp_path):
+    from job_hunt.cv.pdf_generator import verify_pdf_text_layer
+
+    pdf = tmp_path / "dash.pdf"
+    _write_pdf(pdf, "Sam Taylor\nsam@example.com\n+1-555-0144\nAmazon 2016–2024")
+    passed, checks = verify_pdf_text_layer(str(pdf), profile)
+    assert passed is False
+    assert any("dash" in c.lower() for c in checks)
+
+
+def test_generate_tailored_cv_applies_bullet_budget(profile):
+    tailor = CVTailor(use_llm=False)
+    job = JobPosting(
+        source="test", title="Kafka Engineer", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        description="Deep Kafka and Go experience required.",
+    )
+    tailored = tailor.generate_tailored_cv(job, profile, generate_pdf=False, max_bullets_per_role=1)
+    assert "processing 50M events" in tailored.content_markdown
+    assert "Improved query latency by 35%" not in tailored.content_markdown
+
+
+def test_verify_rendered_pdf_records_failures_in_log(profile, tmp_path):
+    tailor = CVTailor(use_llm=False)
+    bad_pdf = tmp_path / "bad.pdf"
+    _write_pdf(bad_pdf, "Sam Taylor\n+1-555-0144\nAmazon 2021 - Present")
+    log: list = []
+    tailor._verify_rendered_pdf(str(bad_pdf), profile, log)
+    assert any("ATS text-layer warnings" in entry for entry in log)
+
+    good_pdf = tmp_path / "good.pdf"
+    _write_pdf(good_pdf, "Sam Taylor\nsam@example.com\n+1-555-0144\nAmazon 2021 - Present")
+    log2: list = []
+    tailor._verify_rendered_pdf(str(good_pdf), profile, log2)
+    assert log2 == []

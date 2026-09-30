@@ -267,6 +267,87 @@ async def test_linkedin_adapter_detects_external_apply():
 
 
 @pytest.mark.asyncio
+async def test_linkedin_malformed_card_does_not_break_batch():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:111">
+        <h3 class="base-search-card__title"></h3>
+      </div>
+    </li>
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:222">
+        <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/good-role-222"></a>
+        <h3 class="base-search-card__title">Good Role</h3>
+        <h4 class="base-search-card__subtitle"><a href="https://www.linkedin.com/company/goodco">GoodCo</a></h4>
+        <span class="job-search-card__location">Remote</span>
+      </div>
+    </li>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        postings = await adapter.fetch(
+            {"adapter": "linkedin", "queries": ["x"], "locations": ["Remote"],
+             "max_pages_per_query": 1, "target_jobs_count": 10},
+            client,
+        )
+
+    assert len(postings) == 1
+    assert postings[0].title == "Good Role"
+    assert postings[0].metadata.get("company_url") == "https://www.linkedin.com/company/goodco"
+
+
+def test_linkedin_jobage_to_tpr():
+    from job_hunt.discovery.adapters.linkedin import jobage_to_tpr
+
+    assert jobage_to_tpr(1) == "r86400"
+    assert jobage_to_tpr(7) == "r604800"
+    assert jobage_to_tpr(0) is None
+    assert jobage_to_tpr(-3) is None
+
+
+def test_linkedin_worktype_flag():
+    from job_hunt.discovery.adapters.linkedin import worktype_flag
+
+    assert worktype_flag("remote") == "2"
+    assert worktype_flag("hybrid") == "3"
+    assert worktype_flag("onsite") == "1"
+    assert worktype_flag("on-site") == "1"
+    assert worktype_flag("anything-else") is None
+    assert worktype_flag(None) is None
+
+
+def test_linkedin_job_active_topcard_scope():
+    from job_hunt.discovery.adapters.linkedin import is_linkedin_job_active
+
+    closed_html = """
+    <html><body>
+      <figure class="closed-job closed-job__flavor topcard__flavor-row">
+        <figcaption>No longer accepting applications</figcaption>
+      </figure>
+      <div class="show-more-less-html__markup"><p>Great role.</p></div>
+    </body></html>
+    """
+    assert is_linkedin_job_active(closed_html) is False
+
+    boilerplate_html = """
+    <html><body>
+      <div class="topcard"><h1>Open Role</h1><button>Apply</button></div>
+      <div class="show-more-less-html__markup"><p>We are "no longer accepting applications" for a different closed role quoted here.</p></div>
+    </body></html>
+    """
+    assert is_linkedin_job_active(boilerplate_html) is True
+
+    assert is_linkedin_job_active("") is False
+
+
+@pytest.mark.asyncio
 async def test_feed_adapter_rss_xml_parsing():
     sample_xml = """<?xml version="1.0" encoding="UTF-8"?>
     <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">

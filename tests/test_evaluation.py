@@ -112,3 +112,81 @@ def test_low_fit_evaluation_rejected(engine, candidate):
     assert res.pre_filtered is False
     assert res.eligible is False
     assert res.score < 70.0
+
+
+def _swe_job(description: str, title: str = "Senior Backend Engineer") -> JobPosting:
+    return JobPosting(
+        source="test",
+        title=title,
+        company="Co",
+        raw_url="https://example.com",
+        canonical_url="https://example.com",
+        canonical_url_hash="h",
+        role_fingerprint="rf",
+        content_hash="c",
+        location="Remote",
+        description=description,
+    )
+
+
+def test_eligibility_gate_blocks_citizenship_requirement(engine, candidate):
+    job = _swe_job("Applicants must be citizens of Norway to apply. Python, FastAPI.")
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is True
+    assert res.eligible is False
+    assert res.score == 0.0
+    assert "citizens of norway" in res.reasoning.lower()
+
+
+def test_eligibility_gate_passes_sponsorship(engine, candidate):
+    job = _swe_job("We sponsor visa applications. International applicants welcome. Python, FastAPI.")
+    verdict, _ = engine.check_eligibility_gate(job)
+    assert verdict == "PASS"
+
+
+def test_language_gate_blocks_undeclared_language(engine, candidate):
+    candidate.languages = ["English", "Arabic"]
+    job = _swe_job("You must communicate with the Warsaw team in Polish. Fluent Polish required. Python.")
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is True
+    assert res.eligible is False
+    assert "polish" in res.reasoning.lower()
+
+
+def test_language_gate_passes_declared_language(engine, candidate):
+    candidate.languages = ["English", "Danish"]
+    job = _swe_job("Danish required as working language. Python, FastAPI, Docker, AWS.")
+    verdict, _ = engine.check_language_gate(job, candidate)
+    assert verdict == "PASS"
+
+
+def test_language_gate_unverified_without_profile_languages(engine, candidate):
+    candidate.languages = []
+    job = _swe_job("Fluent German required. Python, FastAPI.")
+    verdict, _ = engine.check_language_gate(job, candidate)
+    assert verdict == "UNVERIFIED"
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is False
+
+
+def test_gates_do_not_block_ordinary_posting(engine, candidate):
+    job = _swe_job("Build Python backends with FastAPI, Docker, AWS, PostgreSQL, Redis.")
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is False
+
+
+@pytest.mark.asyncio
+async def test_async_gates_block_before_scoring(engine, candidate):
+    gated = _swe_job("Applicants must be citizens of Norway to apply. Python, FastAPI.")
+    res = await engine.evaluate_async(gated, candidate)
+    assert res.pre_filtered is True
+    assert res.eligible is False
+    assert res.score == 0.0
+    assert "citizens of norway" in res.reasoning.lower()
+
+    candidate.languages = ["English"]
+    lang_gated = _swe_job("Fluent Polish required. Python, FastAPI.")
+    res2 = await engine.evaluate_async(lang_gated, candidate)
+    assert res2.pre_filtered is True
+    assert res2.eligible is False
+    assert "polish" in res2.reasoning.lower()
