@@ -785,3 +785,79 @@ async def test_google_jobs_mock_fetch():
     assert p.source == "google"
     assert p.external_id == "go-g123"
     assert p.metadata.get("remote_flag") is True
+
+
+def test_ashby_index_adapter_matching():
+    from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
+    a = AshbyIndexAdapter()
+    assert a.matches_url("https://jobs.solana.com/") is True
+    assert a.matches_url("https://jobs.ashbyhq.com/stellar") is False
+
+
+@pytest.mark.asyncio
+async def test_ashby_index_fans_out_to_org_boards():
+    from unittest.mock import patch
+    from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
+    from job_hunt.models import JobPosting
+
+    html = """
+    <html><body>
+      <a href="https://jobs.ashbyhq.com/helius/abc">Helius</a>
+      <a href="https://jobs.ashbyhq.com/helius/abc">Helius again</a>
+      <a href="https://jobs.ashbyhq.com/quicknode/def">QuickNode</a>
+      <a href="https://example.com/other">Other</a>
+    </body></html>
+    """
+
+    async def fake_get(self, url, **kwargs):
+        class R:
+            status_code = 200
+            text = html
+        return R()
+
+    seen_orgs = []
+
+    async def fake_board_fetch(self, entry, client):
+        seen_orgs.append(entry["url"])
+        return [JobPosting(
+            source="ashby", title="Dev", company="C",
+            raw_url="https://jobs.ashbyhq.com/x/1",
+            canonical_url="https://jobs.ashbyhq.com/x/1",
+            canonical_url_hash="h-x", role_fingerprint="rf-x", content_hash="c-x",
+        )]
+
+    from job_hunt.discovery.adapters import ashby_index as ai_mod
+    with patch.object(ai_mod.AshbyAdapter, "fetch", fake_board_fetch):
+        async with httpx.AsyncClient() as client:
+            with patch.object(type(client), "get", fake_get):
+                adapter = AshbyIndexAdapter()
+                postings = await adapter.fetch(
+                    {"adapter": "ashby-index", "url": "https://jobs.solana.com/",
+                     "name": "Solana Jobs", "max_orgs": 5},
+                    client,
+                )
+
+    assert len(postings) == 2  # deduped orgs: helius + quicknode
+    assert sorted(seen_orgs) == ["https://jobs.ashbyhq.com/helius", "https://jobs.ashbyhq.com/quicknode"]
+
+
+def test_feed_parser_tolerates_preamble_junk():
+    from job_hunt.discovery.adapters.feed import FeedAdapter
+
+    xml_text = (
+        "<style>.debugbar{display:none}</style>"
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<rss version=\"2.0\"><channel>"
+        "<item><title>Backend Engineer</title>"
+        "<link>https://example.com/jobs/1</link>"
+        "<description>Python role.</description>"
+        "<dc:creator xmlns:dc=\"http://purl.org/dc/elements/1.1/\">Acme</dc:creator>"
+        "</item></channel></rss>"
+    )
+    adapter = FeedAdapter()
+    postings = adapter._parse_rss_xml(
+        xml_text, {"name": "cryptojobs-feed", "url": "https://example.com/feed"}
+    )
+    assert len(postings) == 1
+    assert postings[0].title == "Backend Engineer"
+    assert postings[0].company == "Acme"

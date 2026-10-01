@@ -95,8 +95,17 @@ class FeedAdapter(DiscoveryAdapter):
     def _parse_rss_xml(self, xml_text: str, entry: Dict[str, Any]) -> List[JobPosting]:
         """Parse standard RSS/Atom XML feeds for job postings."""
         try:
+            import re as _re
             import xml.etree.ElementTree as ET
-            root = ET.fromstring(xml_text.strip())
+            # Feeds in the wild carry junk before the declaration (debug bars,
+            # BOMs, whitespace). Slice from the first XML-looking token.
+            cleaned = xml_text.strip()
+            for marker in ("<?xml", "<rss", "<feed", "<rdf"):
+                idx = cleaned.find(marker)
+                if idx > 0:
+                    cleaned = cleaned[idx:]
+                    break
+            root = ET.fromstring(cleaned)
             # Search both unqualified tags and wildcard namespaces
             items = root.findall(".//item") or [
                 el for el in root.iter() if el.tag.endswith("item") or el.tag.endswith("entry")

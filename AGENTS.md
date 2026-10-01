@@ -17,6 +17,27 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
+## Board coverage (verified live 2026-10-01, ~317 sources)
+
+- **RSS feeds that yield**: cryptojobslist, crypto.jobs, weworkremotely,
+  tokyodev, remote3, bitcoinjobs, jobspresso (`/jobs/feed/`), RemoteOK,
+  Remotive, arbeitnow, jobicy, cryptocurrencyjobs.
+- **ATS boards that yield**: greenhouse (coinbase, ripple, consensys, stripe…),
+  ashby (stellar, uniswap, opensea, alchemy + `ashby-index` for aggregators
+  like solana jobs), lever, workable, workday, bamboohr, smartrecruiters.
+- **JobSpy-pattern boards**: bayt (MENA, needs TLS impersonation via
+  `discovery/tls_fetch.py`), naukri (India, RSA token), indeed incl. Egypt,
+  ziprecruiter (US), glassdoor + google (opportunistic, degrade to []).
+- **Dead — do not re-add without re-probing**: polygon.technology jobs,
+  ethgigs, daojobs, cryptojobsdb, cryptojob.land, consensys.net/careers URL,
+  alchemy.com/jobs URL, stackoverflow.com/jobs (sunset), nftjobs, flexjobs
+  (paywall), talent.io (login), angel/wellfound/toptal/hired/arc/gun
+  (login-gated → manual-only, never automated).
+- **Feeds without job URLs** (cryptojobs.com) and **private Ashby APIs**
+  (chainlink-labs, aave) are intentionally not wired: no stable job identity.
+- Every new board must prove yield (`scan_source` count > 0) before its entry
+  stays; probing lives in triage, not in the product.
+
 ## Safety rules (violations fail review)
 
 1. **LinkedIn never auto-submits.** `require_linkedin_approval=True` default;

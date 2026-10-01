@@ -10,6 +10,7 @@ import httpx
 import yaml
 
 from job_hunt.discovery.adapters.ashby import AshbyAdapter
+from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
 from job_hunt.discovery.adapters.bamboohr import BambooHRAdapter
 from job_hunt.discovery.adapters.bayt import BaytAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
@@ -39,6 +40,7 @@ class SourceRegistry:
             GreenhouseAdapter(),
             LeverAdapter(),
             AshbyAdapter(),
+            AshbyIndexAdapter(),
             SmartRecruitersAdapter(),
             WorkdayAdapter(),
             WorkableAdapter(),

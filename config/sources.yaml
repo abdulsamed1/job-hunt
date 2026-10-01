@@ -837,7 +837,7 @@ sources:
   adapter: web
 - adapter: feed
   name: jobspresso
-  url: https://jobspresso.co/feed/
+  url: https://jobspresso.co/jobs/feed/
 - adapter: feed
   name: Remotive
   url: https://remotive.com/api/remote-jobs
@@ -949,3 +949,53 @@ sources:
 - adapter: web
   name: Remotive
   url: https://remotive.com/
+# --- Board expansion (verified 2026-10-01): RSS feeds, ATS boards, aggregators ---
+- adapter: feed
+  name: cryptojobslist-feed
+  url: https://api.cryptojobslist.com/jobs.rss
+- adapter: feed
+  name: bitcoinjobs-feed
+  url: https://bitbo.io/jobs/feed.xml
+- adapter: feed
+  name: crypto-jobs-feed
+  url: https://crypto.jobs/feed/rss
+- adapter: feed
+  name: remote3-feed
+  url: https://remote3.co/api/rss
+- adapter: feed
+  name: weworkremotely-feed
+  url: https://weworkremotely.com/remote-jobs.rss
+- adapter: feed
+  name: tokyodev-feed
+  url: https://www.tokyodev.com/atom.xml
+- adapter: feed
+  name: jobspresso-feed
+  url: https://jobspresso.co/jobs/feed/
+- adapter: greenhouse
+  name: coinbase-board
+  url: https://boards.greenhouse.io/coinbase
+- adapter: greenhouse
+  name: ripple-board
+  url: https://boards.greenhouse.io/ripple
+- adapter: ashby
+  name: uniswap-board
+  url: https://jobs.ashbyhq.com/uniswap
+- adapter: ashby
+  name: opensea-board
+  url: https://jobs.ashbyhq.com/opensea
+- adapter: ashby
+  name: alchemy-board
+  url: https://jobs.ashbyhq.com/alchemy
+- adapter: greenhouse
+  name: consensys-board
+  url: https://boards.greenhouse.io/consensys
+- adapter: ashby
+  name: stellar-board
+  url: https://jobs.ashbyhq.com/stellar
+- adapter: ashby-index
+  name: solana-ecosystem-index
+  url: https://jobs.solana.com/
+  max_orgs: 8
+- adapter: web
+  name: web3-career-jsonld
+  url: https://web3.career/
