@@ -9,7 +9,7 @@ crons = ["15 * * * *", "0 2 * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "jobhunt"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "85083fc7-13cc-4f52-b818-1e6f11b62562"
 
 [[queues.producers]]
 binding = "DISCOVER_Q"

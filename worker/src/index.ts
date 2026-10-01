@@ -248,7 +248,10 @@ export default {
     }
     if (url.pathname === "/recent") {
       const rows = await getJobsByState(db, "ELIGIBLE", 50);
-      return Response.json({ jobs: rows });
+      const latest: any = await db.prepare(
+        `SELECT title, company, location, url, source, score, state, discovered_at FROM jobs ORDER BY discovered_at DESC LIMIT 50`,
+      ).bind().all();
+      return Response.json({ eligible: rows, latest: latest.results });
     }
     if (url.pathname === "/queue" && request.method === "POST") {
       const body: any = await request.json().catch(() => ({}));
