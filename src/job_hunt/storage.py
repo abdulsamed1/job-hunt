@@ -136,6 +136,17 @@ class Storage:
 
                 CREATE INDEX IF NOT EXISTS idx_answers_job_id ON application_answers(job_id);
 
+                CREATE TABLE IF NOT EXISTS outcomes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    outcome TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    recorded_at TEXT NOT NULL,
+                    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_outcomes_job_id ON outcomes(job_id);
+
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id INTEGER NOT NULL,
@@ -347,6 +358,60 @@ class Storage:
                 (job_id,),
             )
             conn.commit()
+
+    def record_outcome(self, job_id: int, outcome: str, notes: str = "") -> None:
+        """Archive what happened to an application (interview/offer/rejected/hired)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO outcomes (job_id, outcome, notes, recorded_at) VALUES (?, ?, ?, ?)",
+                (job_id, outcome, notes, now),
+            )
+            conn.commit()
+
+    def get_outcomes(self, job_id: int) -> List[Dict[str, Any]]:
+        """Fetch archived outcomes for a job (newest last)."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT outcome, notes, recorded_at FROM outcomes WHERE job_id = ? ORDER BY id",
+                (job_id,),
+            )
+            return [
+                {"outcome": r["outcome"], "notes": r["notes"], "recorded_at": r["recorded_at"]}
+                for r in cursor.fetchall()
+            ]
+
+    def calibration_report(self) -> Dict[str, Any]:
+        """Score-band vs outcome report: which evaluation scores led anywhere.
+
+        Advisory only — it reports history, never retunes thresholds.
+        """
+        bands = [("0-45", 0.0, 45.0), ("45-60", 45.0, 60.0), ("60-75", 60.0, 75.0), ("75-100", 75.0, 101.0)]
+        report_bands = []
+        total = 0
+        with self._get_connection() as conn:
+            for name, low, high in bands:
+                rows = conn.execute(
+                    "SELECT job_id FROM evaluations WHERE score >= ? AND score < ? AND pre_filtered = 0",
+                    (low, high),
+                ).fetchall()
+                job_ids = [r["job_id"] for r in rows]
+                interviews = offers = 0
+                for jid in job_ids:
+                    outs = conn.execute(
+                        "SELECT outcome FROM outcomes WHERE job_id = ?", (jid,)
+                    ).fetchall()
+                    kinds = {o["outcome"] for o in outs}
+                    if kinds & {"interview", "offer", "hired"}:
+                        interviews += 1
+                    if kinds & {"offer", "hired"}:
+                        offers += 1
+                report_bands.append(
+                    {"band": name, "evaluated": len(job_ids),
+                     "interviews": interviews, "offers": offers}
+                )
+                total += len(job_ids)
+        return {"bands": report_bands, "total_evaluated": total}
 
     def get_job(self, job_id: int) -> Optional[JobPosting]:
         """Fetch job posting by id."""

@@ -89,6 +89,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_ui.add_argument("--port", type=int, default=8000, help="Port to serve web UI on (default: 8000)")
     p_ui.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
 
+    # doctor
+    p_doctor = subparsers.add_parser("doctor", help="Cold-start diagnostics: verify setup readiness")
+    p_doctor.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_doctor.add_argument("--sources", default="config/sources.yaml", help="Path to sources YAML")
+    p_doctor.add_argument("--profile", default="config/candidate_profile.json", help="Path to candidate profile JSON")
+
+    # outcome
+    p_outcome = subparsers.add_parser("outcome", help="Record what happened to an application")
+    p_outcome.add_argument("--job-id", type=int, required=True, help="Job ID to record outcome for")
+    p_outcome.add_argument("--status", required=True,
+                           choices=["applied", "interview", "offer", "rejected", "hired", "ghosted"],
+                           help="Outcome status")
+    p_outcome.add_argument("--notes", default="", help="Outcome notes")
+    p_outcome.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+
     return parser
 
 
@@ -255,6 +270,27 @@ def cmd_ui(args: argparse.Namespace) -> None:
     uvicorn.run("job_hunt.web.app:app", host=args.host, port=args.port, reload=args.reload)
 
 
+def cmd_doctor(args: argparse.Namespace) -> None:
+    from job_hunt.doctor import format_report, run_diagnostics
+
+    report = run_diagnostics(
+        db_path=args.db, sources_path=args.sources, profile_path=args.profile
+    )
+    print(format_report(report))
+    if not report["ok"]:
+        raise SystemExit(1)
+
+
+def cmd_outcome(args: argparse.Namespace) -> None:
+    storage = Storage(args.db)
+    job = storage.get_job(args.job_id)
+    if job is None:
+        print(f"No job with ID {args.job_id}.")
+        raise SystemExit(1)
+    storage.record_outcome(args.job_id, args.status, notes=args.notes)
+    print(f"Recorded outcome for Job #{args.job_id} ({job.title} at {job.company}): {args.status}")
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -268,6 +304,8 @@ def main() -> None:
         "apply": cmd_apply,
         "run": cmd_run,
         "ui": cmd_ui,
+        "doctor": cmd_doctor,
+        "outcome": cmd_outcome,
     }
 
     fn = dispatch.get(args.command)

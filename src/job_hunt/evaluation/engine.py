@@ -127,6 +127,29 @@ REMOTE_KEYWORDS = [
 ]
 
 
+def classify_tier(title: str, description: str = "") -> str:
+    """Classify seniority tier: intern | entry | mid | senior | lead.
+
+    Title keywords decide first; explicit years-of-experience requirements
+    override upward only (8+ years is never entry-level).
+    """
+    text = f"{title or ''}".lower()
+    if re.search(r"\bintern(?:ship)?\b", text):
+        return "intern"
+    if re.search(r"\bjunior\b|\bentry\b|\bgraduate\b|\bassociate\b", text):
+        return "entry"
+    if re.search(r"\bstaff\b|\bprincipal\b|\bmanager\b|\bdirector\b|\blead\b", text):
+        return "lead"
+    if re.search(r"\bsenior\b|\bsr\.?\b", text):
+        return "senior"
+    years = re.search(r"(\d+)\+?\s*years?", (description or "").lower())
+    if years and int(years.group(1)) >= 8:
+        return "senior"
+    if years and int(years.group(1)) >= 5:
+        return "senior" if re.search(r"\bsenior\b", (description or "").lower()) else "mid"
+    return "mid"
+
+
 class EvaluationEngine:
     """Evaluates job postings against a candidate profile using pre-filters, LLM, and heuristic fallback."""
 
