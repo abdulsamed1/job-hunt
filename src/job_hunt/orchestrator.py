@@ -113,7 +113,8 @@ class PipelineOrchestrator:
         self._running = False
 
     async def run_discovery_stage(
-        self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False
+        self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False,
+        source_name: Optional[str] = None,
     ) -> int:
         """Stage 1 & 2: Discover jobs across all sources and deduplicate.
 
@@ -122,6 +123,9 @@ class PipelineOrchestrator:
         the shared post-filters backstop the rest. Dateless postings always pass.
         """
         sources = self.registry.load_sources_file(self.sources_path)
+        if source_name:
+            sources = [s for s in sources
+                       if isinstance(s, dict) and s.get("name") == source_name]
         if max_sources:
             sources = sources[:max_sources]
         for entry in sources:

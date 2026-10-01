@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--limit", type=int, default=None, help="Limit number of sources to scan")
     p_scan.add_argument("--hours-old", type=int, default=24, help="Recency window in hours (0 disables)")
     p_scan.add_argument("--remote-only", action="store_true", help="Keep remote-signalled postings only")
+    p_scan.add_argument("--source", default=None, help="Run a single named source only (e.g. linkedin_geo_recent)")
     p_scan.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     # evaluate
@@ -155,7 +156,8 @@ def cmd_llm_status(args: argparse.Namespace) -> None:
 def cmd_scan(args: argparse.Namespace) -> None:
     orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources)
     new_jobs = asyncio.run(orch.run_discovery_stage(
-        max_sources=args.limit, hours_old=args.hours_old, remote_only=args.remote_only
+        max_sources=args.limit, hours_old=args.hours_old, remote_only=args.remote_only,
+        source_name=args.source,
     ))
     print(f"Scan completed: {new_jobs} new unique jobs added to tracker.")
 

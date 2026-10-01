@@ -359,3 +359,42 @@ async def test_run_discovery_stage_applies_recency_and_remote(orchestrator, tmp_
     new_jobs = await orchestrator.run_discovery_stage(hours_old=24, remote_only=True)
     assert new_jobs == 1  # only the fresh remote posting survives
     assert orchestrator.storage.get_job(1) is not None
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_stage_source_name_filter(orchestrator):
+    seen = []
+
+    class StubRegistry:
+        def load_sources_file(self, path):
+            return [
+                {"adapter": "test", "name": "a", "url": "https://a.example"},
+                {"adapter": "test", "name": "b", "url": "https://b.example"},
+            ]
+
+        async def discover_all(self, sources=None, **kwargs):
+            seen.extend(s.get("name") for s in (sources or []))
+            return []
+
+    orchestrator.registry = StubRegistry()
+    await orchestrator.run_discovery_stage(source_name="b", hours_old=0)
+    assert seen == ["b"]
+
+
+def test_cli_scan_accepts_source_and_windows():
+    from job_hunt.cli import build_parser
+
+    args = build_parser().parse_args(
+        ["scan", "--source", "linkedin_geo_recent", "--hours-old", "12", "--remote-only"]
+    )
+    assert args.source == "linkedin_geo_recent"
+    assert args.hours_old == 12
+    assert args.remote_only is True
+
+
+def test_web_action_request_accepts_windows():
+    from job_hunt.web.app import ActionRequest
+
+    req = ActionRequest(hours_old=12, remote_only=True)
+    assert req.hours_old == 12
+    assert req.remote_only is True

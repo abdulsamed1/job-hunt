@@ -1,0 +1,19 @@
+name = "jobhunt-scout"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# Hourly 24/7 scout: cheap stateless sources only (RSS/JSON + LinkedIn guest).
+# Heavy stages (browser apply, PDF tailoring) stay in GitHub Actions / local.
+[triggers]
+crons = ["15 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jobhunt-scout"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+QUERIES = "backend,fullstack,software"
+ALERT_MIN_SCORE = "3"
+# Secrets (never commit): wrangler secret put REZI_MCP_TOKEN
+# Optional Telegram alerts: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID

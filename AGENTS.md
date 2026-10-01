@@ -18,7 +18,6 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
 ## Discovery defaults (all 317 sources)
-
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
   Server-side where supported (LinkedIn TPR, Bayt/Naukri/Zip intervals,
   Indeed date filter); central `filter_recent` backstops the rest.
@@ -110,3 +109,15 @@ gives you structural context (callers, dependents, test coverage) that file sear
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
 <!-- /code-review-graph MCP tools -->
+
+## Deployment (free tiers)
+
+- **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
+  317-source 24h-remote sweep + 6-hourly LinkedIn micro sweep + dry-run apply.
+  Live runs only via manual dispatch with `live` + `linkedin_approved`.
+  Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
+- **Cloudflare Worker** (`worker/`): hourly scout shard (RSS/JSON feeds +
+  1 LinkedIn guest page per query) → D1 upsert → optional Telegram alerts.
+  Deploy: `wrangler login`, `d1 create`, `schema.sql`, `secret put`, `deploy`.
+  Browser/PDF/LLM-heavy stages NEVER run on Workers (10ms CPU, no Playwright).
+- **Never**: full pipeline on Workers, secrets in code, auto-submit without approval.

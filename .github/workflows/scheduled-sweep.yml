@@ -1,0 +1,83 @@
+name: scheduled-sweep
+
+on:
+  schedule:
+    # Daily full 317-source 24h-remote sweep (02:00 UTC)
+    - cron: "0 2 * * *"
+    # 6-hourly LinkedIn standing-target micro sweep
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Live submission (default dry-run)"
+        type: boolean
+        default: false
+      linkedin_approved:
+        description: "Explicit human approval for live LinkedIn submits"
+        type: boolean
+        default: false
+      full:
+        description: "Full 317-source sweep (else LinkedIn micro sweep only)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: jobhunt-pipeline
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      REZI_MCP_TOKEN: ${{ secrets.REZI_MCP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python + uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Install Chromium for Playwright
+        run: uv run python -m playwright install chromium --with-deps
+
+      - name: LinkedIn micro sweep (24h remote)
+        if: inputs.full != true && (github.event_name != 'schedule' || github.event.schedule != '0 2 * * *')
+        run: |
+          uv run python -m job_hunt.cli scan \
+            --source linkedin_geo_recent --hours-old 12 --remote-only
+          uv run python -m job_hunt.cli evaluate --limit 100 --no-llm
+          uv run python -m job_hunt.cli tailor --limit 20 --no-llm
+
+      - name: Full sweep (24h remote, all sources)
+        if: inputs.full == true || github.event_name == 'schedule' && github.event.schedule == '0 2 * * *'
+        run: |
+          uv run python -m job_hunt.cli scan --hours-old 24 --remote-only
+          uv run python -m job_hunt.cli evaluate --limit 400 --no-llm
+          uv run python -m job_hunt.cli tailor --limit 50 --no-llm
+
+      - name: Application stage (dry-run unless approved live)
+        run: |
+          LIVE_FLAG=""
+          APPROVAL_FLAG=""
+          if [ "${{ inputs.live }}" = "true" ]; then
+            LIVE_FLAG="--live"
+            if [ "${{ inputs.linkedin_approved }}" = "true" ]; then
+              APPROVAL_FLAG="--linkedin-approved"
+            fi
+          fi
+          uv run python -m job_hunt.cli apply --limit 10 $LIVE_FLAG $APPROVAL_FLAG
+
+      - name: Upload tracker DB + screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-${{ github.run_number }}
+          path: |
+            data/jobs.db
+            data/screenshots/
+          retention-days: 14
