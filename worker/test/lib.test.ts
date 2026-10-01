@@ -123,3 +123,83 @@ describe("matchAnswerToOption", () => {
     expect(checkboxAction("Follow us on LinkedIn")).toBe("skip");
   });
 });
+
+describe("ashby index fan-out", () => {
+  it("extracts unique org slugs in first-seen order", async () => {
+    const { extractAshbyOrgs } = await import("../src/adapters/ats.js");
+    const html = `
+      <a href="https://jobs.ashbyhq.com/Solana">x</a>
+      <a href="https://jobs.ashbyhq.com/coinbase">x</a>
+      <a href="https://jobs.ashbyhq.com/Solana/jobs/1">dup</a>
+      <a href="https://example.com/nope">x</a>
+      <a href="https://jobs.ashbyhq.com/coinbase/x">dup2</a>`;
+    expect(extractAshbyOrgs(html)).toEqual(["solana", "coinbase"]);
+  });
+
+  it("returns [] for an index page with no ashby links", async () => {
+    const { extractAshbyOrgs } = await import("../src/adapters/ats.js");
+    expect(extractAshbyOrgs("<html><body>nothing</body></html>")).toEqual([]);
+  });
+});
+
+describe("generated source shard", () => {
+  it("ships the full source set with hourly shard under the batch cap", async () => {
+    const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
+    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBe(317);
+    expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(200);
+    const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");
+    expect(hourly.length).toBeGreaterThan(0);
+    expect(hourly.length).toBeLessThanOrEqual(40);
+  });
+
+  it("keeps the LinkedIn standing target at 12h / 3 queries", async () => {
+    const { GENERATED_SOURCES } = await import("../src/sources.generated.js");
+    const li = GENERATED_SOURCES.filter((s) => s.kind === "linkedin");
+    expect(li).toHaveLength(1);
+    expect(li[0].tprSeconds).toBe(43200);
+    expect([...(li[0].queries || [])].sort()).toEqual(["backend", "fullstack", "software"]);
+  });
+
+  it("gives every ATS source an org slug for board routing", async () => {
+    const { GENERATED_SOURCES } = await import("../src/sources.generated.js");
+    for (const s of GENERATED_SOURCES) {
+      if (["greenhouse", "lever", "ashby", "smartrecruiters"].includes(s.kind)) {
+        expect(s.org, s.name).toBeTruthy();
+      }
+    }
+  });
+});
+
+describe("htmlToText", () => {
+  it("strips tags and unescapes double-encoded entities", async () => {
+    const { htmlToText } = await import("../src/adapters/ats.js");
+    const html = "&lt;h2&gt;Who we are&lt;/h2&gt;&lt;p&gt;We build &amp; ship &quot;infra&quot;&lt;/p&gt;";
+    expect(htmlToText(html)).toBe('Who we are We build & ship "infra"');
+  });
+
+  it("collapses whitespace and respects max length", async () => {
+    const { htmlToText } = await import("../src/adapters/ats.js");
+    expect(htmlToText("a\n\n   b   c")).toBe("a b c");
+    expect(htmlToText("x".repeat(100), 10)).toHaveLength(10);
+  });
+});
+
+describe("enrichDescriptions", () => {
+  it("leaves jobs with real descriptions untouched and within budget", async () => {
+    const { enrichDescriptions } = await import("../src/adapters/ats.js");
+    const jobs = [
+      { title: "a", company: "c", location: "Remote", url: "u", source: "lever:x", desc: "y".repeat(500), posted_at: "", external_id: "1" },
+      { title: "b", company: "c", location: "Remote", url: "u2", source: "lever:y", desc: "short", posted_at: "", external_id: "2" },
+    ];
+    const out = await enrichDescriptions(jobs);
+    expect(out[0].desc).toHaveLength(500);
+    expect(out[1].desc).toBe("short"); // lever already had text upstream; no fetch attempted
+  });
+
+  it("never drops a job when enrichment fails", async () => {
+    const { enrichDescriptions } = await import("../src/adapters/ats.js");
+    const jobs = [{ title: "t", company: "c", location: "Remote", url: "u", source: "greenhouse:nope", desc: "x", posted_at: "", external_id: "999999" }];
+    const out = await enrichDescriptions(jobs);
+    expect(out).toHaveLength(1);
+  });
+});

@@ -12,13 +12,15 @@
 
 import { fetchRssFeed } from "./adapters/rss.js";
 import { fetchArbeitnow, fetchJobicy, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
-import { fetchAshbyBoard, fetchGreenhouseBoard, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
+import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
+import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
+import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
 import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
-import { getJobsByState, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
@@ -39,38 +41,7 @@ export interface Env {
   REZI_MCP_TOKEN?: string;
 }
 
-interface SourceDef {
-  kind: "rss" | "remoteok" | "remotive" | "arbeitnow" | "jobicy" | "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "linkedin";
-  name: string;
-  url?: string;
-  org?: string;
-  queries?: string[];
-  locations?: string[];
-  cadence: "hourly" | "6h";
-}
-
-// Cheap + high-signal subset runs hourly; the deep set runs on the daily sweep.
-const SOURCES: SourceDef[] = [
-  { kind: "rss", name: "cryptojobslist", url: "https://api.cryptojobslist.com/jobs.rss", cadence: "hourly" },
-  { kind: "rss", name: "crypto.jobs", url: "https://crypto.jobs/feed/rss", cadence: "hourly" },
-  { kind: "rss", name: "weworkremotely", url: "https://weworkremotely.com/remote-jobs.rss", cadence: "hourly" },
-  { kind: "rss", name: "remote3", url: "https://remote3.co/api/rss", cadence: "hourly" },
-  { kind: "rss", name: "bitcoinjobs", url: "https://bitbo.io/jobs/feed.xml", cadence: "hourly" },
-  { kind: "remoteok", name: "remoteok", cadence: "hourly" },
-  { kind: "remotive", name: "remotive", cadence: "hourly" },
-  { kind: "arbeitnow", name: "arbeitnow", cadence: "hourly" },
-  { kind: "jobicy", name: "jobicy", cadence: "hourly" },
-  { kind: "greenhouse", name: "coinbase-board", org: "coinbase", cadence: "hourly" },
-  { kind: "greenhouse", name: "ripple-board", org: "ripple", cadence: "hourly" },
-  { kind: "greenhouse", name: "stripe-board", org: "stripe", cadence: "6h" },
-  { kind: "greenhouse", name: "consensys-board", org: "consensys", cadence: "6h" },
-  { kind: "greenhouse", name: "elastic-board", org: "elastic", cadence: "6h" },
-  { kind: "ashby", name: "stellar-board", org: "stellar", cadence: "hourly" },
-  { kind: "ashby", name: "uniswap-board", org: "uniswap", cadence: "6h" },
-  { kind: "ashby", name: "opensea-board", org: "opensea", cadence: "6h" },
-  { kind: "ashby", name: "alchemy-board", org: "alchemy", cadence: "6h" },
-  { kind: "linkedin", name: "linkedin_geo_recent", queries: ["backend", "fullstack", "software"], locations: ["Remote"], cadence: "6h" },
-];
+const SOURCES: SourceDef[] = GENERATED_SOURCES;
 
 function profileFromEnv(env: Env): Profile & { fullName: string; email: string; phone: string; summary?: string } {
   try {
@@ -122,10 +93,18 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
     case "lever": return fetchLeverBoard(def.org || "");
     case "ashby": return fetchAshbyBoard(def.org || "");
     case "smartrecruiters": return fetchSmartRecruitersBoard(def.org || "");
+    case "ashby-index": return fetchAshbyIndex(def.url || "", def.maxOrgs || 8);
+    case "indeed": {
+      const out: RawJob[] = [];
+      for (const query of def.queries || ["backend"]) {
+        out.push(...(await fetchIndeed({ query, location: (def.locations || ["Cairo, Egypt"])[0], country: def.country })));
+      }
+      return out;
+    }
     case "linkedin": {
       const out: RawJob[] = [];
       for (const q of def.queries || ["backend"]) {
-        out.push(...(await fetchLinkedInGuest(q, (def.locations || ["Remote"])[0], 1, parseInt(env.TPR_SECONDS || "43200", 10))));
+        out.push(...(await fetchLinkedInGuest(q, (def.locations || ["Remote"])[0], 1, def.tprSeconds || parseInt(env.TPR_SECONDS || "43200", 10))));
       }
       return out;
     }
@@ -156,14 +135,27 @@ export default {
       try {
         const m = msg.body as any;
         if (m.stage === "discover" && m.def) {
-          const jobs = await discoverSource(m.def, env);
+          let jobs: RawJob[] = [];
+          let probeErr = "";
+          try {
+            jobs = await discoverSource(m.def, env);
+          } catch (e) {
+            probeErr = String(e).slice(0, 180);
+            throw e;
+          } finally {
+            await recordSourceHealth(db, m.def.name, m.def.kind || "", -1, -1, probeErr);
+          }
           const fresh = filterRecentList(
             jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
             24,
           );
           const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
           const now = new Date().toISOString();
-          for (const j of remote.slice(0, 40)) {
+          // Board APIs omit descriptions; enrich the few survivors so scoring
+          // has real evidence instead of a title-only string.
+          const enriched = await enrichDescriptions(remote.slice(0, 40));
+          await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "");
+          for (const j of enriched) {
             const canon = normalizeUrl(j.url);
             const isNew = await upsertJob(db, {
               canonical_hash: canonicalHash(canon), title: j.title.slice(0, 200),
@@ -260,10 +252,66 @@ export default {
       const rows = await getJobsByState(db, body.state || "ELIGIBLE", count);
       return Response.json({ jobs: rows });
     }
-    if (url.pathname === "/run" && request.method === "POST") {
-      await env.DISCOVER_Q.send({ stage: "discover", def: SOURCES[0] });
-      return Response.json({ queued: true });
+    if (url.pathname === "/coverage") {
+      // Measured coverage: what actually answered, vs. what is configured.
+      const rows: any = await db.prepare(
+        `SELECT COUNT(*) AS configured, SUM(CASE WHEN yields > 0 THEN 1 ELSE 0 END) AS yielding,
+                SUM(attempts) AS attempts, MAX(last_seen) AS last_seen
+         FROM source_health`,
+      ).bind().first();
+      const byKind: any = await db.prepare(
+        `SELECT kind, COUNT(*) AS sources, SUM(CASE WHEN yields > 0 THEN 1 ELSE 0 END) AS yielding
+         FROM source_health GROUP BY kind ORDER BY sources DESC`,
+      ).bind().all();
+      return Response.json({
+        configured_worker_sources: SOURCES.length,
+        python_only_sources: PYTHON_ONLY_SOURCES.length,
+        sources_attempted: rows?.configured ?? 0,
+        sources_yielding: rows?.yielding ?? 0,
+        total_attempts: rows?.attempts ?? 0,
+        last_seen: rows?.last_seen ?? null,
+        by_kind: byKind.results,
+      });
     }
-    return new Response("jobhunt worker: /health /recent /queue /run", { status: 200 });
+    if (url.pathname === "/sources") {
+      const byKind: Record<string, number> = {};
+      for (const s of SOURCES) byKind[s.kind] = (byKind[s.kind] || 0) + 1;
+      return Response.json({
+        worker_sources: SOURCES.length,
+        python_only_sources: PYTHON_ONLY_SOURCES.length,
+        hourly_shard: SOURCES.filter((s) => s.cadence === "hourly").length,
+        by_kind: byKind,
+      });
+    }
+    if (url.pathname === "/probe" && request.method === "POST") {
+      // Read-only yield probe: runs one source's fetch + filters, writes nothing.
+      const body: any = await request.json().catch(() => ({}));
+      const def = SOURCES.find((s) => s.name === body.name);
+      if (!def) return Response.json({ error: "unknown source" }, { status: 404 });
+      try {
+        const jobs = await discoverSource(def, env);
+        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 24);
+        const remote = filterRemoteList(
+          fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
+        );
+        return Response.json({
+          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length, remote_fresh: remote.length,
+          sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
+        });
+      } catch (e) {
+        return Response.json({ name: def.name, kind: def.kind, error: String(e).slice(0, 200) }, { status: 502 });
+      }
+    }
+    if (url.pathname === "/run" && request.method === "POST") {
+      // Fan out the WHOLE shard (hourly subset unless deep=1), one source per message.
+      const deep = url.searchParams.get("deep") === "1";
+      const defs = SOURCES.filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+      const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
+      for (let i = 0; i < batch.length; i += 50) {
+        await env.DISCOVER_Q.sendBatch(batch.slice(i, i + 50).map((body) => ({ body })));
+      }
+      return Response.json({ queued: true, sources: defs.length, deep });
+    }
+    return new Response("jobhunt worker: /health /recent /sources /coverage /queue /run /probe", { status: 200 });
   },
 };

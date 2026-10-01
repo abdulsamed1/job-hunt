@@ -64,3 +64,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_job ON audit_log(job_hash);
+
+-- Discovery observability: one row per source attempt so coverage claims are
+-- measured, not assumed. Also the health probe for stalled consumers.
+CREATE TABLE IF NOT EXISTS source_health (
+  source TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT '',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  yields INTEGER NOT NULL DEFAULT 0,
+  last_raw INTEGER NOT NULL DEFAULT 0,
+  last_kept INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  last_seen TEXT NOT NULL DEFAULT ''
+);

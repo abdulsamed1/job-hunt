@@ -67,3 +67,20 @@ export async function saveApplication(
   ).bind(jobHash, state, detail.slice(0, 500), screenshotR2Key, new Date().toISOString()).run();
   await setJobState(db, jobHash, state, detail.slice(0, 200));
 }
+
+/** Record one discovery attempt so source coverage is measured, not assumed. */
+export async function recordSourceHealth(
+  db: Db, source: string, kind: string, raw: number, kept: number, error = "",
+): Promise<void> {
+  await db.prepare(
+    `INSERT INTO source_health (source, kind, attempts, yields, last_raw, last_kept, last_error, last_seen)
+     VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+     ON CONFLICT(source) DO UPDATE SET
+       attempts = attempts + 1,
+       yields = yields + excluded.yields,
+       last_raw = excluded.last_raw,
+       last_kept = excluded.last_kept,
+       last_error = excluded.last_error,
+       last_seen = excluded.last_seen`,
+  ).bind(source, kind, kept > 0 ? 1 : 0, raw, kept, error.slice(0, 200), new Date().toISOString()).run();
+}
