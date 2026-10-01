@@ -18,3 +18,4 @@ data/
 *.jpeg
 # Added by code-review-graph
 .code-review-graph/
+opencode.jsonc
