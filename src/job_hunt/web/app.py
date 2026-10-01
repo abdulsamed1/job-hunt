@@ -61,6 +61,8 @@ class ActionRequest(BaseModel):
     live: Optional[bool] = False
     max_sources: Optional[int] = None
     linkedin_approved: Optional[bool] = False
+    hours_old: Optional[int] = 24
+    remote_only: Optional[bool] = False
 
 
 async def _execute_async_action(action_name: str, coro_fn, *args, **kwargs):
@@ -245,6 +247,8 @@ async def api_action_scan(req: ActionRequest, background_tasks: BackgroundTasks)
         "DISCOVERY_SCAN",
         orchestrator.run_discovery_stage,
         max_sources=req.max_sources or req.limit,
+        hours_old=req.hours_old if req.hours_old is not None else 24,
+        remote_only=req.remote_only or False,
     )
     return {"message": "Discovery scan initiated in background", "status": "started"}
 

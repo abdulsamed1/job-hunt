@@ -46,6 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan = subparsers.add_parser("scan", help="Discover and deduplicate jobs from sources")
     p_scan.add_argument("--sources", default="config/sources.yaml", help="Path to sources YAML")
     p_scan.add_argument("--limit", type=int, default=None, help="Limit number of sources to scan")
+    p_scan.add_argument("--hours-old", type=int, default=24, help="Recency window in hours (0 disables)")
+    p_scan.add_argument("--remote-only", action="store_true", help="Keep remote-signalled postings only")
     p_scan.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
 
     # evaluate
@@ -79,6 +81,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
     p_run.add_argument("--linkedin-approved", action="store_true", help="Explicit human approval for live LinkedIn submits (required with --live on LinkedIn jobs)")
     p_run.add_argument("--sources-limit", type=int, default=None, help="Limit sources per cycle")
+    p_run.add_argument("--hours-old", type=int, default=24, help="Recency window in hours (0 disables)")
+    p_run.add_argument("--remote-only", action="store_true", help="Keep remote-signalled postings only")
     p_run.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
     p_run.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic evaluation only")
     p_run.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
@@ -150,7 +154,9 @@ def cmd_llm_status(args: argparse.Namespace) -> None:
 
 def cmd_scan(args: argparse.Namespace) -> None:
     orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources)
-    new_jobs = asyncio.run(orch.run_discovery_stage(max_sources=args.limit))
+    new_jobs = asyncio.run(orch.run_discovery_stage(
+        max_sources=args.limit, hours_old=args.hours_old, remote_only=args.remote_only
+    ))
     print(f"Scan completed: {new_jobs} new unique jobs added to tracker.")
 
 
@@ -238,7 +244,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     if args.once:
         logger.info("Executing single autonomous pipeline cycle (mode=%s)...", "LIVE" if args.live else "DRY-RUN")
-        results = asyncio.run(orch.run_cycle(dry_run=not args.live, max_sources=args.sources_limit, linkedin_approved=args.linkedin_approved))
+        results = asyncio.run(orch.run_cycle(dry_run=not args.live, max_sources=args.sources_limit, linkedin_approved=args.linkedin_approved, hours_old=args.hours_old, remote_only=args.remote_only))
         print("\n==================== PIPELINE CYCLE SUMMARY ====================")
         for k, v in results.items():
             if k not in ("daily_metrics", "database_stats"):

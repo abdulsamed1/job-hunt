@@ -321,3 +321,41 @@ def test_remote_outside_egypt_evaluation(orchestrator):
     passed, reason = engine.pre_filter(onsite_job, candidate)
     assert passed is False
     assert "on-site" in reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_stage_applies_recency_and_remote(orchestrator, tmp_path):
+    from datetime import datetime, timezone
+    from job_hunt.models import JobPosting
+
+    fresh = JobPosting(
+        source="test", title="Backend Engineer", company="Co",
+        raw_url="https://example.com/f", canonical_url="https://example.com/f",
+        canonical_url_hash="h-f", role_fingerprint="rf-f", content_hash="c-f",
+        location="Remote", posted_at=datetime.now(timezone.utc).isoformat(),
+    )
+    stale = JobPosting(
+        source="test", title="Backend Engineer", company="Co2",
+        raw_url="https://example.com/s", canonical_url="https://example.com/s",
+        canonical_url_hash="h-s", role_fingerprint="rf-s", content_hash="c-s",
+        location="Remote", posted_at="2020-01-01",
+    )
+    onsite = JobPosting(
+        source="test", title="Backend Engineer", company="Co3",
+        raw_url="https://example.com/o", canonical_url="https://example.com/o",
+        canonical_url_hash="h-o", role_fingerprint="rf-o", content_hash="c-o",
+        location="Berlin, Germany",
+        posted_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    class StubRegistry:
+        def load_sources_file(self, path):
+            return [{"adapter": "test", "url": "https://example.com"}]
+
+        async def discover_all(self, sources=None, **kwargs):
+            return [fresh, stale, onsite]
+
+    orchestrator.registry = StubRegistry()
+    new_jobs = await orchestrator.run_discovery_stage(hours_old=24, remote_only=True)
+    assert new_jobs == 1  # only the fresh remote posting survives
+    assert orchestrator.storage.get_job(1) is not None

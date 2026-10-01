@@ -17,6 +17,15 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
+## Discovery defaults (all 317 sources)
+
+- Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
+  Server-side where supported (LinkedIn TPR, Bayt/Naukri/Zip intervals,
+  Indeed date filter); central `filter_recent` backstops the rest.
+  Dateless postings always pass — only provably-stale ones drop.
+- Remote: `scan --remote-only` keeps remote-signalled + unknown-location
+  postings, drops placed on-site ones. Helpers in `discovery/freshness.py`.
+
 ## Board coverage (verified live 2026-10-01, ~317 sources)
 
 - **RSS feeds that yield**: cryptojobslist, crypto.jobs, weworkremotely,

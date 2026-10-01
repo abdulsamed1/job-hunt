@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
+from job_hunt.discovery.freshness import filter_recent, filter_remote
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
 from job_hunt.liveness import LivenessDetector
@@ -111,13 +112,30 @@ class PipelineOrchestrator:
         logger.info("Graceful shutdown requested.")
         self._running = False
 
-    async def run_discovery_stage(self, max_sources: Optional[int] = None) -> int:
-        """Stage 1 & 2: Discover jobs across all sources and deduplicate."""
+    async def run_discovery_stage(
+        self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False
+    ) -> int:
+        """Stage 1 & 2: Discover jobs across all sources and deduplicate.
+
+        Recency + remote defaults propagate to every board: entries lacking the
+        keys inherit them (adapters that support them filter server-side), and
+        the shared post-filters backstop the rest. Dateless postings always pass.
+        """
         sources = self.registry.load_sources_file(self.sources_path)
         if max_sources:
             sources = sources[:max_sources]
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            if hours_old:
+                entry.setdefault("hours_old", hours_old)
+            if remote_only:
+                entry.setdefault("remote_only", True)
 
         postings = await self.registry.discover_all(sources=sources)
+        postings = filter_recent(postings, hours_old)
+        if remote_only:
+            postings = filter_remote(postings)
         new_jobs = 0
         for p in postings:
             _, is_new = self.storage.add_job(p)
@@ -324,13 +342,13 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
 
         # 1. Discovery (targeting 500+ jobs daily)
-        new_jobs = await self.run_discovery_stage(max_sources=max_sources)
+        new_jobs = await self.run_discovery_stage(max_sources=max_sources, hours_old=hours_old, remote_only=remote_only)
 
         # 2. Evaluation
         evaluated = await self.run_evaluation_stage_async()
