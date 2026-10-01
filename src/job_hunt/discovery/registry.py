@@ -13,13 +13,17 @@ from job_hunt.discovery.adapters.ashby import AshbyAdapter
 from job_hunt.discovery.adapters.bamboohr import BambooHRAdapter
 from job_hunt.discovery.adapters.bayt import BaytAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
+from job_hunt.discovery.adapters.glassdoor import GlassdoorAdapter
+from job_hunt.discovery.adapters.google_jobs import GoogleJobsAdapter
 from job_hunt.discovery.adapters.greenhouse import GreenhouseAdapter
+from job_hunt.discovery.adapters.indeed import IndeedAdapter
 from job_hunt.discovery.adapters.lever import LeverAdapter
 from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
 from job_hunt.discovery.adapters.naukri import NaukriAdapter
 from job_hunt.discovery.adapters.smartrecruiters import SmartRecruitersAdapter
 from job_hunt.discovery.adapters.workable import WorkableAdapter
 from job_hunt.discovery.adapters.workday import WorkdayAdapter
+from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
 from job_hunt.discovery.base import DiscoveryAdapter
 from job_hunt.models import JobPosting
@@ -43,6 +47,10 @@ class SourceRegistry:
             LinkedInAdapter(),
             BaytAdapter(),
             NaukriAdapter(),
+            IndeedAdapter(),
+            ZipRecruiterAdapter(),
+            GlassdoorAdapter(),
+            GoogleJobsAdapter(),
             UniversalWebAdapter(),
         ]
         self._adapter_map = {a.adapter_id: a for a in self.adapters}

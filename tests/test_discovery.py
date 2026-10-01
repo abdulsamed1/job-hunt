@@ -569,3 +569,219 @@ async def test_naukri_mock_fetch():
     assert p.source == "naukri"
     assert p.external_id == "nk-555"
     assert "Python" in (p.description or "")
+
+
+def test_indeed_adapter_matching():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    assert IndeedAdapter().matches_url("https://eg.indeed.com/jobs?q=backend") is True
+    assert IndeedAdapter().matches_url("https://boards.greenhouse.io/x") is False
+
+
+def test_ziprecruiter_adapter_matching():
+    from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
+    assert ZipRecruiterAdapter().matches_url("https://www.ziprecruiter.com/jobs-search") is True
+    assert ZipRecruiterAdapter().matches_url("https://boards.greenhouse.io/x") is False
+
+
+def test_glassdoor_adapter_matching():
+    from job_hunt.discovery.adapters.glassdoor import GlassdoorAdapter
+    assert GlassdoorAdapter().matches_url("https://www.glassdoor.com/Job/egypt-jobs.htm") is True
+    assert GlassdoorAdapter().matches_url("https://boards.greenhouse.io/x") is False
+
+
+def test_google_jobs_adapter_matching():
+    from job_hunt.discovery.adapters.google_jobs import GoogleJobsAdapter
+    assert GoogleJobsAdapter().matches_url("https://www.google.com/search?q=jobs") is True
+    assert GoogleJobsAdapter().matches_url("https://boards.greenhouse.io/x") is False
+
+
+@pytest.mark.asyncio
+async def test_indeed_mock_fetch():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+
+    payload = {
+        "data": {
+            "jobSearch": {
+                "results": [
+                    {
+                        "job": {
+                            "key": "abc123",
+                            "title": "Backend Engineer",
+                            "datePublished": 1790000000000,
+                            "description": {"html": "<p>Python backend role.</p>"},
+                            "employer": {"name": "Acme", "relativeCompanyPageUrl": "/cmp/Acme"},
+                            "location": {"city": "Cairo", "admin1Code": None, "countryCode": "EG"},
+                            "attributes": [],
+                            "compensation": {},
+                        }
+                    }
+                ],
+                "pageInfo": {"nextCursor": None},
+            }
+        }
+    }
+
+    async def mock_handler(request):
+        assert request.url.path == "/graphql"
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = IndeedAdapter()
+        postings = await adapter.fetch(
+            {"adapter": "indeed", "queries": ["backend"], "locations": ["Cairo, Egypt"],
+             "country": "Egypt", "max_pages_per_query": 1, "target_jobs_count": 10},
+            client,
+        )
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Engineer"
+    assert p.company == "Acme"
+    assert p.source == "indeed"
+    assert p.external_id == "in-abc123"
+    assert "abc123" in p.canonical_url
+
+
+@pytest.mark.asyncio
+async def test_ziprecruiter_mock_fetch():
+    import base64 as _b64
+    from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter, page_values
+
+    target = "https://acme.com/apply/123"
+    token = _b64.urlsafe_b64encode(b"X" + bytes([len(target)]) + target.encode()).decode().rstrip("=")
+    job = {
+        "listingKey": "z9",
+        "title": "Backend Developer",
+        "status": {"postedAtUtc": "2026-09-30T10:00:00Z"},
+        "rawCanonicalZipJobPageUrl": "/jobs/1",
+        "company": {"name": "Acme"},
+        "companyUrl": "/c/Acme",
+        "location": {"city": "Austin", "stateCode": "TX", "countryCode": "US"},
+        "employmentTypes": [{"name": "NAME_FULL_TIME"}],
+        "locationTypes": [{"name": "REMOTE"}],
+        "pay": {"metadata": {"visible": True}, "interval": "PAY_INTERVAL_YEAR",
+                "min": 120000, "max": 150000, "currency": "PAY_CURRENCY_USD"},
+        "applyButtonConfig": {"externalApplyUrl": "https://www.ziprecruiter.com/rd?match_token=" + token},
+        "companyLogo": {},
+    }
+    inner = '{"jobKeysMap":{"k1":' + __import__("json").dumps(job) + '},"jobCount":1}'
+    html = 'self.__next_f.push([1,"' + inner.replace('"', '\\"') + '"])'
+
+    cards, count = page_values(html, "jobKeysMap", "jobCount")
+    assert count == 1
+
+    from job_hunt.discovery.adapters import ziprecruiter as zr_mod
+
+    async def fake_fetch(url, params=None, headers=None, timeout=20):
+        return 200, html, url
+
+    original = zr_mod.fetch_text
+    zr_mod.fetch_text = fake_fetch
+    try:
+        async with httpx.AsyncClient() as client:
+            adapter = ZipRecruiterAdapter()
+            postings = await adapter.fetch(
+                {"adapter": "ziprecruiter", "queries": ["backend"], "locations": ["Austin, TX"],
+                 "max_pages_per_query": 1, "target_jobs_count": 10},
+                client,
+            )
+    finally:
+        zr_mod.fetch_text = original
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Developer"
+    assert p.source == "ziprecruiter"
+    assert p.external_id == "zr-z9"  # real listing key preferred over map key
+    assert p.metadata.get("job_url_direct") == target
+
+
+@pytest.mark.asyncio
+async def test_glassdoor_mock_fetch():
+    from job_hunt.discovery.adapters import glassdoor as gd_mod
+    from job_hunt.discovery.adapters.glassdoor import GlassdoorAdapter
+
+    listing = {
+        "jobview": {
+            "job": {"listingId": 777, "jobTitleText": "Backend Engineer"},
+            "header": {
+                "employerNameFromSearch": "Acme",
+                "employer": {"id": 99},
+                "locationName": "Cairo, Egypt",
+                "locationType": "",
+                "ageInDays": 0,
+            },
+        }
+    }
+    body = [{"data": {"jobListings": {"jobListings": [listing], "paginationCursors": []}}}]
+
+    async def fake_post(url, json=None, headers=None, timeout=20):
+        return 200, body, url
+
+    async def fake_get(url, params=None, headers=None, timeout=20):
+        return 200, "[]", url
+
+    orig_post, orig_get = gd_mod.post_json, gd_mod.fetch_text
+    gd_mod.post_json = fake_post
+    gd_mod.fetch_text = fake_get
+    try:
+        async with httpx.AsyncClient() as client:
+            adapter = GlassdoorAdapter()
+            postings = await adapter.fetch(
+                {"adapter": "glassdoor", "queries": ["backend"], "locations": ["Remote"],
+                 "remote_only": True, "max_pages_per_query": 1, "target_jobs_count": 10},
+                client,
+            )
+    finally:
+        gd_mod.post_json, gd_mod.fetch_text = orig_post, orig_get
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Engineer"
+    assert p.source == "glassdoor"
+    assert p.external_id == "gd-777"
+
+
+@pytest.mark.asyncio
+async def test_google_jobs_mock_fetch():
+    import json as _json
+    from job_hunt.discovery.adapters.google_jobs import GoogleJobsAdapter, extract_infos
+
+    info = (
+        ["Backend Engineer", "Acme", "Cairo, Egypt"]
+        + [[["https://acme.com/jobs/1"]]]
+        + [None] * 8
+        + ["2 days ago"]
+        + [None] * 6
+        + ["Python role. Remote friendly."]
+        + [None] * 8
+        + ["g123"]
+    )
+    assert len(info) == 29
+    assert extract_infos({"jobs": [info]}) == [info]
+
+    page = (
+        _json.dumps({"jobs": [info], "other": [1, 2, 3]})
+        + ' data-async-fc="cursor1"'
+    )
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=page)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = GoogleJobsAdapter()
+        postings = await adapter.fetch(
+            {"adapter": "google", "queries": ["backend"], "locations": ["Cairo"],
+             "max_pages_per_query": 1, "target_jobs_count": 10},
+            client,
+        )
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Engineer"
+    assert p.company == "Acme"
+    assert p.source == "google"
+    assert p.external_id == "go-g123"
+    assert p.metadata.get("remote_flag") is True

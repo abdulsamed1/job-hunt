@@ -44,6 +44,20 @@ sources:
   max_pages_per_query: 2
   target_jobs_count: 40
   hours_old: 72
+- adapter: indeed
+  name: indeed-egypt-tech
+  url: https://eg.indeed.com/
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Cairo, Egypt
+  - Egypt
+  country: Egypt
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
