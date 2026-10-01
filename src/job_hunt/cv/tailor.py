@@ -116,7 +116,7 @@ class CVTailor:
         verified_projects = {p.name.lower() for p in profile.verified_projects}
         role_titles = [e.title.lower() for e in profile.verified_experiences]
         for m in re.finditer(r"###\s+([^\n\[]+)", cv_markdown):
-            header = m.group(1).strip()
+            header = re.sub(r"\s*\($", "", m.group(1).strip())
             header_name = re.split(r"\s+-\s+", header)[0].strip().lower()
             if not header_name:
                 continue

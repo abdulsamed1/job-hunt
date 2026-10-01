@@ -32,7 +32,27 @@
     "Distributed Systems",
     "Git",
     "CI/CD",
-    "Data Structures & Algorithms"
+    "Data Structures & Algorithms",
+    "Solidity",
+    "Smart Contracts",
+    "Supabase",
+    "Chainlink",
+    "Foundry",
+    "Durable Objects",
+    "Cloudflare Tunnel",
+    "HMAC",
+    "AES-256",
+    "Tesseract",
+    "Whisper",
+    "Design Patterns",
+    "OOP",
+    "Agile methodology",
+    "Meta Lead Ads",
+    "WhatsApp API",
+    "Pigsty",
+    "Cloudflare D1",
+    "Polar",
+    "HMAC-SHA256"
   ],
   "allowed_metrics": [
     "270ms",
@@ -69,19 +89,20 @@
       "end_date": "Present",
       "location": "Cairo, Egypt",
       "bullets": [
-        "Engineered a production workspace-rental management platform using React.js, automating lead ingestion, workload-based assignment, and lifecycle tracking.",
-        "Architected a deterministic lead-assignment engine balancing workload across sales representatives with a 30-minute acknowledgment SLA.",
-        "Integrated Meta Lead Ads webhooks with HMAC-SHA256 signature verification and WhatsApp API with message-level idempotency.",
-        "Enforced server-side row-level access control across 3 application roles validated by a 14/14 authorization regression suite.",
-        "Deployed and maintained a production stack combining Docker Compose, PostgreSQL, Cloudflare Tunnel, and pgBackRest with continuous WAL archiving."
+        "Engineered a production workspace-rental management platform using React.js, automating lead ingestion, workload-based assignment, lifecycle tracking, and lead-to-customer conversion.",
+        "Architected a deterministic lead-assignment engine balancing workload across sales representatives with Round Robin tie-break and a 30-minute acknowledgment SLA with automated escalation.",
+        "Integrated Meta Lead Ads webhooks with HMAC-SHA256 verification and WhatsApp API with normalized mobile-number identity matching and message-level delivery idempotency.",
+        "Enforced server-side row-level access control across 3 roles, validated with a 14/14 authorization regression suite.",
+        "Deployed a self-hosted stack: Docker Compose, Pigsty-managed PostgreSQL, Cloudflare Tunnel, pgBackRest with WAL archiving and hourly off-site backups."
       ],
       "technologies": [
         "React.js",
         "PostgreSQL",
+        "Pigsty",
         "Docker Compose",
         "Cloudflare Tunnel",
-        "pgBackRest",
-        "JavaScript"
+        "Meta Lead Ads",
+        "WhatsApp API"
       ]
     },
     {
@@ -91,17 +112,16 @@
       "end_date": "2026-07",
       "location": "Remote",
       "bullets": [
-        "Built a tenant-isolated WebSocket pricing gateway on Cloudflare Workers using Durable Objects.",
-        "Secured API access with timing-safe SHA-256 API key validation and HMAC-signed CSRF tokens.",
-        "Hardened asynchronous billing workflows with cursor-based batch schedulers, atomic D1 transactions, and dead-letter queues.",
-        "Verified dual-provider billing integrations with Polar through constant-time webhook signature checks and 129 passing unit tests."
+        "Built a tenant-isolated, API-key-authenticated WebSocket pricing gateway on Cloudflare Workers with per-tenant rate limits and 120-second TTL connection leases via Durable Objects.",
+        "Secured API access with five auth layers including timing-safe SHA-256 key validation, HMAC-signed CSRF tokens, and KV-backed session revocation.",
+        "Hardened billing workflows with cursor-based batch scheduling, atomic D1 transactions, and webhook dead-letter-queue reconciliation.",
+        "Verified dual-provider Polar billing integrations with 129 passing unit tests."
       ],
       "technologies": [
         "Cloudflare Workers",
         "Durable Objects",
-        "TypeScript",
-        "D1",
         "WebSockets",
+        "Cloudflare D1",
         "Polar"
       ]
     },
@@ -112,17 +132,13 @@
       "end_date": "2026-07",
       "location": "Remote",
       "bullets": [
-        "Architected SQLite-backed conversation memory combining FTS5 full-text search with recursive-CTE session lineage reconstruction.",
-        "Engineered WAL concurrency controls with 1-second busy timeout, jittered retries, and validated across a 206-test suite.",
-        "Implemented OpenAI-compatible API support translating Responses-format input into internal schemas and SSE streaming events."
+        "Built a hybrid keyword-and-LLM classification pipeline in Rust for an 8,000+ file skill catalog with jittered exponential backoff and circuit-breaking.",
+        "Designed a pluggable LLM provider interface extending coverage to 12+ free-tier providers.",
+        "Built a resilient parser recovering nested or malformed JSON and tolerating model-introduced field-name typos."
       ],
       "technologies": [
-        "SQLite",
-        "FTS5",
-        "Python",
-        "TypeScript",
-        "WAL",
-        "REST APIs"
+        "Rust",
+        "Python"
       ]
     }
   ],
@@ -157,6 +173,40 @@
         "LLM APIs"
       ],
       "url": "https://github.com/abdulsamed1/AI-skills-bank"
+    },
+    {
+      "name": "AI Automation Booking",
+      "description": "Distributed appointment-booking automation (github.com/abdulsamed1/aegisflow)",
+      "bullets": [
+        "Built a single-POST HTTP scanner dispatching up to 24 parallel requests per cycle across an 8-week horizon for 20 client jobs.",
+        "Developed Durable Object-backed distributed locks with atomic acquire, seal, and release states ensuring zero double bookings.",
+        "Eliminated a paid CAPTCHA-solving API by replacing it with Cloudflare Workers AI and Tesseract.js.",
+        "Hardened PII storage with AES-256-GCM via Web Crypto and PBKDF2 at 100,000 iterations."
+      ],
+      "technologies": [
+        "Cloudflare Workers",
+        "Durable Objects",
+        "Tesseract",
+        "Whisper",
+        "AES-256"
+      ],
+      "url": "github.com/abdulsamed1/aegisflow"
+    },
+    {
+      "name": "Intellichain",
+      "description": "Tweet-to-NFT claim pipeline (github.com/abdulsamed1/Intellichain)",
+      "bullets": [
+        "Architected a Tweet-to-NFT claim pipeline integrating an ElizaOS AI agent, Chainlink Functions, Supabase, and an ERC-721 contract.",
+        "Developed and deployed a 143-line ERC-721 GetGift contract on Sepolia with allow-list access and reentrancy protection.",
+        "Managed Solidity dependencies as Git submodules with reproducible Foundry builds."
+      ],
+      "technologies": [
+        "Solidity",
+        "Chainlink",
+        "Supabase",
+        "Foundry"
+      ],
+      "url": "github.com/abdulsamed1/Intellichain"
     }
   ],
   "verified_education": [
@@ -185,5 +235,9 @@
     "US",
     "Europe",
     "UK"
+  ],
+  "languages": [
+    "English",
+    "Arabic"
   ]
 }
