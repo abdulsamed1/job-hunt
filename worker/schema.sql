@@ -4,12 +4,63 @@ CREATE TABLE IF NOT EXISTS jobs (
   company TEXT NOT NULL DEFAULT '',
   location TEXT NOT NULL DEFAULT '',
   url TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
   source TEXT NOT NULL DEFAULT '',
   posted_at TEXT,
   discovered_at TEXT NOT NULL,
-  score INTEGER NOT NULL DEFAULT 0,
+  score REAL NOT NULL DEFAULT 0,
   remote INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'DISCOVERED',
   notified INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score);
+CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state);
+
+CREATE TABLE IF NOT EXISTS evaluations (
+  job_hash TEXT PRIMARY KEY,
+  score REAL NOT NULL,
+  eligible INTEGER NOT NULL,
+  reasoning TEXT NOT NULL DEFAULT '',
+  evaluated_at TEXT NOT NULL,
+  FOREIGN KEY (job_hash) REFERENCES jobs(canonical_hash) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS applications (
+  job_hash TEXT PRIMARY KEY,
+  state TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  screenshot_r2_key TEXT,
+  applied_at TEXT NOT NULL,
+  FOREIGN KEY (job_hash) REFERENCES jobs(canonical_hash) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS application_answers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_hash TEXT NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL DEFAULT '',
+  needs_confirmation INTEGER NOT NULL DEFAULT 0,
+  submitted INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (job_hash, question),
+  FOREIGN KEY (job_hash) REFERENCES jobs(canonical_hash) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS outcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_hash TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  recorded_at TEXT NOT NULL,
+  FOREIGN KEY (job_hash) REFERENCES jobs(canonical_hash) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_hash TEXT NOT NULL,
+  from_state TEXT,
+  to_state TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_job ON audit_log(job_hash);

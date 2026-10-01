@@ -1,176 +1,105 @@
 /**
- * jobhunt-scout: hourly 24/7 discovery shard on Cloudflare Workers (free tier).
+ * jobhunt full pipeline on Cloudflare Workers (free tier).
  *
- * Fetches only cheap stateless sources: a few JSON/RSS job APIs plus one page
- * per query of LinkedIn's public guest endpoint (same standing target as the
- * Python pipeline: backend/fullstack/software, past-12h window). Normalizes,
- * keyword-scores, and upserts into D1 (idempotent on canonical hash).
- * Optionally Telegram-alerts on fresh high-score remote matches.
- *
- * Budget: ~30 requests/hour ≈ 720/day (free quota: 100k/day). D1 writes only
- * for genuinely new jobs. No browser, no PDF, no LLM here — heavy stages run
- * in GitHub Actions / locally and read the same logical pipeline.
+ * Limits respected (verified against docs 2026-10-01):
+ * - ≤50 subrequests/invocation → one source / one job per queue message
+ * - 10ms CPU/invocation → fetch (I/O is free) + small parses + few D1 ops only
+ * - 5 cron triggers/account → exactly 2 used (hourly scout, daily deep sweep)
+ * - D1 ≤50 queries/invocation → single statements, indexed lookups
+ * - No browser anywhere: ATS applies are direct HTTP POSTs (greenhouse/lever);
+ *   LinkedIn submits + CAPTCHA jobs stay human-queued.
  */
+
+import { fetchRssFeed } from "./adapters/rss.js";
+import { fetchArbeitnow, fetchJobicy, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
+import { fetchAshbyBoard, fetchGreenhouseBoard, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
+import type { RawJob } from "./adapters/http.js";
+import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
+import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
+import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
+import type { Profile } from "./lib/evaluate.js";
+import { getJobsByState, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
+  CV_BUCKET: R2Bucket;
+  DISCOVER_Q: Queue;
+  EVALUATE_Q: Queue;
+  APPLY_Q: Queue;
   QUERIES?: string;
-  ALERT_MIN_SCORE?: string;
-  REZI_MCP_TOKEN?: string;
+  TPR_SECONDS?: string;
+  THRESHOLD?: string;
+  REQUIRE_LINKEDIN_APPROVAL?: string;
+  LIVE_APPLY?: string;
+  APPROVE_GREENHOUSE?: string;
+  APPROVE_LEVER?: string;
+  PROFILE_JSON?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  REZI_MCP_TOKEN?: string;
 }
 
-const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0 Safari/537.36";
+interface SourceDef {
+  kind: "rss" | "remoteok" | "remotive" | "arbeitnow" | "jobicy" | "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "linkedin";
+  name: string;
+  url?: string;
+  org?: string;
+  queries?: string[];
+  locations?: string[];
+  cadence: "hourly" | "6h";
+}
 
-const KEYWORDS = ["backend", "fullstack", "full-stack", "full stack", "software", "python", "rust", "devops"];
-const REMOTE_SIGNS = ["remote", "worldwide", "anywhere", "wfh", "distributed"];
-
-const FEEDS: Array<{ name: string; url: string; kind: "rss" | "json-remoteok" | "json-remotive" }> = [
-  { name: "cryptojobslist", url: "https://api.cryptojobslist.com/jobs.rss", kind: "rss" },
-  { name: "crypto.jobs", url: "https://crypto.jobs/feed/rss", kind: "rss" },
-  { name: "weworkremotely", url: "https://weworkremotely.com/remote-jobs.rss", kind: "rss" },
-  { name: "tokyodev", url: "https://www.tokyodev.com/atom.xml", kind: "rss" },
-  { name: "remoteok", url: "https://remoteok.com/api", kind: "json-remoteok" },
-  { name: "remotive", url: "https://remotive.com/api/remote-jobs?category=software-dev&limit=50", kind: "json-remotive" },
+// Cheap + high-signal subset runs hourly; the deep set runs on the daily sweep.
+const SOURCES: SourceDef[] = [
+  { kind: "rss", name: "cryptojobslist", url: "https://api.cryptojobslist.com/jobs.rss", cadence: "hourly" },
+  { kind: "rss", name: "crypto.jobs", url: "https://crypto.jobs/feed/rss", cadence: "hourly" },
+  { kind: "rss", name: "weworkremotely", url: "https://weworkremotely.com/remote-jobs.rss", cadence: "hourly" },
+  { kind: "rss", name: "remote3", url: "https://remote3.co/api/rss", cadence: "hourly" },
+  { kind: "rss", name: "bitcoinjobs", url: "https://bitbo.io/jobs/feed.xml", cadence: "hourly" },
+  { kind: "remoteok", name: "remoteok", cadence: "hourly" },
+  { kind: "remotive", name: "remotive", cadence: "hourly" },
+  { kind: "arbeitnow", name: "arbeitnow", cadence: "hourly" },
+  { kind: "jobicy", name: "jobicy", cadence: "hourly" },
+  { kind: "greenhouse", name: "coinbase-board", org: "coinbase", cadence: "hourly" },
+  { kind: "greenhouse", name: "ripple-board", org: "ripple", cadence: "hourly" },
+  { kind: "greenhouse", name: "stripe-board", org: "stripe", cadence: "6h" },
+  { kind: "greenhouse", name: "consensys-board", org: "consensys", cadence: "6h" },
+  { kind: "greenhouse", name: "elastic-board", org: "elastic", cadence: "6h" },
+  { kind: "ashby", name: "stellar-board", org: "stellar", cadence: "hourly" },
+  { kind: "ashby", name: "uniswap-board", org: "uniswap", cadence: "6h" },
+  { kind: "ashby", name: "opensea-board", org: "opensea", cadence: "6h" },
+  { kind: "ashby", name: "alchemy-board", org: "alchemy", cadence: "6h" },
+  { kind: "linkedin", name: "linkedin_geo_recent", queries: ["backend", "fullstack", "software"], locations: ["Remote"], cadence: "6h" },
 ];
 
-function hashCanon(s: string): string {
-  // FNV-1a 32-bit: dependency-free stable identity for dedup.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-function normUrl(u: string): string {
+function profileFromEnv(env: Env): Profile & { fullName: string; email: string; phone: string; summary?: string } {
   try {
-    const x = new URL(u);
-    x.search = "";
-    x.hash = "";
-    return x.toString();
+    const p = JSON.parse(env.PROFILE_JSON || "{}");
+    return {
+      verifiedSkills: p.verified_skills || [],
+      yearsOfExperience: p.years_of_experience ?? 5,
+      openToRemote: p.open_to_remote ?? true,
+      sponsorshipRequired: p.sponsorship_required ?? false,
+      citizenship: p.citizenship ?? null,
+      authorizedCountries: p.authorized_countries || [],
+      blockedCompanies: p.blocked_companies || [],
+      blockedKeywords: p.blocked_keywords || [],
+      preferredKeywords: p.preferred_keywords || [],
+      location: p.location || "",
+      languages: p.languages || [],
+      fullName: p.full_name || "",
+      email: p.email || "",
+      phone: p.phone || "",
+      summary: p.summary,
+    };
   } catch {
-    return u;
+    return {
+      verifiedSkills: [], yearsOfExperience: 5, openToRemote: true,
+      sponsorshipRequired: false, citizenship: null, authorizedCountries: [],
+      blockedCompanies: [], blockedKeywords: [], preferredKeywords: [],
+      location: "", languages: [], fullName: "", email: "", phone: "",
+    };
   }
-}
-
-function score(title: string, desc: string): { score: number; remote: boolean } {
-  const hay = `${title} ${desc}`.toLowerCase();
-  let score = 0;
-  for (const k of KEYWORDS) if (hay.includes(k)) score++;
-  const remote = REMOTE_SIGNS.some((s) => hay.includes(s));
-  if (remote) score++;
-  return { score, remote };
-}
-
-function tagText(xml: string, tag: string): string {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
-  if (!m) return "";
-  return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-interface RawJob {
-  title: string;
-  company: string;
-  location: string;
-  url: string;
-  source: string;
-  posted_at: string;
-  desc: string;
-}
-
-async function fetchFeed(f: (typeof FEEDS)[number]): Promise<RawJob[]> {
-  const res = await fetch(f.url, { headers: { "User-Agent": UA, Accept: "application/json, text/xml, */*" } });
-  if (!res.ok) return [];
-  const out: RawJob[] = [];
-  if (f.kind === "rss") {
-    const text = await res.text();
-    for (const chunk of text.match(/<item[\s\S]*?<\/item>|<entry[\s\S]*?<\/entry>/gi) || []) {
-      const title = tagText(chunk, "title");
-      const url = tagText(chunk, "link") || tagText(chunk, "guid") || tagText(chunk, "id");
-      if (!title || !url) continue;
-      out.push({
-        title,
-        company: tagText(chunk, "dc:creator") || tagText(chunk, "author") || f.name,
-        location: "Remote",
-        url,
-        source: f.name,
-        posted_at: tagText(chunk, "pubDate") || tagText(chunk, "published") || tagText(chunk, "updated"),
-        desc: (tagText(chunk, "description") || tagText(chunk, "summary") || title).slice(0, 2000),
-      });
-    }
-  } else if (f.kind === "json-remoteok") {
-    const data: any = await res.json();
-    for (const j of Array.isArray(data) ? data : []) {
-      if (!j || typeof j !== "object" || !j.position) continue;
-      out.push({
-        title: String(j.position),
-        company: String(j.company || ""),
-        location: String(j.location || "Remote"),
-        url: String(j.url || `https://remoteok.com/l/${j.id}`),
-        source: f.name,
-        posted_at: String(j.date || ""),
-        desc: `${j.position} at ${j.company || ""}. ${(j.description || "").slice(0, 500)}`,
-      });
-    }
-  } else {
-    const data: any = await res.json();
-    for (const j of (data && data.jobs) || []) {
-      out.push({
-        title: String(j.title || ""),
-        company: String(j.company_name || ""),
-        location: String(j.candidate_required_location || "Remote"),
-        url: String(j.url || ""),
-        source: f.name,
-        posted_at: String(j.publication_date || ""),
-        desc: `${j.title} at ${j.company_name}. ${(j.description || "").replace(/<[^>]+>/g, " ").slice(0, 500)}`,
-      });
-    }
-  }
-  return out;
-}
-
-async function fetchLinkedIn(queries: string[]): Promise<RawJob[]> {
-  // Standing target mirror: 1 page per query, past-12h window (f_TPR=r43200).
-  const out: RawJob[] = [];
-  for (const kw of queries) {
-    const url =
-      `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search` +
-      `?keywords=${encodeURIComponent(kw)}&location=Remote&start=0&count=10&f_TPR=r43200`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": UA,
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-        Referer: "https://www.linkedin.com/jobs/",
-      },
-    });
-    if (!res.ok) continue;
-    const html = await res.text();
-    for (const card of html.match(/<li[\s\S]*?<\/li>/gi) || []) {
-      const pick = (re: RegExp) => {
-        const m = card.match(re);
-        return m ? m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
-      };
-      const href = pick(/<a[^>]+class="[^"]*base-card__full-link[^"]*"[^>]+href="([^"]+)"/i)
-        || pick(/<a[^>]+href="([^"]+)"[^>]*class="[^"]*base-card__full-link/i);
-      const title = pick(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
-      const company = pick(/<h4[^>]*>([\s\S]*?)<\/h4>/i);
-      const location = pick(/job-search-card__location[^>]*>([\s\S]*?)<\/span>/i);
-      const urn = card.match(/data-entity-urn="urn:li:jobPosting:(\d+)"/);
-      if (!title || !href) continue;
-      out.push({
-        title, company: company || "LinkedIn Employer", location: location || "Remote",
-        url: href.split("?")[0], source: "linkedin",
-        posted_at: pick(/<time[^>]+datetime="([^"]+)"/i),
-        desc: `${title} at ${company}. Discovered via LinkedIn (worker shard).`,
-      });
-      void urn;
-    }
-  }
-  return out;
 }
 
 async function alert(env: Env, text: string): Promise<void> {
@@ -182,79 +111,155 @@ async function alert(env: Env, text: string): Promise<void> {
   });
 }
 
-async function runShard(env: Env): Promise<{ fetched: number; fresh: number; alerts: number }> {
-  const queries = (env.QUERIES || "backend,fullstack,software").split(",").map((s) => s.trim()).filter(Boolean);
-  const minScore = parseInt(env.ALERT_MIN_SCORE || "3", 10);
-  const now = new Date().toISOString();
-  let fetched = 0;
-  let fresh = 0;
-  let alerts = 0;
-
-  const batches: RawJob[][] = [];
-  for (const f of FEEDS) {
-    try {
-      batches.push(await fetchFeed(f));
-    } catch {
-      batches.push([]);
-    }
-  }
-  try {
-    batches.push(await fetchLinkedIn(queries));
-  } catch {
-    batches.push([]);
-  }
-
-  const alertLines: string[] = [];
-  for (const job of batches.flat()) {
-    fetched++;
-    const canon = normUrl(job.url);
-    const { score, remote } = score(job.title, `${job.company} ${job.location} ${job.desc}`);
-    const res = await env.DB.prepare(
-      `INSERT INTO jobs (canonical_hash, title, company, location, url, source, posted_at, discovered_at, score, remote, notified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-       ON CONFLICT (canonical_hash) DO NOTHING`
-    ).bind(
-      hashCanon(canon), job.title.slice(0, 200), job.company.slice(0, 120),
-      job.location.slice(0, 120), job.url.slice(0, 500), job.source,
-      job.posted_at.slice(0, 40), now, score, remote ? 1 : 0,
-    ).run();
-    if ((res.meta.changes ?? 0) > 0) {
-      fresh++;
-      if (remote && score >= minScore) {
-        alertLines.push(`⭐ ${job.title} @ ${job.company} (${job.location})\n${job.url}`);
-        await env.DB.prepare(`UPDATE jobs SET notified = 1 WHERE canonical_hash = ?`).bind(hashCanon(canon)).run();
-        alerts++;
+async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
+  switch (def.kind) {
+    case "rss": return fetchRssFeed(def.name, def.url || "");
+    case "remoteok": return fetchRemoteOK();
+    case "remotive": return fetchRemotive();
+    case "arbeitnow": return fetchArbeitnow();
+    case "jobicy": return fetchJobicy();
+    case "greenhouse": return fetchGreenhouseBoard(def.org || "");
+    case "lever": return fetchLeverBoard(def.org || "");
+    case "ashby": return fetchAshbyBoard(def.org || "");
+    case "smartrecruiters": return fetchSmartRecruitersBoard(def.org || "");
+    case "linkedin": {
+      const out: RawJob[] = [];
+      for (const q of def.queries || ["backend"]) {
+        out.push(...(await fetchLinkedInGuest(q, (def.locations || ["Remote"])[0], 1, parseInt(env.TPR_SECONDS || "43200", 10))));
       }
+      return out;
     }
   }
-  if (alertLines.length > 0) {
-    await alert(env, `🎯 ${alertLines.length} fresh remote match(es):\n\n${alertLines.slice(0, 8).join("\n\n")}`);
-  }
-  return { fetched, fresh, alerts };
 }
 
 export default {
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const r = await runShard(env);
-    console.log(`scout shard done: fetched=${r.fetched} fresh=${r.fresh} alerts=${r.alerts}`);
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Hourly scout vs daily deep sweep selected by cron expression.
+    const deep = event.cron === "0 2 * * *";
+    const defs = SOURCES.filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+    ctx.waitUntil(
+      (async () => {
+        const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
+        // Queue batch cap is 100; shard defensively.
+        for (let i = 0; i < batch.length; i += 50) {
+          await env.DISCOVER_Q.sendBatch(batch.slice(i, i + 50).map((body) => ({ body })));
+        }
+      })(),
+    );
+  },
+
+  async queue(batch: MessageBatch<Record<string, unknown>>, env: Env): Promise<void> {
+    const db = env.DB as unknown as Db;
+    const profile = profileFromEnv(env);
+    const threshold = parseFloat(env.THRESHOLD || "70");
+    for (const msg of batch.messages) {
+      try {
+        const m = msg.body as any;
+        if (m.stage === "discover" && m.def) {
+          const jobs = await discoverSource(m.def, env);
+          const fresh = filterRecentList(
+            jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
+            24,
+          );
+          const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
+          const now = new Date().toISOString();
+          for (const j of remote.slice(0, 40)) {
+            const canon = normalizeUrl(j.url);
+            const isNew = await upsertJob(db, {
+              canonical_hash: canonicalHash(canon), title: j.title.slice(0, 200),
+              company: j.company.slice(0, 120), location: j.location.slice(0, 120),
+              url: j.url.slice(0, 500), source: j.source, posted_at: (j.posted_at || "").slice(0, 40),
+              discovered_at: now, score: 0, remote: isRemoteish(j.location, j.desc),
+            });
+            if (isNew) {
+              await env.EVALUATE_Q.send({ stage: "evaluate", hash: canonicalHash(canon) });
+            }
+          }
+        } else if (m.stage === "evaluate" && m.hash) {
+          const row: any = await db.prepare(
+            `SELECT canonical_hash, title, company, location, url, description, source FROM jobs WHERE canonical_hash = ?`,
+          ).bind(m.hash).first();
+          if (!row) continue;
+          const r = evaluateJob(
+            { title: row.title, description: row.description || "", location: row.location },
+            profile, threshold,
+          );
+          await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning);
+          if (r.eligible) {
+            await env.APPLY_Q.send({ stage: "tailor-apply", hash: m.hash });
+          }
+        } else if (m.stage === "tailor-apply" && m.hash) {
+          const row: any = await db.prepare(
+            `SELECT canonical_hash, title, company, location, url, source, description FROM jobs WHERE canonical_hash = ?`,
+          ).bind(m.hash).first();
+          if (!row || !row.url) continue;
+          await setJobState(db, m.hash, "TAILORED", "worker tailor");
+          const text = buildTailoredText({ title: row.title, company: row.company }, profile);
+          const pdf = await renderPdfBytes(text, profile.fullName);
+          const key = `cvs/${m.hash}.pdf`;
+          await env.CV_BUCKET.put(key, pdf, {
+            httpMetadata: { contentType: "application/pdf" },
+          });
+          // Route ATS boards to direct HTTP apply; everything else waits human.
+          const src: string = row.source || "";
+          const live = env.LIVE_APPLY === "true";
+          let board: { kind: "greenhouse" | "lever" | "ashby"; org: string; jobId: string } | null = null;
+          let gh = src.match(/^greenhouse:(.+)$/);
+          let lv = src.match(/^lever:(.+)$/);
+          let ab = src.match(/^ashby:(.+)$/);
+          const idFromUrl = (row.url.match(/jobs\/(\d+)/) || [])[1] || row.url.split("/").filter(Boolean).pop() || "";
+          if (gh) board = { kind: "greenhouse", org: gh[1], jobId: idFromUrl };
+          else if (lv) board = { kind: "lever", org: lv[1], jobId: idFromUrl };
+          else if (ab) board = { kind: "ashby", org: ab[1], jobId: idFromUrl };
+          const approved =
+            (board?.kind === "greenhouse" && env.APPROVE_GREENHOUSE === "true") ||
+            (board?.kind === "lever" && env.APPROVE_LEVER === "true");
+          if (!board) {
+            await saveApplication(db, m.hash, "APPLICATION_STARTED", "non-ATS board: queued for human review", key);
+            continue;
+          }
+          const names = profile.fullName.split(/\s+/);
+          const result = await applyToAts(
+            board,
+            {
+              firstName: names[0] || "", lastName: names.slice(1).join(" ") || "",
+              email: profile.email, phone: profile.phone,
+              resumeBytes: pdf, resumeFilename: "cv.pdf",
+            },
+            { dryRun: !live, approved },
+          );
+          await saveApplication(
+            db, m.hash, result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED",
+            result.detail, key,
+          );
+        }
+      } catch (e) {
+        console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);
+      }
+    }
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const db = env.DB as unknown as Db;
     if (url.pathname === "/health") {
-      const row: any = await env.DB.prepare(`SELECT COUNT(*) AS n FROM jobs`).first();
+      const row: any = await db.prepare(`SELECT COUNT(*) AS n FROM jobs`).first();
       return Response.json({ ok: true, jobs: row?.n ?? 0 });
     }
     if (url.pathname === "/recent") {
-      const { results } = await env.DB.prepare(
-        `SELECT title, company, location, url, source, score, discovered_at FROM jobs ORDER BY discovered_at DESC LIMIT 50`
-      ).all();
-      return Response.json({ jobs: results });
+      const rows = await getJobsByState(db, "ELIGIBLE", 50);
+      return Response.json({ jobs: rows });
+    }
+    if (url.pathname === "/queue" && request.method === "POST") {
+      const body: any = await request.json().catch(() => ({}));
+      const count = Math.min(50, Math.max(1, body.count || 10));
+      const rows = await getJobsByState(db, body.state || "ELIGIBLE", count);
+      return Response.json({ jobs: rows });
     }
     if (url.pathname === "/run" && request.method === "POST") {
-      const r = await runShard(env);
-      return Response.json(r);
+      await env.DISCOVER_Q.send({ stage: "discover", def: SOURCES[0] });
+      return Response.json({ queued: true });
     }
-    return new Response("jobhunt-scout: /health /recent /run", { status: 200 });
+    return new Response("jobhunt worker: /health /recent /queue /run", { status: 200 });
   },
 };

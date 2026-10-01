@@ -116,8 +116,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
   317-source 24h-remote sweep + 6-hourly LinkedIn micro sweep + dry-run apply.
   Live runs only via manual dispatch with `live` + `linkedin_approved`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
-- **Cloudflare Worker** (`worker/`): hourly scout shard (RSS/JSON feeds +
-  1 LinkedIn guest page per query) → D1 upsert → optional Telegram alerts.
-  Deploy: `wrangler login`, `d1 create`, `schema.sql`, `secret put`, `deploy`.
-  Browser/PDF/LLM-heavy stages NEVER run on Workers (10ms CPU, no Playwright).
-- **Never**: full pipeline on Workers, secrets in code, auto-submit without approval.
+- **Cloudflare Worker** (`worker/`, full pipeline, not just scout): hourly
+  scout shard + daily deep sweep across RSS/JSON/ATS/LinkedIn-guest sources →
+  queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic
+  evaluate → tailor (pdf-lib PDF → R2) → direct ATS HTTP POST applies
+  (Greenhouse/Lever approved per-board; Ashby dry-run until pinned).
+  D1 mirrors the SQLite state machine. Deploy: `npm install`, `npm test`,
+  `wrangler login`, `d1 create`, `schema.sql`, queues + R2 create,
+  `secret put` (`PROFILE_JSON`, …), `deploy`.
+  Off Workers, always: Playwright browser, LLM-heavy stages, Rezi mirroring,
+  LinkedIn submits, CAPTCHA jobs (human-queued). On Workers: fetch/parse,
+  deterministic eval, pdf-lib PDFs, direct ATS POSTs (approved per-board).

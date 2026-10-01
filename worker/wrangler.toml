@@ -1,19 +1,56 @@
-name = "jobhunt-scout"
+name = "jobhunt"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
-# Hourly 24/7 scout: cheap stateless sources only (RSS/JSON + LinkedIn guest).
-# Heavy stages (browser apply, PDF tailoring) stay in GitHub Actions / local.
+# 2 of the 5 free cron triggers used: hourly scout + daily deep sweep.
 [triggers]
-crons = ["15 * * * *"]
+crons = ["15 * * * *", "0 2 * * *"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "jobhunt-scout"
+database_name = "jobhunt"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[queues.producers]]
+binding = "DISCOVER_Q"
+queue = "jobhunt-discover"
+
+[[queues.producers]]
+binding = "EVALUATE_Q"
+queue = "jobhunt-evaluate"
+
+[[queues.producers]]
+binding = "APPLY_Q"
+queue = "jobhunt-apply"
+
+[[queues.consumers]]
+queue = "jobhunt-discover"
+max_batch_size = 10
+max_retries = 2
+
+[[queues.consumers]]
+queue = "jobhunt-evaluate"
+max_batch_size = 20
+max_retries = 2
+
+[[queues.consumers]]
+queue = "jobhunt-apply"
+max_batch_size = 5
+max_retries = 1
+
+[[r2_buckets]]
+binding = "CV_BUCKET"
+bucket_name = "jobhunt-cvs"
 
 [vars]
 QUERIES = "backend,fullstack,software"
-ALERT_MIN_SCORE = "3"
+TPR_SECONDS = "43200"
+THRESHOLD = "70"
+# Safety defaults: everything is dry-run unless a human flips these.
+REQUIRE_LINKEDIN_APPROVAL = "true"
+LIVE_APPLY = "false"
+APPROVE_GREENHOUSE = "false"
+APPROVE_LEVER = "false"
 # Secrets (never commit): wrangler secret put REZI_MCP_TOKEN
-# Optional Telegram alerts: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+# Optional: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+# Pipeline identity: wrangler secret put PROFILE_JSON  (or set [vars] below)

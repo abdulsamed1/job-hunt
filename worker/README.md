@@ -1,45 +1,62 @@
-# jobhunt-scout — Cloudflare Worker companion (free tier)
+# jobhunt — full autonomous pipeline on Cloudflare Workers (free tier)
 
-Hourly 24/7 discovery shard: cheap stateless sources (RSS/JSON feeds + one
-LinkedIn guest page per query) → keyword score → D1 upsert → optional Telegram
-alerts. No browser, no PDF, no LLM — heavy stages stay in GitHub Actions.
+24/7 job capture + application across all sources with **zero browser**:
+discovery → evaluate → tailor (text CV + PDF) → direct ATS HTTP applies,
+with LinkedIn Easy Apply and CAPTCHA jobs held for humans.
 
-## Why this split (free-tier math)
+## Why this fits free tier (verified vs docs 2026-10-01)
 
-| Piece | Where | Why it fits |
-|---|---|---|
-| Hourly scout (~30 req/h ≈ 720/day) | Worker + cron | 100k req/day free; D1 writes only for new jobs |
-| Full 317-source sweep + browser | GitHub Actions schedule | 2000 min/mo free; Playwright impossible on Workers |
-| Secrets | `wrangler secret` / GitHub Secrets | never in git |
+| Constraint | Design answer |
+|---|---|
+| 10ms CPU/invocation | One source page / one job action per queue message; fetch wait is free, parses are small, giant feeds skipped to Actions |
+| 50 subrequests/invocation | Consumer batches ≤20; each message ≈ 1 fetch + 1–2 D1 ops |
+| 5 cron triggers/account | Exactly 2 used (hourly scout, daily deep sweep) |
+| D1 ≤50 queries/invocation | Single statements, indexed lookups, small batches |
+| No browser | ATS applies are direct HTTP POSTs (Greenhouse/Lever); Ashby live pinned per-org only; LinkedIn submits stay human |
+| No Playwright CAPTCHA solving | CAPTCHA-gated jobs → BLOCKED queue + Telegram alert |
 
-## Deploy (3 commands after `wrangler login`)
+## Layout
+
+- `src/adapters/` — RSS, JSON boards (RemoteOK/Remotive/Arbeitnow/Jobicy),
+  Greenhouse/Lever/Ashby/SmartRecruiters APIs, LinkedIn guest shard
+- `src/lib/` — hash, freshness, gates, deterministic scoring, honest Q&A mapping
+- `src/stages/pipeline.ts` — evaluate, tailor (pdf-lib PDF → R2), ATS apply
+- `src/state.ts` — D1 state machine (mirrors the SQLite lifecycle)
+- `src/index.ts` — cron dispatcher (hourly shard + daily deep), queue
+  consumers, HTTP API (`/health` `/recent` `/queue` `/run`)
+- `test/` — vitest suites (`npm test`), `tsconfig.json` — `npm run typecheck`
+
+## Deploy
 
 ```bash
 cd worker
-npx wrangler d1 create jobhunt-scout
-# paste the returned database_id into wrangler.toml
-npx wrangler d1 execute jobhunt-scout --file schema.sql
+npm install
+npm test && npm run typecheck
+npx wrangler d1 create jobhunt
+# paste database_id into wrangler.toml, then:
+npx wrangler d1 execute jobhunt --file schema.sql
+npx wrangler kv:namespace create CV_BUCKET  # not needed: R2 below
+npx wrangler r2 bucket create jobhunt-cvs
+npx wrangler queues create jobhunt-discover
+npx wrangler queues create jobhunt-evaluate
+npx wrangler queues create jobhunt-apply
+npx wrangler secret put PROFILE_JSON   # paste candidate_profile.json content
 npx wrangler deploy
 ```
 
-Optional alerts (Telegram):
+Live applies stay OFF until a human flips per-board flags:
 
 ```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_CHAT_ID
+npx wrangler secret put LIVE_APPLY        # "true" only when supervised
+npx wrangler secret put APPROVE_GREENHOUSE # per-board approval
+npx wrangler secret put APPROVE_LEVER
 ```
 
-Rezi token is NOT needed here (mirroring stays in the pipeline).
+Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for match alerts.
 
-## Endpoints
+## Boundaries (non-negotiable)
 
-- `GET /health` — `{ ok, jobs }` row count
-- `GET /recent` — last 50 discoveries as JSON
-- `POST /run` — trigger a shard manually (then check `/recent`)
-
-## Notes
-
-- LinkedIn guest fetch is 1 page/query/hour on purpose: CF IPs are
-  rate-limit sensitive; the Python pipeline remains the deep source.
-- Cron runs at minute 15 hourly (`15 * * * *`); adjust in `wrangler.toml`.
-- D1 free quotas (5M reads, 100k writes/day) exceed this workload ~100x.
+- LinkedIn submits: never automated (auth + checkpoints). Guest discovery only.
+- Ashby live submit: dry-run until an org endpoint is pinned by a supervised run.
+- CAPTCHA/Turnstile jobs: BLOCKED queue + alert, never bypassed.
+- Rezi mirroring + heavy PDF layouts stay in the Python pipeline / Actions.
