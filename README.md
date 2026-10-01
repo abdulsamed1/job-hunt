@@ -66,8 +66,8 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 ### 1. High-Throughput Multi-ATS Discovery (298 Active Sources)
 - **Extensive ATS Coverage**: Native adapters for **LinkedIn**, **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
-- **Dedicated LinkedIn Guest Scraper**: Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Yields 500+ fresh postings per run.
-- **Daily 500+ Target Tracking**: Real-time velocity tracking ensuring a minimum of 500 unique engineering requisitions are ingested and analyzed every 24 hours.
+- **Dedicated LinkedIn Guest Scraper**: Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Standing target: `backend` / `fullstack` / `software`, past-12h window (`f_TPR=r43200`), worldwide geo radius — ~60 fresh postings per run.
+- **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
 
 ### 2. Multi-Signal Deduplication & Provenance
 - **Canonical URL Normalization**: Strips RFC 3986 tracking parameters (`utm_*`, `gh_src`, `ref`, `source`, `fbclid`).
