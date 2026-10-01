@@ -96,6 +96,13 @@ def jobage_to_tpr(days: int) -> Optional[str]:
     return f"r{days * 86400}"
 
 
+def seconds_to_tpr(seconds: int) -> Optional[str]:
+    """Convert an exact recency window in seconds to LinkedIn's f_TPR value."""
+    if not seconds or seconds <= 0:
+        return None
+    return f"r{int(seconds)}"
+
+
 def worktype_flag(mode: Optional[str]) -> Optional[str]:
     """Map workplace-type filter to LinkedIn's f_WT flag: onsite=1, remote=2, hybrid=3."""
     switch = (mode or "").lower()
@@ -145,23 +152,22 @@ class LinkedInAdapter(DiscoveryAdapter):
         past_24h_only = entry.get("past_24h_only", False)
         max_pages = entry.get("max_pages_per_query", 10)
         target_count = entry.get("target_jobs_count", 1000)
+        geo_id = entry.get("geo_id")
+        distance = entry.get("distance", 25)
+        tpr_seconds = entry.get("tpr_seconds")
 
         postings: List[JobPosting] = []
         seen_urls = set()
         rate_limit_delay = 1.0  # Start with 1s, increase on 429
 
-        search_tasks = []
-        for kw in queries:
-            for loc in locations:
-                for page in range(max_pages):
-                    start = page * 10
-                    search_tasks.append((kw, loc, start))
+        search_tasks = self._build_search_tasks(queries, locations, max_pages, geo_id)
 
         logger.info(
-            "Starting LinkedIn discovery: %d search batches scheduled (target: %d jobs, past_24h=%s, remote_only=%s)...",
+            "Starting LinkedIn discovery: %d search batches scheduled (target: %d jobs, geo=%s, tpr=%s, remote_only=%s)...",
             len(search_tasks),
             target_count,
-            past_24h_only,
+            geo_id or "location-list",
+            tpr_seconds or ("r86400" if past_24h_only else "all"),
             remote_only,
         )
 
@@ -170,16 +176,16 @@ class LinkedInAdapter(DiscoveryAdapter):
                 logger.info("Reached target of %d LinkedIn jobs, concluding scan.", target_count)
                 break
 
-            params: Dict[str, Any] = {
-                "keywords": kw,
-                "location": loc,
-                "start": start,
-                "count": 10,
-            }
-            if remote_only:
-                params["f_WT"] = worktype_flag("remote")
-            if past_24h_only:
-                params["f_TPR"] = jobage_to_tpr(1)
+            params = self._build_search_params(
+                keywords=kw,
+                location=None if geo_id else loc,
+                start=start,
+                geo_id=geo_id,
+                distance=distance,
+                remote_only=remote_only,
+                tpr_seconds=tpr_seconds,
+                past_24h_only=past_24h_only,
+            )
 
             url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?{urllib.parse.urlencode(params)}"
             headers = {
@@ -228,6 +234,53 @@ class LinkedInAdapter(DiscoveryAdapter):
 
         logger.info("LinkedIn discovery completed: %d unique jobs harvested.", len(postings))
         return postings
+
+    @staticmethod
+    def _build_search_tasks(
+        queries: List[str],
+        locations: List[str],
+        max_pages: int,
+        geo_id: Optional[Any] = None,
+    ) -> List[tuple]:
+        """Build (keyword, location, start) batches.
+
+        With geo_id set, locations are ignored: LinkedIn resolves the region
+        itself (geoId + distance), so tasks are queries × pages only.
+        """
+        tasks = []
+        locs = [None] if geo_id else locations
+        for kw in queries:
+            for loc in locs:
+                for page in range(max_pages):
+                    tasks.append((kw, loc, page * 10))
+        return tasks
+
+    @staticmethod
+    def _build_search_params(
+        keywords: str,
+        location: Optional[str],
+        start: int,
+        geo_id: Optional[Any] = None,
+        distance: int = 25,
+        remote_only: bool = False,
+        tpr_seconds: Optional[int] = None,
+        past_24h_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Build guest-endpoint query params mirroring LinkedIn's own search URLs."""
+        params: Dict[str, Any] = {"keywords": keywords, "start": start, "count": 10}
+        if geo_id:
+            params["geoId"] = geo_id
+            params["distance"] = distance
+        elif location:
+            params["location"] = location
+        if remote_only:
+            params["f_WT"] = worktype_flag("remote")
+        tpr = seconds_to_tpr(tpr_seconds) if tpr_seconds else None
+        if tpr is None and past_24h_only:
+            tpr = jobage_to_tpr(1)
+        if tpr:
+            params["f_TPR"] = tpr
+        return params
 
     def _parse_job_cards(self, html: str, entry: Dict[str, Any]) -> List[JobPosting]:
         """Parse HTML fragment containing job search cards."""

@@ -381,3 +381,64 @@ async def test_feed_adapter_rss_xml_parsing():
     assert p.company == "Decentralized Labs"
     assert p.canonical_url == "https://cryptocurrencyjobs.co/engineering/senior-distributed-systems-engineer"
     assert "consensus" in p.description
+
+
+def test_linkedin_seconds_to_tpr():
+    from job_hunt.discovery.adapters.linkedin import seconds_to_tpr
+
+    assert seconds_to_tpr(43200) == "r43200"
+    assert seconds_to_tpr(0) is None
+    assert seconds_to_tpr(-5) is None
+    assert seconds_to_tpr(None) is None
+
+
+def test_linkedin_geo_search_params_match_user_target():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    params = LinkedInAdapter._build_search_params(
+        keywords="backend", location=None, start=0,
+        geo_id=92000000, distance=25, tpr_seconds=43200,
+    )
+    assert params["geoId"] == 92000000
+    assert params["distance"] == 25
+    assert params["f_TPR"] == "r43200"
+    assert params["keywords"] == "backend"
+    assert "location" not in params  # geo mode ignores location strings
+
+
+def test_linkedin_geo_tasks_ignore_locations():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    tasks = LinkedInAdapter._build_search_tasks(
+        ["backend", "fullstack", "software"], ["Remote", "Egypt"], 2, geo_id=92000000
+    )
+    assert len(tasks) == 3 * 2  # queries x pages, no location fan-out
+    assert all(loc is None for _, loc, _ in tasks)
+
+
+@pytest.mark.asyncio
+async def test_linkedin_geo_fetch_hits_geo_url():
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+
+    seen_urls = []
+
+    async def mock_handler(request):
+        seen_urls.append(str(request.url))
+        return httpx.Response(200, text="<html></html>")
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        await adapter.fetch(
+            {"adapter": "linkedin", "queries": ["backend"], "geo_id": 92000000,
+             "distance": 25, "tpr_seconds": 43200,
+             "max_pages_per_query": 1, "target_jobs_count": 5},
+            client,
+        )
+
+    assert seen_urls, "expected at least one request"
+    url = seen_urls[0]
+    assert "geoId=92000000" in url
+    assert "distance=25" in url
+    assert "f_TPR=r43200" in url
+    assert "keywords=backend" in url

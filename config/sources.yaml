@@ -1,31 +1,24 @@
 sources:
 - adapter: linkedin
-  name: linkedin_remote_worldwide
+  name: linkedin_geo_recent
   url: https://www.linkedin.com/jobs/
+  # Standing target (user's own search URLs): backend / fullstack / software,
+  # f_TPR=r43200 (12h), geoId=92000000, distance=25.
   queries:
-  - Software Engineer
-  - Full Stack Engineer
-  - Backend Engineer
-  locations:
-  - MENA
-  - EMEA
-  - Egypt
-  - United Arab Emirates
-  - Saudi Arabia
-  - European Union
-  - United Kingdom
-  - USA
-  - Remote
+  - backend
+  - fullstack
+  - software
+  geo_id: 92000000
+  distance: 25
+  tpr_seconds: 43200
   remote_only: false
-  past_24h_only: true
-  max_pages_per_query: 1
+  max_pages_per_query: 2
   target_jobs_count: 60
   # Safety posture (ai-job-search best practices): LinkedIn guest endpoints are
   # personal-use only per LinkedIn ToS — keep volume low, dry-run by default,
   # and never auto-submit without explicit human approval.
-  # Proven campaign shape (2026-09-30 test-apply): MENA/EMEA software roles,
-  # 24h window, low pages. Bot must verify target job + modal company before
-  # any submit (wrong-job guard in automation/browser.py).
+  # Bot must verify target job + modal company before any submit
+  # (wrong-job guard in automation/browser.py).
   linkedin_require_approval: true
 - adapter: greenhouse
   name: stripe
