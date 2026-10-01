@@ -155,3 +155,31 @@ def test_rezi_resume_id_roundtrip(tmp_path):
     storage.save_rezi_resume_id(saved.id, "rezi-abc-123")
     assert storage.get_rezi_resume_id(saved.id) == "rezi-abc-123"
     assert storage.get_job(saved.id).rezi_resume_id == "rezi-abc-123"
+
+
+def test_application_answers_roundtrip(tmp_path):
+    from job_hunt.models import JobPosting
+    from job_hunt.storage import Storage
+
+    storage = Storage(tmp_path / "ans.db")
+    job = JobPosting(
+        source="test", title="Backend Engineer", company="Co",
+        raw_url="https://example.com/9", canonical_url="https://example.com/9",
+        canonical_url_hash="h-ans", role_fingerprint="rf-ans", content_hash="c9",
+    )
+    saved, _ = storage.add_job(job)
+    storage.save_answers(
+        saved.id,
+        {"Are you authorized?": "Yes"},
+        confirmation_needed=["Passport number"],
+        submitted=False,
+    )
+    rows = storage.get_answers(saved.id)
+    assert len(rows) == 2
+    by_q = {r["question"]: r for r in rows}
+    assert by_q["Are you authorized?"]["answer"] == "Yes"
+    assert by_q["Are you authorized?"]["submitted"] is False
+    assert by_q["Passport number"]["needs_confirmation"] is True
+
+    storage.mark_answers_submitted(saved.id)
+    assert all(r["submitted"] for r in storage.get_answers(saved.id))

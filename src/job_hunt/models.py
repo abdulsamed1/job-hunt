@@ -156,6 +156,11 @@ class CandidateProfile(BaseModel):
     location: str
     work_authorization: str = "Authorized to work in Egypt, Remote Worldwide"
     sponsorship_required: bool = False
+    citizenship: Optional[str] = None
+    authorized_countries: List[str] = Field(default_factory=list)
+    blocked_companies: List[str] = Field(default_factory=list)
+    blocked_keywords: List[str] = Field(default_factory=list)
+    preferred_keywords: List[str] = Field(default_factory=list)  # exception-wins over blocked
     open_to_remote: bool = True
     remote_only: bool = False
     target_locations: List[str] = Field(
@@ -215,6 +220,21 @@ class ApplicationRecord(BaseModel):
     screenshot_path: Optional[str] = None
     confirmation_text: Optional[str] = None
     error_message: Optional[str] = None
+
+
+class ApplicationAnswer(BaseModel):
+    """One auditable question/answer from a filled application form."""
+
+    id: Optional[int] = None
+    job_id: int
+    question: str
+    answer: str = ""
+    source: str = "auto"  # auto | human
+    needs_confirmation: bool = False
+    submitted: bool = False
+    created_at: Optional[str] = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
 
 class AuditEntry(BaseModel):

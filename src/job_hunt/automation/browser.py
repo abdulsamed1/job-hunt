@@ -127,6 +127,164 @@ PORTAL_HOSTS = (
 )
 
 
+NEGATION_WORDS = {"no", "not", "never", "n't", "decline", "declines", "declined", "disagree", "none"}
+
+DECLINE_SYNONYMS = {"decline", "prefer not", "choose not", "don't wish", "do not wish", "not disclose"}
+
+
+def _polarity(text: str) -> Optional[bool]:
+    """True=affirmative, False=negated, None=neutral (no polarity words)."""
+    words = set(re.findall(r"[a-z]+(?:'t)?", text.lower()))
+    if words & NEGATION_WORDS:
+        return False
+    if words & {"yes", "agree", "accept", "confirm"}:
+        return True
+    return None
+
+
+AFFIRMATIVE_VARIANTS = {"yeah", "yep", "yea", "affirmative"}
+NEGATIVE_VARIANTS = {"nope", "nah", "negative"}
+
+CONFIRMATION_PATTERNS = [
+    "passport", "national id", "ssn", "social security",
+    "reference name", "reference phone", "references contact",
+    "current salary", "salary history", "expected salary amount",
+    "bank", "iban", "account number",
+    "exact date", "date of birth",
+]
+
+# ATS quirks catalog (docs-as-code): per-system behaviors the filler honors.
+# Each rule: what to DO and what to NEVER do on that ATS.
+ATS_QUIRKS = {
+    "ashby": [
+        {"id": "email-dedup", "do": "reuse the same email per candidate; Ashby dedups applicants by email",
+         "never": "submit twice with different emails to dodge dedup"},
+        {"id": "react-inputs", "do": "read back filled values; re-type when the control clears programmatic fill",
+         "never": "assume fill() persisted without reading back"},
+    ],
+    "lever": [
+        {"id": "hcaptcha-checkbox", "do": "treat an unsolvable hCaptcha as BLOCKED_CAPTCHA",
+         "never": "auto-click captcha checkboxes or outsource solving silently"},
+    ],
+    "workable": [
+        {"id": "spa-refetch", "do": "re-query selectors after each step; the SPA re-renders",
+         "never": "cache element handles across steps"},
+    ],
+    "workday": [
+        {"id": "keystroke-typing", "do": "type character-by-character when fill() does not persist",
+         "never": "trust a single fill() call without read-back"},
+    ],
+    "greenhouse": [
+        {"id": "embedded-iframe", "do": "search child frames for the form context",
+         "never": "assume the form lives in the top document"},
+    ],
+}
+
+
+def needs_confirmation(label: str) -> bool:
+    """True when an unanswered question needs the human (IDs, references, exact money)."""
+    lbl = (label or "").lower()
+    return any(p in lbl for p in CONFIRMATION_PATTERNS)
+
+COUNTRY_ALIASES = {
+    "usa": "united states",
+    "us": "united states",
+    "america": "united states",
+    "uk": "united kingdom",
+    "britain": "united kingdom",
+    "england": "united kingdom",
+    "uae": "united arab emirates",
+    "emirates": "united arab emirates",
+}
+
+
+def _normalize_country(name: str) -> str:
+    key = (name or "").strip().lower()
+    return COUNTRY_ALIASES.get(key, key)
+
+ATTESTATION_PATTERNS = [
+    "certify", "attest", "swear", "penalty of perjury", "under penalty",
+    "authorize a background", "authorize background", "background check",
+    "drug test", "drug testing", "authorize a drug",
+]
+
+ROUTINE_CONSENT_PATTERNS = [
+    "privacy policy", "terms of", "terms and conditions",
+    "consent to processing", "process my data", "data processing",
+]
+
+
+def checkbox_action(label: str) -> str:
+    """Decide a checkbox from its label: "check" or "skip".
+
+    Legal attestations (certifications, background/drug authorizations) are
+    never auto-checked — a wrongly-ticked legal box is worse than an unanswered
+    question. Only routine processing-consent boxes are checked. Everything
+    else (follow-company, newsletters, unknown) is left untouched.
+    """
+    lbl = (label or "").lower()
+    if not lbl.strip():
+        return "skip"
+    if any(p in lbl for p in ATTESTATION_PATTERNS):
+        return "skip"
+    if any(p in lbl for p in ROUTINE_CONSENT_PATTERNS):
+        return "check"
+    return "skip"
+
+
+def _normalize_variants(text: str) -> str:
+    """Fold colloquial yes/no variants to canonical form (word-boundary safe)."""
+    out = text.lower()
+    for variant in AFFIRMATIVE_VARIANTS:
+        out = re.sub(rf"\b{re.escape(variant)}\b", "yes", out)
+    for variant in NEGATIVE_VARIANTS:
+        out = re.sub(rf"\b{re.escape(variant)}\b", "no", out)
+    return out
+
+
+def match_answer_to_option(answer: str, options: List[str]) -> Optional[str]:
+    """Map a resolved answer onto one of the visible options — honestly or not at all.
+
+    Whole-word matching only (answer "No" never matches "Knowledgeable"), with a
+    polarity guard (affirmative answers never match negated options and vice
+    versa). Decline-style answers match decline-style options. Returns None when
+    nothing matches honestly: callers must leave the question unanswered.
+    """
+    if not answer or not options:
+        return None
+    norm_ans = _normalize_variants(answer.strip())
+    ans_words = set(re.findall(r"[a-z0-9]+", norm_ans))
+    ans_polarity = _polarity(norm_ans)
+
+    # 1. Exact (case-insensitive, variant-folded) match wins immediately.
+    for opt in options:
+        if _normalize_variants(opt.strip()) == norm_ans:
+            return opt
+
+    # 2. Decline-style answers match the first decline-style option.
+    if any(d in norm_ans for d in DECLINE_SYNONYMS):
+        for opt in options:
+            if any(d in opt.lower() for d in DECLINE_SYNONYMS):
+                return opt
+        return None
+
+    # 3. Whole-word containment, polarity-guarded.
+    for opt in options:
+        norm_opt = _normalize_variants(opt.strip())
+        opt_words = set(re.findall(r"[a-z0-9]+", norm_opt))
+        if not (ans_words and opt_words):
+            continue
+        if not (ans_words <= opt_words or opt_words <= ans_words):
+            continue
+        opt_polarity = _polarity(norm_opt)
+        if ans_polarity is not None and opt_polarity is not None and ans_polarity != opt_polarity:
+            continue
+        if any(d in norm_opt for d in DECLINE_SYNONYMS):
+            continue  # never fall back onto a decline variant
+        return opt
+    return None
+
+
 def classify_apply_host(url: str) -> str:
     """Classify an apply URL host as "ats", "portal", or "unverified".
 
@@ -175,6 +333,33 @@ class BrowserApplicationEngine:
         self.captcha_solver = captcha_solver or CaptchaSolver()
         self.require_linkedin_approval = require_linkedin_approval
         self.linkedin_storage_state = linkedin_storage_state or "data/linkedin_state.json"
+        # (label, required) questions left unanswered by the last fill pass.
+        self.last_unanswered: List[tuple] = []
+        # Unanswered questions needing the human (IDs, references, exact money).
+        self.last_confirmation_needed: List[str] = []
+
+    def submit_blocked_reason(self) -> Optional[str]:
+        """Stall-guard: block submit while required questions are unanswered."""
+        required = [label for label, is_required in self.last_unanswered if is_required]
+        if not required:
+            return None
+        shown = "; ".join(required[:3])
+        return f"Blocked: {len(required)} required question(s) unanswered: {shown}"
+
+    async def _is_element_required(self, ctx: Union[Page, Frame], el, label_text: str) -> bool:
+        """Best-effort required-field detection: attr, aria, or label asterisk."""
+        try:
+            for attr in ("required", "aria-required"):
+                val = await el.get_attribute(attr)
+                if val is not None and str(val).lower() not in ("false", "0"):
+                    # Bare `required` present (any value except explicit false) counts.
+                    if attr == "required" or str(val).lower() == "true":
+                        return True
+            if "*" in (label_text or ""):
+                return True
+        except Exception:
+            pass
+        return False
 
     def has_linkedin_session(self) -> bool:
         """Check whether a saved LinkedIn login session exists and looks valid."""
@@ -370,14 +555,33 @@ class BrowserApplicationEngine:
         return False
 
     async def _fill_field(self, ctx: Union[Page, Frame], selectors: list[str], value: str) -> bool:
-        """Attempt to fill an input field trying multiple CSS/XPath selectors."""
+        """Attempt to fill an input field trying multiple CSS/XPath selectors.
+
+        Read-back verified: when programmatic fill does not persist (Workday /
+        React-controlled inputs), falls back to character-by-character typing.
+        """
         for sel in selectors:
             try:
                 el = await ctx.query_selector(sel)
                 if el and await el.is_visible():
                     # Clear first if needed
                     await el.fill(value)
-                    return True
+                    try:
+                        if (await el.input_value()) == value:
+                            return True
+                    except Exception:
+                        return True
+                    # Fill did not persist: type it instead (Workday quirk).
+                    try:
+                        await el.click(timeout=1500)
+                        await el.fill("")
+                        await el.press_sequentially(value, delay=25)
+                        if (await el.input_value()) == value:
+                            return True
+                    except Exception:
+                        pass
+                    # Neither fill nor typing persisted: try the next selector.
+                    continue
             except Exception:
                 continue
         return False
@@ -531,9 +735,27 @@ class BrowserApplicationEngine:
             if k.lower() in lbl_lower or lbl_lower in k.lower():
                 return v
 
-        # Work Authorization / Legal Right to Work (Knockout safety)
+        # Work Authorization / Legal Right to Work — tri-split, never blanket Yes.
+        # Citizenship and authorization are different questions with different
+        # legal answers; unknown country means unanswered, never guessed.
+        if any(w in lbl_lower for w in ["citizen of", "citizenship", "are you a citizen"]):
+            match = re.search(r"citizen(?:ship)?\s+(?:of|in)\s+([a-zA-Z][a-zA-Z ]+)", label)
+            if match and profile.citizenship:
+                asked = _normalize_country(match.group(1))
+                mine = _normalize_country(profile.citizenship)
+                return "Yes" if asked == mine else "No"
+            return None
         if any(w in lbl_lower for w in ["authorized to work", "legally authorized", "right to work", "work permit", "work eligibility", "legal right"]):
-            return "Yes"
+            match = re.search(r"work\s+(?:in|for)\s+(?:the\s+)?([a-zA-Z][a-zA-Z ]+)", label)
+            if match:
+                asked = _normalize_country(match.group(1))
+                allowed = {_normalize_country(c) for c in (profile.authorized_countries or [])}
+                if asked in allowed:
+                    return "Yes"
+                if asked in (profile.work_authorization or "").lower():
+                    return "Yes"
+                return None
+            return None
 
         # Sponsorship (Knockout safety)
         if any(w in lbl_lower for w in ["sponsorship", "visa sponsorship", "require sponsorship", "require a visa", "future require"]):
@@ -580,8 +802,15 @@ class BrowserApplicationEngine:
         return None
 
     async def _fill_questionnaire(self, ctx: Union[Page, Frame], profile: CandidateProfile) -> Dict[str, str]:
-        """Dynamically detect and answer custom questions, dropdowns, comboboxes, and radios."""
+        """Dynamically detect and answer custom questions, dropdowns, comboboxes, and radios.
+
+        Anything that cannot be answered honestly is recorded in
+        `self.last_unanswered` as (label, required) instead of guessed — the
+        submit gate (`submit_blocked_reason`) blocks submission on required ones.
+        """
         answers_captured: Dict[str, str] = {}
+        self.last_unanswered = []
+        self.last_confirmation_needed = []
 
         # 1. Custom text inputs and textareas
         custom_inputs = await ctx.query_selector_all("input[type='text'], textarea")
@@ -599,6 +828,12 @@ class BrowserApplicationEngine:
                 if ans:
                     await inp.fill(ans)
                     answers_captured[label_text] = ans
+                else:
+                    self.last_unanswered.append(
+                        (label_text, await self._is_element_required(ctx, inp, label_text))
+                    )
+                    if needs_confirmation(label_text):
+                        self.last_confirmation_needed.append(label_text)
             except Exception:
                 continue
 
@@ -612,13 +847,8 @@ class BrowserApplicationEngine:
                 options = await sel.query_selector_all("option")
                 opt_texts = [await o.inner_text() for o in options]
 
-                target_option = None
-                if ans:
-                    ans_lower = ans.lower()
-                    for t in opt_texts:
-                        if t.strip().lower() == ans_lower or ans_lower in t.strip().lower():
-                            target_option = t.strip()
-                            break
+                # Honest whole-word mapping; unanswered when nothing matches.
+                target_option = match_answer_to_option(ans or "", [t.strip() for t in opt_texts])
 
                 if not target_option and any(w in label_text.lower() for w in ["gender", "race", "veteran", "disability"]):
                     for t in opt_texts:
@@ -629,6 +859,10 @@ class BrowserApplicationEngine:
                 if target_option:
                     await sel.select_option(label=target_option)
                     answers_captured[label_text or "select"] = target_option
+                elif label_text:
+                    self.last_unanswered.append(
+                        (label_text, await self._is_element_required(ctx, sel, label_text))
+                    )
             except Exception:
                 continue
 
@@ -662,16 +896,49 @@ class BrowserApplicationEngine:
                 group_label = await self._get_element_label(ctx, radio)
                 ans = self._resolve_question_answer(group_label, profile)
                 if not ans:
+                    if group_label:
+                        self.last_unanswered.append(
+                            (group_label, await self._is_element_required(ctx, radio, group_label))
+                        )
                     continue
 
                 group_radios = await ctx.query_selector_all(f"input[type='radio'][name='{group_name}']")
+                candidates: List[str] = []
+                candidate_els = []
                 for r in group_radios:
                     r_lbl = await self._get_element_label(ctx, r)
                     r_val = (await r.get_attribute("value") or "").lower()
-                    if ans.lower() in r_lbl.lower() or ans.lower() == r_val:
-                        await r.check()
-                        answers_captured[group_label or group_name] = ans
-                        break
+                    candidates.append(r_lbl or r_val)
+                    candidate_els.append(r)
+                # Honest whole-word mapping; group left untouched on no match.
+                picked = match_answer_to_option(ans or "", candidates)
+                if picked is not None:
+                    await candidate_els[candidates.index(picked)].check()
+                    answers_captured[group_label or group_name] = ans
+                elif group_label:
+                    self.last_unanswered.append(
+                        (group_label, await self._is_element_required(ctx, radio, group_label))
+                    )
+            except Exception:
+                continue
+
+        # 4. Checkboxes: routine processing-consent only; attestations and
+        # everything else stay untouched and are recorded when required.
+        checkboxes = await ctx.query_selector_all("input[type='checkbox']")
+        for cb in checkboxes:
+            try:
+                if await cb.is_checked():
+                    continue
+                cb_label = await self._get_element_label(ctx, cb)
+                if not cb_label:
+                    continue
+                if checkbox_action(cb_label) == "check" and await cb.is_visible():
+                    await cb.check()
+                    answers_captured[cb_label] = "checked (routine consent)"
+                else:
+                    self.last_unanswered.append(
+                        (cb_label, await self._is_element_required(ctx, cb, cb_label))
+                    )
             except Exception:
                 continue
 
@@ -1266,6 +1533,7 @@ class BrowserApplicationEngine:
                             answers = await self._fill_questionnaire(ctx, profile)
                             if answers:
                                 record.submission_payload["answers"] = answers
+                                record.submission_payload["needs_confirmation"] = self.last_confirmation_needed
                             if resume_file_path:
                                 await self._attach_cv_file(ctx, resume_file_path)
                             submit_btn, found = await self._handle_steppers_and_submit(ctx, page, profile)
@@ -1367,6 +1635,7 @@ class BrowserApplicationEngine:
                 answers = await self._fill_questionnaire(ctx, profile)
                 if answers:
                     record.submission_payload["answers"] = answers
+                    record.submission_payload["needs_confirmation"] = self.last_confirmation_needed
                     logger.info("Answered %d dynamic form questions on job %s", len(answers), job.id)
 
                 # Attach CV file
@@ -1391,6 +1660,18 @@ class BrowserApplicationEngine:
                     record.state = JobState.FAILED
                     record.screenshot_path = screenshot_file
                     record.error_message = "Could not locate a visible Submit button"
+                    return record
+
+                # Stall-guard: never submit with required questions unanswered.
+                blocked = self.submit_blocked_reason()
+                if blocked:
+                    screenshot_file = str(self.screenshots_dir / f"unanswered_job_{job.id}.png")
+                    await page.screenshot(path=screenshot_file, full_page=True)
+                    record.state = JobState.FAILED
+                    record.screenshot_path = screenshot_file
+                    record.error_message = blocked
+                    record.submission_payload["unanswered"] = self.last_unanswered
+                    logger.warning("Job %s submit blocked: %s", job.id, blocked)
                     return record
 
                 # 8. Click submit with scroll-into-view and fallback

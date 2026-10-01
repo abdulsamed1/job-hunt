@@ -300,6 +300,18 @@ class PipelineOrchestrator:
                 linkedin_approved=linkedin_approved,
             )
             self.storage.record_application(record)
+            # Audit the filled-form Q&A (answers + confirmation-needed).
+            payload = record.submission_payload or {}
+            if payload.get("answers") or payload.get("needs_confirmation"):
+                live_submit = (
+                    record.state == JobState.SUBMITTED and not payload.get("dry_run", True)
+                )
+                self.storage.save_answers(
+                    job.id,
+                    payload.get("answers") or {},
+                    confirmation_needed=payload.get("needs_confirmation") or [],
+                    submitted=live_submit,
+                )
             processed += 1
 
         logger.info("Application stage complete. Processed %d applications.", processed)

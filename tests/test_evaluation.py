@@ -190,3 +190,52 @@ async def test_async_gates_block_before_scoring(engine, candidate):
     assert res2.pre_filtered is True
     assert res2.eligible is False
     assert "polish" in res2.reasoning.lower()
+
+
+def _swe_job2(description: str, company: str = "Co") -> JobPosting:
+    return JobPosting(
+        source="test", title="Backend Engineer", company=company,
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote", description=description,
+    )
+
+
+def test_sponsorship_unavailable_rejects_when_needed(engine, candidate):
+    candidate.sponsorship_required = True
+    job = _swe_job2("Python backend role. We cannot provide sponsorship for this position.")
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is True
+    assert res.eligible is False
+    assert "sponsor" in (res.pre_filter_reason or "").lower()
+
+
+def test_sponsorship_offer_passes_gate_when_needed(engine, candidate):
+    candidate.sponsorship_required = True
+    job = _swe_job2("Python backend role. We sponsor visas for exceptional candidates.")
+    verdict, quote = engine.check_sponsorship(job, candidate)
+    assert verdict == "PASS"
+
+
+def test_sponsorship_irrelevant_when_not_needed(engine, candidate):
+    candidate.sponsorship_required = False
+    job = _swe_job2("Python backend role. No sponsorship available.")
+    res = engine.evaluate(job, candidate)
+    assert res.pre_filtered is False
+
+
+def test_blocked_company_and_keywords(engine, candidate):
+    candidate.blocked_companies = ["Evilterra"]
+    candidate.blocked_keywords = ["crypto casino", "adult"]
+    candidate.preferred_keywords = ["Egypt"]
+
+    job = _swe_job2("Python backend role.", company="Evilterra")
+    assert engine.evaluate(job, candidate).pre_filtered is True
+
+    job2 = _swe_job2("Python backend role at our crypto casino platform.")
+    assert engine.evaluate(job2, candidate).pre_filtered is True
+
+    # Preferred exception wins over bad word
+    job3 = _swe_job2("Python backend role in Egypt, not a crypto casino.")
+    res3 = engine.evaluate(job3, candidate)
+    assert res3.pre_filtered is False

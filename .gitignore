@@ -16,3 +16,5 @@ data/
 *.pdf
 *.jpg
 *.jpeg
+# Added by code-review-graph
+.code-review-graph/

@@ -239,5 +239,9 @@
   "languages": [
     "English",
     "Arabic"
+  ],
+  "citizenship": "Egypt",
+  "authorized_countries": [
+    "Egypt"
   ]
 }

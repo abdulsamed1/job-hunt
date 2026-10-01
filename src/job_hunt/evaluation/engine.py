@@ -74,6 +74,22 @@ ELIGIBILITY_PASS_PATTERNS = [
     re.compile(r"visa holders considered", re.IGNORECASE),
 ]
 
+# Sponsorship tiers: explicit offer wins, explicit refusal blocks (when needed).
+SPONSORSHIP_OFFER_PATTERNS = [
+    re.compile(r"we sponsor", re.IGNORECASE),
+    re.compile(r"sponsorship available", re.IGNORECASE),
+    re.compile(r"visa sponsorship (?:provided|offered)", re.IGNORECASE),
+    re.compile(r"will sponsor", re.IGNORECASE),
+]
+
+SPONSORSHIP_UNAVAILABLE_PATTERNS = [
+    re.compile(r"no sponsorship(?: available)?", re.IGNORECASE),
+    re.compile(r"without sponsorship", re.IGNORECASE),
+    re.compile(r"cann?ot (?:provide|sponsor|offer).{0,30}sponsor", re.IGNORECASE),
+    re.compile(r"unable to sponsor", re.IGNORECASE),
+    re.compile(r"sponsorship not available", re.IGNORECASE),
+]
+
 # Languages checked as explicit job-condition requirements (not programming languages).
 KNOWN_LANGUAGES = [
     "english", "danish", "norwegian", "swedish", "german", "french", "spanish",
@@ -198,9 +214,47 @@ class EvaluationEngine:
             pre_filter_reason=reason,
         )
 
+    def check_sponsorship(
+        self, job: JobPosting, profile: CandidateProfile
+    ) -> Tuple[str, Optional[str]]:
+        """Sponsorship tier check. Only decisive when sponsorship is required.
+
+        Offer-wins: explicit offer -> PASS. Explicit refusal + required -> FAIL
+        quoting the wording. Not required -> UNVERIFIED (irrelevant, proceed).
+        Silent + required -> UNVERIFIED (proceed, unverified).
+        """
+        desc = job.description or ""
+        for pat in SPONSORSHIP_OFFER_PATTERNS:
+            match = pat.search(desc)
+            if match:
+                return "PASS", match.group(0).strip()
+        if not profile.sponsorship_required:
+            return "UNVERIFIED", None
+        for pat in SPONSORSHIP_UNAVAILABLE_PATTERNS:
+            match = pat.search(desc)
+            if match:
+                return "FAIL", match.group(0).strip()
+        return "UNVERIFIED", None
+
     def pre_filter(self, job: JobPosting, profile: CandidateProfile) -> Tuple[bool, Optional[str]]:
         """Run fast deterministic pre-filters on title, clearance, and location."""
         title = job.title.strip()
+
+        # Sponsorship tier gate (decisive only when sponsorship is required)
+        verdict, quote = self.check_sponsorship(job, profile)
+        if verdict == "FAIL":
+            return False, f"Sponsorship unavailable but required: {quote}"
+
+        # Blocked companies and keywords (preferred keywords win exceptions)
+        company_lower = (job.company or "").lower()
+        if any(bc.lower() in company_lower for bc in (profile.blocked_companies or []) if bc):
+            return False, f"Company is blocked: {job.company}"
+        desc_lower = (job.description or "").lower()
+        preferred_hit = any(pk.lower() in desc_lower or pk.lower() in company_lower for pk in (profile.preferred_keywords or []) if pk)
+        if not preferred_hit:
+            for bk in (profile.blocked_keywords or []):
+                if bk and bk.lower() in desc_lower:
+                    return False, f"Blocked keyword in posting: {bk}"
 
         # Check negative role patterns
         for neg_pat in NEGATIVE_ROLE_PATTERNS:

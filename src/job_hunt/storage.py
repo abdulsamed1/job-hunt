@@ -121,6 +121,21 @@ class Storage:
                     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS application_answers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'auto',
+                    needs_confirmation INTEGER NOT NULL DEFAULT 0,
+                    submitted INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    UNIQUE (job_id, question),
+                    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_answers_job_id ON application_answers(job_id);
+
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_id INTEGER NOT NULL,
@@ -267,6 +282,71 @@ class Storage:
             cursor = conn.execute("SELECT rezi_resume_id FROM jobs WHERE id = ?", (job_id,))
             row = cursor.fetchone()
             return row["rezi_resume_id"] if row else None
+
+    def save_answers(
+        self,
+        job_id: int,
+        answers: Dict[str, str],
+        confirmation_needed: Optional[List[str]] = None,
+        submitted: bool = False,
+    ) -> None:
+        """Persist filled-form Q&A for audit (additive; never invents answers)."""
+        confirmation_needed = confirmation_needed or []
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            for question, answer in (answers or {}).items():
+                conn.execute(
+                    """
+                    INSERT INTO application_answers
+                        (job_id, question, answer, source, needs_confirmation, submitted, created_at)
+                    VALUES (?, ?, ?, 'auto', 0, ?, ?)
+                    ON CONFLICT (job_id, question) DO UPDATE SET
+                        answer = excluded.answer,
+                        submitted = excluded.submitted
+                    """,
+                    (job_id, question, answer, 1 if submitted else 0, now),
+                )
+            for question in confirmation_needed:
+                conn.execute(
+                    """
+                    INSERT INTO application_answers
+                        (job_id, question, answer, source, needs_confirmation, submitted, created_at)
+                    VALUES (?, ?, '', 'auto', 1, ?, ?)
+                    ON CONFLICT (job_id, question) DO UPDATE SET
+                        needs_confirmation = 1,
+                        submitted = excluded.submitted
+                    """,
+                    (job_id, question, 1 if submitted else 0, now),
+                )
+            conn.commit()
+
+    def get_answers(self, job_id: int) -> List[Dict[str, Any]]:
+        """Fetch audited Q&A rows for a job."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT question, answer, source, needs_confirmation, submitted "
+                "FROM application_answers WHERE job_id = ? ORDER BY question",
+                (job_id,),
+            )
+            return [
+                {
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "source": row["source"],
+                    "needs_confirmation": bool(row["needs_confirmation"]),
+                    "submitted": bool(row["submitted"]),
+                }
+                for row in cursor.fetchall()
+            ]
+
+    def mark_answers_submitted(self, job_id: int) -> None:
+        """Flip a job's audited answers to submitted after a live submit."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE application_answers SET submitted = 1 WHERE job_id = ?",
+                (job_id,),
+            )
+            conn.commit()
 
     def get_job(self, job_id: int) -> Optional[JobPosting]:
         """Fetch job posting by id."""
