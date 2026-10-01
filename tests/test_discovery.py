@@ -442,3 +442,130 @@ async def test_linkedin_geo_fetch_hits_geo_url():
     assert "distance=25" in url
     assert "f_TPR=r43200" in url
     assert "keywords=backend" in url
+
+
+def test_bayt_adapter_matching():
+    from job_hunt.discovery.adapters.bayt import BaytAdapter
+    b = BaytAdapter()
+    assert b.matches_url("https://www.bayt.com/en/egypt/jobs/backend-jobs-in-cairo/") is True
+    assert b.matches_url("https://boards.greenhouse.io/stripe") is False
+
+
+def test_naukri_adapter_matching():
+    from job_hunt.discovery.adapters.naukri import NaukriAdapter
+    n = NaukriAdapter()
+    assert n.matches_url("https://www.naukri.com/backend-jobs") is True
+    assert n.matches_url("https://boards.greenhouse.io/stripe") is False
+
+
+@pytest.mark.asyncio
+async def test_bayt_mock_fetch():
+    import time
+    from job_hunt.discovery.adapters import bayt as bayt_mod
+    from job_hunt.discovery.adapters.bayt import BaytAdapter
+
+    now = int(time.time())
+    fresh = now - 3600
+    old = now - 10 * 86400
+    sample_html = f"""
+    <html><body><ul>
+      <li data-js-job data-job-id="111">
+        <h2><a href="/en/egypt/jobs/backend-engineer-111/">Backend Engineer</a></h2>
+        <div class="job-company-location-wrapper"><a href="/en/company/acme">Acme</a></div>
+        <dt class="jb-label-location"><span>Cairo</span><span>Egypt</span></dt>
+        <span data-automation-jobactivedate="{fresh}"></span>
+      </li>
+      <li data-js-job data-job-id="222">
+        <h2><a href="/en/egypt/jobs/stale-role-222/">Stale Role</a></h2>
+        <div class="job-company-location-wrapper">OldCo</div>
+        <dt class="jb-label-location"><span>Riyadh</span><span>Saudi Arabia</span></dt>
+        <span data-automation-jobactivedate="{old}"></span>
+      </li>
+      <li data-js-job><h2>Broken card without link</h2></li>
+    </ul></body></html>
+    """
+
+    async def fake_fetch_text(url, params=None, headers=None, timeout=20):
+        return 200, sample_html, url
+
+    original = bayt_mod.fetch_text
+    bayt_mod.fetch_text = fake_fetch_text
+    try:
+        async with httpx.AsyncClient() as client:
+            adapter = BaytAdapter()
+            postings = await adapter.fetch(
+                {"adapter": "bayt", "queries": ["backend"], "locations": ["Cairo, Egypt"],
+                 "max_pages_per_query": 1, "target_jobs_count": 10, "hours_old": 72},
+                client,
+            )
+    finally:
+        bayt_mod.fetch_text = original
+
+    assert len(postings) == 1  # stale filtered by hours_old, broken skipped
+    p = postings[0]
+    assert p.title == "Backend Engineer"
+    assert p.company == "Acme"
+    assert p.source == "bayt"
+    assert p.external_id == "bayt-111"
+    assert "111" in p.canonical_url
+
+
+@pytest.mark.asyncio
+async def test_naukri_mock_fetch():
+    import time
+    from job_hunt.discovery.adapters import naukri as naukri_mod
+    from job_hunt.discovery.adapters.naukri import NaukriAdapter, generate_nkparam
+
+    assert generate_nkparam("srp")  # non-empty RSA token
+
+    now_ms = int(time.time() * 1000)
+    payload = {
+        "noOfJobs": 1,
+        "jobDetails": [
+            {
+                "jobId": "555",
+                "title": "Backend Developer",
+                "companyName": "Flipkart",
+                "staticUrl": "flipkart-jobs",
+                "jdURL": "/job-listings/backend-developer-flipkart-555",
+                "createdDate": now_ms - 3600 * 1000,
+                "companyApplyJob": False,
+                "jobType": "Full Time",
+                "vacancy": 3,
+                "placeholders": [
+                    {"type": "location", "label": "Hybrid - Bengaluru"},
+                    {"type": "salary", "label": "Not disclosed"},
+                ],
+                "salaryDetail": {"hideSalary": True},
+                "tagsAndSkills": "Python,Django",
+                "experienceText": "2-4 Yrs",
+                "logoPathV3": "",
+                "ambitionBoxData": {},
+            }
+        ],
+    }
+
+    async def fake_fetch_json(url, params=None, headers=None, timeout=20):
+        assert headers and "nkparam" in headers
+        return 200, payload, url
+
+    original = naukri_mod.fetch_json_async
+    naukri_mod.fetch_json_async = fake_fetch_json
+    try:
+        async with httpx.AsyncClient() as client:
+            adapter = NaukriAdapter()
+            postings = await adapter.fetch(
+                {"adapter": "naukri", "queries": ["backend"], "locations": ["Bengaluru"],
+                 "max_pages_per_query": 1, "target_jobs_count": 10, "hours_old": 72},
+                client,
+            )
+    finally:
+        naukri_mod.fetch_json_async = original
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Developer"
+    assert p.company == "Flipkart"
+    assert p.source == "naukri"
+    assert p.external_id == "nk-555"
+    assert "Python" in (p.description or "")

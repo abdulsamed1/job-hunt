@@ -4,11 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "abdulsamed1", email = "abdalsamed71@gmail.com" }
+    { name = "abdulsamed", email = "abdulsamedhamdy@gmail.com" }
 ]
 requires-python = ">=3.14"
 dependencies = [
     "beautifulsoup4>=4.15.0",
+    "curl-cffi>=0.16.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "playwright>=1.62.0",

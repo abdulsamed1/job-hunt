@@ -20,6 +20,30 @@ sources:
   # Bot must verify target job + modal company before any submit
   # (wrong-job guard in automation/browser.py).
   linkedin_require_approval: true
+- adapter: bayt
+  name: bayt-egypt-tech
+  url: https://www.bayt.com/en/egypt/jobs/
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Cairo, Egypt
+  - Egypt
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: naukri
+  name: naukri-india-remote
+  url: https://www.naukri.com/
+  queries:
+  - backend
+  - fullstack
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
