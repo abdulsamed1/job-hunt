@@ -64,6 +64,52 @@ def verify_pdf_text_layer(
     return (len(checks) == 0), checks
 
 
+def append_keyword_line(
+    master_pdf_path: str | Path,
+    job: Any,
+    profile: Any,
+    output_path: str | Path,
+    label: str = "Core competencies for this role",
+) -> Optional[str]:
+    """Append a VISIBLE keyword line for one posting to a copy of the master PDF.
+
+    Only genuinely verified profile skills that the posting actually mentions are
+    included — gaps are never stuffed, and the line is plain readable text, never
+    hidden. The master file is never modified. Returns the line, or None when
+    there is no honest overlap (refuses rather than writing filler).
+    """
+    verified = [s for s in (profile.verified_skills or [])]
+    desc_words = set(re.findall(r"\b[a-z][a-z0-9+#/.]*\b", (job.description or "").lower()))
+    title_words = set(re.findall(r"\b[a-z][a-z0-9+#/.]*\b", (job.title or "").lower()))
+    matched = [s for s in verified if s.lower() in desc_words or s.lower() in title_words]
+    if not matched:
+        logger.info("No verified-skill overlap for job; refusing keyword line")
+        return None
+
+    line = f"{label}: {', '.join(matched)}"
+    doc = pymupdf.open(str(master_pdf_path))
+    try:
+        page = doc[-1]
+        rect = page.rect
+        # Bottom-left, small but fully readable dark text on white.
+        y = rect.height - 36
+        page.insert_text(
+            (rect.x0 + 40, y),
+            line,
+            fontsize=8,
+            fontname="helv",
+            color=(0.25, 0.25, 0.25),
+        )
+        doc.save(str(output_path))
+    finally:
+        doc.close()
+
+    ok, checks = verify_pdf_text_layer(str(output_path), profile)
+    if not ok:
+        logger.warning("Keyword-line PDF failed text-layer check: %s", checks)
+    return line
+
+
 class ATSCVGenerator:
     """Generates professional, job-tailored PDFs preserving the candidate's master resume as single source of truth."""
 

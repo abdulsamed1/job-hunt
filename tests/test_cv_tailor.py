@@ -363,3 +363,52 @@ def test_fact_verification_accepts_hyphenated_titles():
     passed2, violations2 = tailor.verify_cv_facts(bad, prof)
     assert passed2 is False
     assert any("evilcorp" in v.lower() for v in violations2)
+
+
+def _master_like_pdf(path):
+    import fitz
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Sam Taylor\nsam@example.com\n+1-555-0144\nPython developer.")
+    doc.save(str(path))
+    doc.close()
+
+
+def test_keyword_line_uses_only_verified_matched_skills(profile, tmp_path):
+    from job_hunt.cv.pdf_generator import append_keyword_line
+    from job_hunt.models import JobPosting
+
+    src = tmp_path / "master.pdf"
+    _master_like_pdf(src)
+    before = src.read_bytes()
+    job = JobPosting(
+        source="test", title="Backend Engineer", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        description="Seeking Python and Terraform experts for Kubernetes platform.",
+    )
+    out = tmp_path / "tailored.pdf"
+    line = append_keyword_line(str(src), job, profile, str(out))
+    assert "Python" in line
+    assert "Kubernetes" in line  # genuinely verified: fair to claim
+    assert "Terraform" not in line  # genuine gap: never stuffed
+    assert src.read_bytes() == before  # master untouched
+
+    import fitz
+    text = "\n".join(p.get_text() for p in fitz.open(str(out)))
+    assert "Python" in text  # parser-visible
+
+
+def test_keyword_line_refuses_without_overlap(profile, tmp_path):
+    from job_hunt.cv.pdf_generator import append_keyword_line
+    from job_hunt.models import JobPosting
+
+    src = tmp_path / "master.pdf"
+    _master_like_pdf(src)
+    job = JobPosting(
+        source="test", title="COBOL Mainframe Operator", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        description="Seeking COBOL and JCL mainframe operators.",
+    )
+    assert append_keyword_line(str(src), job, profile, str(tmp_path / "o.pdf")) is None
