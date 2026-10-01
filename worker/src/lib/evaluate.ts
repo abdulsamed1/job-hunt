@@ -109,8 +109,11 @@ export function scoreJob(
   const isRemote = /remote|anywhere|worldwide|global/.test(loc);
   const locationScore = isRemote ? 20 : profile.openToRemote ? 15 : 10;
   const score = Math.min(100, Math.round((skillScore + seniorityScore + locationScore) * 10) / 10);
+  // Worker runs unsupervised: empty-signal generosity is a footgun (a title
+  // with zero skill evidence must never go eligible on participation points).
+  const eligible = score >= threshold && matched.length >= 1;
   return {
-    score, eligible: score >= threshold, matched, missing: missing.slice(0, 10),
+    score, eligible, matched, missing: missing.slice(0, 10),
     reasoning: `serverless score ${score} (skills ${skillScore.toFixed(1)}, seniority ${seniorityScore}, location ${locationScore})`,
     gated: false,
   };

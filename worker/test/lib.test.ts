@@ -98,6 +98,13 @@ describe("classifyTier", () => {
   });
 });
 
+describe("scoreJob matched-skill requirement", () => {
+  it("rejects empty-signal titles", () => {
+    const r = scoreJob("Senior Accountant", "Finance role.", "Remote", profile());
+    expect(r.eligible).toBe(false);
+  });
+});
+
 describe("matchAnswerToOption", () => {
   it("exact + whole-word, no substring traps", () => {
     expect(matchAnswerToOption("Yes", ["Yes", "No"])).toBe("Yes");

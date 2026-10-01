@@ -168,7 +168,8 @@ export default {
             const isNew = await upsertJob(db, {
               canonical_hash: canonicalHash(canon), title: j.title.slice(0, 200),
               company: j.company.slice(0, 120), location: j.location.slice(0, 120),
-              url: j.url.slice(0, 500), source: j.source, posted_at: (j.posted_at || "").slice(0, 40),
+              url: j.url.slice(0, 500), description: (j.desc || "").slice(0, 4000),
+              source: j.source, posted_at: (j.posted_at || "").slice(0, 40),
               discovered_at: now, score: 0, remote: isRemoteish(j.location, j.desc),
             });
             if (isNew) {
