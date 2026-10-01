@@ -68,6 +68,17 @@ def _mock_playwright_context():
             el = MagicMock()
             el.is_visible = AsyncMock(return_value=True)
             return el
+        if "job-title" in sel or "job-view-layout h2" in sel:
+            el = MagicMock()
+            el.is_visible = AsyncMock(return_value=True)
+            el.inner_text = AsyncMock(return_value="Senior Python Developer")
+            return el
+        if "artdeco-modal" in sel or "role='dialog'" in sel or "easy-apply-modal" in sel:
+            el = MagicMock()
+            el.is_visible = AsyncMock(return_value=True)
+            el.inner_text = AsyncMock(return_value="Apply to TechCorp")
+            el.click = AsyncMock()
+            return el
         if " h2" in sel:
             el = MagicMock()
             el.is_visible = AsyncMock(return_value=True)

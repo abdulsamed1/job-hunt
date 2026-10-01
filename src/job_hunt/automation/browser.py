@@ -861,26 +861,102 @@ class BrowserApplicationEngine:
             )
         return None
 
-    async def _verify_linkedin_target_job(self, page: Page, job: JobPosting) -> bool:
-        """Confirm the LinkedIn page shows the target posting, opening its card if needed.
+    def _job_text_tokens(self, text: str) -> set:
+        stop = {
+            "senior", "junior", "lead", "staff", "principal", "engineer", "developer",
+            "remote", "hybrid", "onsite", "full", "time", "and", "the", "for",
+            "with", "iii", "ii", "mid", "level",
+        }
+        return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if w not in stop}
 
-        Logged-in sessions often redirect guest /jobs/view URLs to a search view.
-        When the URL no longer carries our posting ID, click the card linking to it.
-        """
+    async def _detail_pane_matches(self, page: Page, job: JobPosting) -> bool:
+        """Check URL, then detail-pane title/company tokens, for the target posting."""
         try:
-            if job.external_id and job.external_id in page.url:
+            if job.external_id and job.external_id in (page.url or ""):
                 return True
-            if not job.external_id:
-                return True
-            card_link = await page.query_selector(f"a[href*='{job.external_id}']")
-            if card_link and await card_link.is_visible():
-                logger.info("Opening target job card for posting %s", job.external_id)
-                await card_link.click(timeout=5000)
-                await page.wait_for_timeout(3000)
-                return job.external_id in page.url
+            want_title = self._job_text_tokens(job.title)
+            want_company = (job.company or "").split()[0].lower() if job.company else ""
+            title_el = await page.query_selector(
+                ".jobs-unified-top-card__job-title, "
+                ".job-details-jobs-unified-top-card__job-title, "
+                "div.job-view-layout h2"
+            )
+            if title_el and await title_el.is_visible():
+                got_title = self._job_text_tokens(await title_el.inner_text() or "")
+                page_text = ((await page.content()) or "").lower()
+                title_hit = want_title and len(want_title & got_title) >= max(1, len(want_title) // 2)
+                company_hit = (not want_company) or (want_company in page_text[:6000])
+                if title_hit and company_hit:
+                    logger.info("LinkedIn detail pane matches target posting")
+                    return True
         except Exception:
             pass
-        return job.external_id in (page.url or "") if job.external_id else True
+        return False
+
+    async def _detail_pane_shows_other_job(self, page: Page, job: JobPosting) -> bool:
+        """True only with positive evidence the detail pane is a different posting."""
+        try:
+            want_title = self._job_text_tokens(job.title)
+            if not want_title:
+                return False
+            title_el = await page.query_selector(
+                ".jobs-unified-top-card__job-title, "
+                ".job-details-jobs-unified-top-card__job-title, "
+                "div.job-view-layout h2"
+            )
+            if title_el and await title_el.is_visible():
+                got_title = self._job_text_tokens(await title_el.inner_text() or "")
+                if got_title and len(want_title & got_title) < max(1, len(want_title) // 2):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    async def _verify_linkedin_target_job(self, page: Page, job: JobPosting) -> bool:
+        """Confirm the LinkedIn detail pane shows the target posting.
+
+        Matches on detail-pane title/company tokens (robust against LinkedIn's
+        SPA URL games), clicking the matching result card at most once when
+        needed. Without positive evidence of a mismatch the page is accepted —
+        the Easy Apply modal company guard is the backstop. Falls back to
+        posting-ID URL matching.
+        """
+        try:
+            if await self._detail_pane_matches(page, job):
+                return True
+            want_title = self._job_text_tokens(job.title)
+            required = max(1, len(want_title) // 2) if want_title else 0
+            if want_title:
+                for sel in ("a.job-card-list__title", ".job-card-list__title", ".job-card-container a"):
+                    try:
+                        cards = await page.query_selector_all(sel)
+                    except Exception:
+                        continue
+                    best = None
+                    best_overlap = -1
+                    for card in cards:
+                        try:
+                            if not await card.is_visible():
+                                continue
+                            card_title = self._job_text_tokens(await card.inner_text() or "")
+                            overlap = len(want_title & card_title)
+                            if overlap >= required and overlap > best_overlap:
+                                best, best_overlap = card, overlap
+                        except Exception:
+                            continue
+                    if best is not None:
+                        logger.info("Opening best-matching result card for %s", job.title[:40])
+                        try:
+                            await best.click(timeout=5000)
+                            await page.wait_for_timeout(3000)
+                        except Exception:
+                            pass
+                        return await self._detail_pane_matches(page, job)
+            # No positive evidence of a mismatch: accept, modal guard backstops.
+            return not await self._detail_pane_shows_other_job(page, job)
+        except Exception:
+            pass
+        return False
 
     async def _try_linkedin_easy_apply(self, page: Page, job: Optional[JobPosting] = None) -> bool:
         """Handle LinkedIn's 'Easy Apply' flow which uses a side panel React modal.
@@ -922,24 +998,29 @@ class BrowserApplicationEngine:
         can never go to the wrong employer.
         """
         try:
-            modal = await page.query_selector(
-                ".artdeco-modal, .jobs-easy-apply-modal, [role='dialog']"
-            )
-            if modal is None or not await modal.is_visible():
-                return True  # no modal found; nothing to contradict
-            text = ((await modal.inner_text()) or "").strip().lower()
-            match = re.search(r"apply to\s+([a-z0-9][a-z0-9 .&'-]{1,60})", text)
-            if not match:
-                return True  # no company claim found; nothing to contradict
-            modal_company = match.group(1).strip()
             company_token = (job.company or "").split()[0].lower() if job.company else ""
-            if company_token and company_token not in modal_company:
-                logger.warning(
-                    "Easy Apply modal mismatch: modal targets %r, job is %r",
-                    modal_company, job.company,
+            for _ in range(5):
+                modal = await page.query_selector(
+                    ".artdeco-modal, .jobs-easy-apply-modal, [role='dialog']"
                 )
-                return False
-            return True
+                if modal is None or not await modal.is_visible():
+                    return True  # no modal found; nothing to contradict
+                text = ((await modal.inner_text()) or "").strip().lower()
+                match = re.search(r"apply to\s+([a-z0-9][a-z0-9 .&'-]{1,60})", text)
+                if not match:
+                    # Modal still loading (spinner) or no company claim yet; retry.
+                    await page.wait_for_timeout(2000)
+                    continue
+                modal_company = match.group(1).strip()
+                if company_token and company_token not in modal_company:
+                    logger.warning(
+                        "Easy Apply modal mismatch: modal targets %r, job is %r",
+                        modal_company, job.company,
+                    )
+                    return False
+                return True
+            logger.warning("Easy Apply modal company never resolved; aborting to be safe")
+            return False
         except Exception:
             return True
 

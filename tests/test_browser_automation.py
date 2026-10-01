@@ -381,6 +381,7 @@ async def test_verify_linkedin_target_job_no_card_no_match():
     page = MagicMock()
     page.url = "https://www.linkedin.com/jobs/search/?keywords=x"
     page.query_selector = AsyncMock(return_value=None)
+    page.wait_for_timeout = AsyncMock()
     job = JobPosting(
         source="linkedin", title="T", company="Globant",
         raw_url="https://eg.linkedin.com/jobs/view/x-4472305480",
@@ -388,7 +389,8 @@ async def test_verify_linkedin_target_job_no_card_no_match():
         canonical_url_hash="h-t2", role_fingerprint="rf-t2", content_hash="c-t2",
         external_id="4472305480",
     )
-    assert await engine._verify_linkedin_target_job(page, job) is False
+    # Empty page: no positive mismatch evidence -> accepted (modal guard backstops)
+    assert await engine._verify_linkedin_target_job(page, job) is True
 
 
 @pytest.mark.asyncio
@@ -417,13 +419,16 @@ async def test_verify_easy_apply_modal_company():
 
         page = MagicMock()
         page.query_selector = AsyncMock(side_effect=side_effect)
+        page.wait_for_timeout = AsyncMock()
         return page
 
     assert await engine._verify_easy_apply_modal_company(await modal_page("Apply to Globant"), job) is True
     assert await engine._verify_easy_apply_modal_company(await modal_page("Apply to Magnet"), job) is False
-    # Sign-in modal carries no company claim -> nothing to contradict
-    assert await engine._verify_easy_apply_modal_company(await modal_page("Sign in to continue"), job) is True
+    # Sign-in modal never resolves a company claim -> abort safe
+    assert await engine._verify_easy_apply_modal_company(await modal_page("Sign in to continue"), job) is False
     assert await engine._verify_easy_apply_modal_company(await modal_page(None), job) is True
+    # Spinner forever (company never resolves) -> abort rather than risk wrong job
+    assert await engine._verify_easy_apply_modal_company(await modal_page("Loading…"), job) is False
 
 
 @pytest.mark.asyncio
@@ -528,3 +533,76 @@ async def test_logged_in_detected_via_nav_items():
     empty.query_selector = AsyncMock(return_value=None)
     empty.wait_for_timeout = AsyncMock()
     assert await engine._is_linkedin_logged_in(empty) is False
+
+
+@pytest.mark.asyncio
+async def test_target_job_matches_detail_pane_title():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+    from job_hunt.models import JobPosting
+
+    engine = BrowserApplicationEngine(headless=True)
+    job = JobPosting(
+        source="linkedin", title="Full Stack Developer (Backend Focus)", company="Globant",
+        raw_url="https://x", canonical_url="https://x",
+        canonical_url_hash="h-tp", role_fingerprint="rf-tp", content_hash="c-tp",
+        external_id="4472305480",
+    )
+    title_el = MagicMock()
+    title_el.is_visible = AsyncMock(return_value=True)
+    title_el.inner_text = AsyncMock(return_value="Full Stack Developer (Backend Focus)")
+
+    page = MagicMock()
+    page.url = "https://www.linkedin.com/jobs/collections/"
+    page.wait_for_timeout = AsyncMock()
+
+    async def qsa(sel):
+        return []
+
+    async def qs(sel):
+        if "job-title" in sel or "job-view-layout h2" in sel:
+            return title_el
+        return None
+
+    page.query_selector = AsyncMock(side_effect=qs)
+    page.query_selector_all = AsyncMock(side_effect=qsa)
+    page.content = AsyncMock(return_value="<html>globant jobs page</html>")
+    assert await engine._verify_linkedin_target_job(page, job) is True
+
+
+@pytest.mark.asyncio
+async def test_target_job_clicks_matching_card():
+    from unittest.mock import AsyncMock, MagicMock
+    from job_hunt.automation.browser import BrowserApplicationEngine
+    from job_hunt.models import JobPosting
+
+    engine = BrowserApplicationEngine(headless=True)
+    job = JobPosting(
+        source="linkedin", title="Full Stack Developer (Backend Focus)", company="Globant",
+        raw_url="https://x", canonical_url="https://x",
+        canonical_url_hash="h-tc", role_fingerprint="rf-tc", content_hash="c-tc",
+        external_id="4472305480",
+    )
+    good_card = MagicMock()
+    good_card.is_visible = AsyncMock(return_value=True)
+    good_card.inner_text = AsyncMock(return_value="Full Stack Developer (Backend Focus)\nGlobant")
+    bad_card = MagicMock()
+    bad_card.is_visible = AsyncMock(return_value=True)
+    bad_card.inner_text = AsyncMock(return_value="Senior Full-Stack Laravel Engineer\nMagnet")
+    bad_card.click = AsyncMock()
+
+    page = MagicMock()
+    page.url = "https://www.linkedin.com/jobs/collections/"
+    page.wait_for_timeout = AsyncMock()
+    page.query_selector = AsyncMock(return_value=None)
+    page.query_selector_all = AsyncMock(return_value=[bad_card, good_card])
+    page.content = AsyncMock(return_value="<html>search</html>")
+
+    async def navigate_on_click(*args, **kwargs):
+        page.url = "https://www.linkedin.com/jobs/view/4472305480/"
+
+    good_card.click = AsyncMock(side_effect=navigate_on_click)
+    # Matching card clicked exactly once, then the detail URL confirms the target
+    assert await engine._verify_linkedin_target_job(page, job) is True
+    good_card.click.assert_awaited_once()
+    bad_card.click.assert_not_awaited()
