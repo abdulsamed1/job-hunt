@@ -349,21 +349,70 @@ class BrowserApplicationEngine:
         return f"Blocked: {len(required)} required question(s) unanswered: {shown}"
 
     async def verify_fill(self, ctx, fields) -> list:
-        """Re-read live field values; return human-readable warnings (empty = OK)."""
+        """Re-read live field values; return (index, message) warnings (empty = OK).
+
+        Read-back is scoped per control type ("kind" on each field dict):
+        text inputs/textareas compare input_value(); selects compare the
+        selected option text; radios/checkboxes compare is_checked() against
+        intended-checked; combobox divs have no reliable read-back so they are
+        recorded as unverifiable and assumed OK (never warned). Warnings are
+        keyed by field index so same-label fields map back 1:1 (no substring
+        matching, no double-count).
+        """
         warnings = []
-        for f in fields or []:
-            try:
-                el = f.get("el")
-                current = await el.input_value() if el and hasattr(el, "input_value") else ""
-            except Exception:
-                current = None
-            intended = f.get("intended") or ""
+        for i, f in enumerate(fields or []):
+            kind = f.get("kind") or "text"
+            if kind == "combobox":
+                continue  # no reliable read-back; unverifiable, assume OK
             label = f.get("label") or "field"
-            if intended and not (current or ""):
-                warnings.append(f"fill-mismatch: {label} reads empty after fill")
-            if f.get("required") and not (current or ""):
-                warnings.append(f"required-empty: {label}")
+            intended = f.get("intended") or ""
+            required = f.get("required")
+            el = f.get("el")
+            try:
+                if kind == "select":
+                    current = await self._read_selected_option_text(el)
+                    if intended and (current or "").strip() != intended.strip():
+                        warnings.append((i, f"fill-mismatch: {label} reads {current!r} after fill"))
+                    if required and not (current or ""):
+                        warnings.append((i, f"required-empty: {label}"))
+                elif kind in ("radio", "checkbox"):
+                    try:
+                        checked = await el.is_checked() if el and hasattr(el, "is_checked") else None
+                    except Exception:
+                        checked = None
+                    if kind == "checkbox":
+                        want_checked = "checked" in intended.lower()
+                    else:
+                        want_checked = True  # the picked radio was checked by us
+                    if want_checked and checked is not True:
+                        warnings.append((i, f"fill-mismatch: {label} not checked after fill"))
+                    if required and checked is not True:
+                        warnings.append((i, f"required-empty: {label}"))
+                else:  # text, textarea, and any unknown kind
+                    try:
+                        current = await el.input_value() if el and hasattr(el, "input_value") else ""
+                    except Exception:
+                        current = None
+                    if intended and not (current or ""):
+                        warnings.append((i, f"fill-mismatch: {label} reads empty after fill"))
+                    if required and not (current or ""):
+                        warnings.append((i, f"required-empty: {label}"))
+            except Exception:
+                warnings.append((i, f"fill-mismatch: {label} unreadable after fill"))
         return warnings
+
+    @staticmethod
+    async def _read_selected_option_text(el):
+        """Best-effort read of a <select>'s selected option text (None if unreadable)."""
+        if el is None or not hasattr(el, "query_selector"):
+            return None
+        try:
+            opt = await el.query_selector("option:checked")
+            if opt is not None and hasattr(opt, "inner_text"):
+                return await opt.inner_text()
+        except Exception:
+            return None
+        return None
 
     async def _is_element_required(self, ctx: Union[Page, Frame], el, label_text: str) -> bool:
         """Best-effort required-field detection: attr, aria, or label asterisk."""
@@ -848,7 +897,7 @@ class BrowserApplicationEngine:
                 if ans:
                     await inp.fill(ans)
                     answers_captured[label_text] = ans
-                    filled.append((label_text, inp, ans, await self._is_element_required(ctx, inp, label_text)))
+                    filled.append((label_text, inp, ans, await self._is_element_required(ctx, inp, label_text), "text"))
                 else:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, inp, label_text))
@@ -880,7 +929,7 @@ class BrowserApplicationEngine:
                 if target_option:
                     await sel.select_option(label=target_option)
                     answers_captured[label_text or "select"] = target_option
-                    filled.append((label_text or "select", sel, target_option, await self._is_element_required(ctx, sel, label_text)))
+                    filled.append((label_text or "select", sel, target_option, await self._is_element_required(ctx, sel, label_text), "select"))
                 elif label_text:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, sel, label_text))
@@ -902,7 +951,7 @@ class BrowserApplicationEngine:
                     await asyncio.sleep(0.3)
                     await ctx.page.keyboard.press("Enter")
                     answers_captured[label_text or "combobox"] = ans
-                    filled.append((label_text or "combobox", cb, ans, await self._is_element_required(ctx, cb, label_text)))
+                    filled.append((label_text or "combobox", cb, ans, await self._is_element_required(ctx, cb, label_text), "combobox"))
             except Exception:
                 continue
 
@@ -938,7 +987,7 @@ class BrowserApplicationEngine:
                 if picked is not None:
                     await candidate_els[candidates.index(picked)].check()
                     answers_captured[group_label or group_name] = ans
-                    filled.append((group_label or group_name, candidate_els[candidates.index(picked)], ans, await self._is_element_required(ctx, radio, group_label)))
+                    filled.append((group_label or group_name, candidate_els[candidates.index(picked)], ans, await self._is_element_required(ctx, radio, group_label), "radio"))
                 elif group_label:
                     self.last_unanswered.append(
                         (group_label, await self._is_element_required(ctx, radio, group_label))
@@ -959,7 +1008,7 @@ class BrowserApplicationEngine:
                 if checkbox_action(cb_label) == "check" and await cb.is_visible():
                     await cb.check()
                     answers_captured[cb_label] = "checked (routine consent)"
-                    filled.append((cb_label, cb, "checked (routine consent)", await self._is_element_required(ctx, cb, cb_label)))
+                    filled.append((cb_label, cb, "checked (routine consent)", await self._is_element_required(ctx, cb, cb_label), "checkbox"))
                 else:
                     self.last_unanswered.append(
                         (cb_label, await self._is_element_required(ctx, cb, cb_label))
@@ -967,12 +1016,13 @@ class BrowserApplicationEngine:
             except Exception:
                 continue
 
-        verify_warnings = await self.verify_fill(ctx, [
-            {"label": label, "el": el, "intended": intended, "required": required}
-            for (label, el, intended, required) in filled
+        verify_results = await self.verify_fill(ctx, [
+            {"label": label, "el": el, "intended": intended, "required": required, "kind": kind}
+            for (label, el, intended, required, kind) in filled
         ])
-        for (label, _el, _intended, _required) in filled:
-            if any(label in w for w in verify_warnings):
+        warned = {idx for idx, _msg in verify_results}
+        for i, (label, _el, _intended, _required, _kind) in enumerate(filled):
+            if i in warned:
                 self.last_unanswered.append((label, True))
 
         return answers_captured

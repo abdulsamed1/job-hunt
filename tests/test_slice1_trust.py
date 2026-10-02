@@ -67,7 +67,103 @@ def test_verify_fill_detects_mismatch():
     eng = BrowserApplicationEngine.__new__(BrowserApplicationEngine)
     fields = [{"label": "Email", "el": FakeEl(""), "intended": "a@b.com", "required": True}]
     warnings = asyncio.run(eng.verify_fill(None, fields))
-    assert any("Email" in w for w in warnings)
+    assert any("Email" in msg for _, msg in warnings)
+
+
+class FakeOption:
+    def __init__(self, text): self._t = text
+    async def inner_text(self): return self._t
+
+
+class FakeSelect:
+    def __init__(self, selected): self._sel = selected
+    async def query_selector(self, sel):
+        if sel == "option:checked" and self._sel is not None:
+            return FakeOption(self._sel)
+        return None
+
+
+class FakeCheck:
+    def __init__(self, checked): self._c = checked
+    async def is_checked(self): return self._c
+
+
+class FakeCombo:
+    pass  # combobox divs expose no reliable read-back
+
+
+def _eng():
+    return BrowserApplicationEngine.__new__(BrowserApplicationEngine)
+
+
+def test_verify_fill_select_matched():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Gender", "el": FakeSelect("Decline to self-identify"),
+         "intended": "Decline to self-identify", "required": False, "kind": "select"},
+    ]))
+    assert warnings == []
+
+
+def test_verify_fill_select_mismatched():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Gender", "el": FakeSelect("Male"),
+         "intended": "Decline to self-identify", "required": True, "kind": "select"},
+    ]))
+    assert len(warnings) == 1  # mismatch only (reads non-empty, so no required-empty)
+    idxs = {i for i, _ in warnings}
+    assert idxs == {0}
+    assert any("Gender" in msg for _, msg in warnings)
+
+
+def test_verify_fill_checkbox_checked_ok():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Consent", "el": FakeCheck(True),
+         "intended": "checked (routine consent)", "required": False, "kind": "checkbox"},
+    ]))
+    assert warnings == []
+
+
+def test_verify_fill_checkbox_unchecked_warns():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Consent", "el": FakeCheck(False),
+         "intended": "checked (routine consent)", "required": False, "kind": "checkbox"},
+    ]))
+    assert len(warnings) == 1 and warnings[0][0] == 0
+
+
+def test_verify_fill_radio_picked_ok():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Work auth", "el": FakeCheck(True),
+         "intended": "Yes", "required": False, "kind": "radio"},
+    ]))
+    assert warnings == []
+
+
+def test_verify_fill_radio_unpicked_warns():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Work auth", "el": FakeCheck(False),
+         "intended": "Yes", "required": False, "kind": "radio"},
+    ]))
+    assert len(warnings) == 1 and warnings[0][0] == 0
+
+
+def test_verify_fill_combobox_never_warns():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Skills", "el": FakeCombo(),
+         "intended": "Python", "required": True, "kind": "combobox"},
+    ]))
+    assert warnings == []
+
+
+def test_verify_fill_same_label_maps_one_to_one():
+    warnings = asyncio.run(_eng().verify_fill(None, [
+        {"label": "Email", "el": FakeEl("a@b.com"),
+         "intended": "a@b.com", "required": False, "kind": "text"},
+        {"label": "Email", "el": FakeEl(""),
+         "intended": "a@b.com", "required": False, "kind": "text"},
+    ]))
+    assert warnings == [(warnings[0][0], warnings[0][1])]  # well-formed pairs
+    assert [i for i, _ in warnings] == [1]  # only the empty one, no double-count
 
 
 class _WiringInput:
