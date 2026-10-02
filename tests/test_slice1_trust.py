@@ -28,3 +28,16 @@ def test_spoof_like_matrix():
     assert is_spoof_like("https://boards.greenhouse.io/stripe") is False
     assert is_spoof_like("https://acme.myworkdayjobs.com/jobs") is False
     assert is_spoof_like("https://evil-myworkdayjobs.com/x") is True
+
+
+from job_hunt.cli import build_parser
+from job_hunt import orchestrator as orch_mod
+import inspect
+
+
+def test_twelve_hour_defaults():
+    p = build_parser()
+    assert p.parse_args(["scan"]).hours_old == 12
+    assert p.parse_args(["run", "--once"]).hours_old == 12
+    sig = inspect.signature(orch_mod.PipelineOrchestrator.run_discovery_stage)
+    assert sig.parameters["hours_old"].default == 12

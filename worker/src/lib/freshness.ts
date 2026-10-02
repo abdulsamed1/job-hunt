@@ -53,7 +53,7 @@ export interface LitePosting {
 }
 
 /** Drop only provably-stale postings; dateless ones pass. */
-export function filterRecentList<T extends LitePosting>(postings: T[], hoursOld: number): T[] {
+export function filterRecentList<T extends LitePosting>(postings: T[], hoursOld: number = 12): T[] {
   if (!hoursOld || hoursOld <= 0) return postings;
   return postings.filter((p) => isFresh(p.posted_at ?? null, hoursOld) !== false);
 }

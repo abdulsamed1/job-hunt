@@ -158,7 +158,7 @@ export default {
           }
           const fresh = filterRecentList(
             jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
-            24,
+            12,
           );
           const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
           const now = new Date().toISOString();
@@ -314,7 +314,7 @@ export default {
       if (!def) return Response.json({ error: "unknown source" }, { status: 404 });
       try {
         const jobs = await discoverSource(def, env);
-        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 24);
+        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 12);
         const remote = filterRemoteList(
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
