@@ -51,5 +51,9 @@ describe("advisory boundary", () => {
     expect(index).toMatch(/saveEvaluation\(db, m\.hash, r\.score, r\.eligible/);
     // No LLM output may feed eligibility.
     expect(index).not.toMatch(/eligible[^\n]*completeJson|completeJson[^\n]*eligible/);
+    // Alias-bypass hardening: eligibility must never flow from LLM output under another name.
+    expect(index).not.toMatch(/out\.obj\.eligible|out\.eligible/);
+    // The apply queue gate still runs on the deterministic result.
+    expect(index).toMatch(/if \(r\.eligible\)/);
   });
 });

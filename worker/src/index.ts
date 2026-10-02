@@ -214,7 +214,10 @@ export default {
                 ],
                 maxTokens: 120, purpose: "rationale",
               });
-              await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${(out.obj.rationale || "").slice(0, 200)}`, m.hash).run();
+              const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
+              if (rationale) {
+                await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
+              }
             } catch { /* rationale is optional; deterministic score stands */ }
           }
           if (r.eligible) {
