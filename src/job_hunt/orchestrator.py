@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import signal
 from pathlib import Path
@@ -233,12 +234,16 @@ class PipelineOrchestrator:
     async def _mirror_to_rezi_async(
         self, job: JobPosting, rezi_client: Optional[Any] = None
     ) -> int:
+        from job_hunt.cv.resume_store import register_master
         from job_hunt.rezi import (
             ReziMCPClient,
             build_rezi_resume_data,
         )
 
-        if job.id is not None and self.storage.get_rezi_resume_id(job.id):
+        if job.id is None:
+            logger.warning("Rezi mirror skipped: job.id is None")
+            return 0
+        if self.storage.get_rezi_resume_id(job.id):
             logger.info("Job %s already mirrored to Rezi; skipping", job.id)
             return 0
 
@@ -254,6 +259,14 @@ class PipelineOrchestrator:
             if any(s not in verified_skills for s in payload_skills):
                 logger.warning("Rezi payload failed fact gate for job %s; skipping", job.id)
                 return 0
+            expected_fallback = (
+                f"Software Engineer with {self.profile.years_of_experience}+ years of experience "
+                "building reliable backend systems."
+            )
+            summary = payload.get("data", {}).get("summary")
+            if summary != self.profile.summary and summary != expected_fallback:
+                logger.warning("Rezi payload failed summary gate for job %s; skipping", job.id)
+                return 0
             created = await client.write_resume(payload)  # create: no resume_id
             rezi_id = created.get("id")
             if not rezi_id:
@@ -266,10 +279,33 @@ class PipelineOrchestrator:
             if job.id is not None:
                 self.storage.save_rezi_resume_id(job.id, rezi_id)
             logger.info("Mirrored job %s to Rezi resume %s", job.id, rezi_id)
-            return 1
+            pdf_bytes = await client.download_resume_pdf(rezi_id)
+            if pdf_bytes:
+                ok, issues = self._verify_rezi_artifact(pdf_bytes, job)
+                if ok:
+                    key = f"cvs/rezi/rezi_{job.id}_{rezi_id}.pdf"
+                    target = Path("data/cvs") / Path(key).name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(pdf_bytes)
+                    self.storage.save_resume_artifact(job.id, "rezi", sha256=hashlib.sha256(pdf_bytes).hexdigest(), rezi_resume_id=rezi_id, storage_key=key, verdict="verified")
+                    return 1
+                reason = "; ".join(issues[:3])
+            else:
+                reason = "no downloadable artifact"
+            master = register_master()
+            self.storage.save_resume_artifact(job.id, "master", sha256=master["sha256"], storage_key=f"cvs/master/{master['sha256']}.pdf", verdict="fallback", detail=reason)
+            return 0
         finally:
             if owns_client:
                 await client.aclose()
+
+    def _verify_rezi_artifact(self, pdf_bytes: bytes, job: JobPosting) -> tuple:
+        """Extract text from Rezi PDF bytes and run the fact gate."""
+        import fitz
+
+        with fitz.open(stream=bytes(pdf_bytes), filetype="pdf") as doc:
+            text = "\n".join(page.get_text() for page in doc)
+        return self.cv_tailor.verify_cv_facts(text, self.profile)
 
     # Alias for web API & consistency
     def run_tailoring_stage(self, limit: int = 50, use_rezi: bool = False) -> int:
@@ -307,19 +343,17 @@ class PipelineOrchestrator:
                 self.storage.update_job_state(job.id, JobState.DUPLICATE, details=dup_reason, force=True)
                 continue
 
-            # Resolve tailored ATS-optimized PDF for this specific job posting
-            tailored_pdf = Path(f"data/cvs/tailored_cv_{job.id}.pdf")
-            if tailored_pdf.exists():
-                resume_path = str(tailored_pdf.resolve())
-            elif Path("Abdulsamed_Hamdy.pdf").exists():
-                resume_path = str(Path("Abdulsamed_Hamdy.pdf").resolve())
-            else:
-                cv_dir = Path("data/cvs")
-                cv_dir.mkdir(parents=True, exist_ok=True)
-                cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
-                if not cv_file.exists():
-                    cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
-                resume_path = str(cv_file.resolve())
+            # Resolve the resume artifact: verified Rezi variant, else immutable master.
+            from job_hunt.cv.resume_store import resolve_resume_path
+            resume_path = resolve_resume_path(job.id, self.storage)
+            if resume_path is None:
+                logger.warning("Job %s has no resolvable resume bytes; marking FAILED", job.id)
+                self.storage.update_job_state(
+                    job.id, JobState.FAILED,
+                    details=f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
+                    force=True,
+                )
+                continue
 
             # Fast liveness check before launching browser session
             is_live, liveness_reason = await self.liveness.check_url_async(job.raw_url)

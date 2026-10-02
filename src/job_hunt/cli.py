@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from job_hunt.llm.client import FreeLLMClient
+from job_hunt.models import JobState
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
@@ -203,18 +204,17 @@ def cmd_apply(args: argparse.Namespace) -> None:
         if not job:
             print(f"Error: Job ID {args.job_id} not found.")
             return
-        tailored_pdf = Path(f"data/cvs/tailored_cv_{job.id}.pdf")
-        if tailored_pdf.exists():
-            resume_path = str(tailored_pdf.resolve())
-        elif Path("Abdulsamed_Hamdy.pdf").exists():
-            resume_path = str(Path("Abdulsamed_Hamdy.pdf").resolve())
-        else:
-            cv_dir = Path("data/cvs")
-            cv_dir.mkdir(parents=True, exist_ok=True)
-            cv_file = cv_dir / f"resume_{orch.profile.last_name.lower()}.txt"
-            if not cv_file.exists():
-                cv_file.write_text(orch.cv_tailor.build_master_cv(orch.profile), encoding="utf-8")
-            resume_path = str(cv_file.resolve())
+        from job_hunt.cv.resume_store import resolve_resume_path
+        resume_path = resolve_resume_path(job.id, orch.storage)
+        if resume_path is None:
+            orch.storage.update_job_state(
+                job.id,
+                JobState.FAILED,
+                details=f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
+                force=True,
+            )
+            print(f"Error: no resolvable resume bytes for Job ID {args.job_id}; marked FAILED.")
+            return
 
         orch.storage.update_job_state(
             job.id,

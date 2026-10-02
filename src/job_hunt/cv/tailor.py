@@ -395,22 +395,6 @@ class CVTailor:
             passed = True
 
         pdf_path_str: Optional[str] = None
-        if generate_pdf and job.id:
-            try:
-                from pathlib import Path
-                from job_hunt.cv.pdf_generator import verify_pdf_text_layer
-                out_path = Path(output_pdf_dir) / f"tailored_cv_{job.id}.pdf"
-                self.pdf_generator.generate_tailored_pdf_sync(
-                    job=job,
-                    profile=profile,
-                    output_path=out_path,
-                    tailored_summary=summary_text,
-                )
-                pdf_path_str = str(out_path.resolve())
-                # ATS text-layer verification on the compiled PDF
-                self._verify_rendered_pdf(pdf_path_str, profile, log)
-            except Exception as e:
-                logger.warning("Could not render tailored PDF for Job %s: %s", job.id, e)
 
         return TailoredCV(
             job_id=job.id or 0,

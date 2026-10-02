@@ -159,6 +159,17 @@ class Storage:
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_audit_job_id ON audit_log(job_id);
+
+                CREATE TABLE IF NOT EXISTS resume_artifacts (
+                    job_id INTEGER PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    sha256 TEXT NOT NULL DEFAULT '',
+                    rezi_resume_id TEXT NOT NULL DEFAULT '',
+                    storage_key TEXT NOT NULL DEFAULT '',
+                    verdict TEXT NOT NULL DEFAULT '',
+                    detail TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
                 """
             )
             # Migration check for existing databases
@@ -293,6 +304,24 @@ class Storage:
             cursor = conn.execute("SELECT rezi_resume_id FROM jobs WHERE id = ?", (job_id,))
             row = cursor.fetchone()
             return row["rezi_resume_id"] if row else None
+
+    def save_resume_artifact(self, job_id, kind, sha256="", rezi_resume_id="", storage_key="", verdict="", detail=""):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO resume_artifacts (job_id, kind, sha256, rezi_resume_id, storage_key, verdict, detail, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(job_id) DO UPDATE SET kind=excluded.kind, sha256=excluded.sha256,"
+                " rezi_resume_id=excluded.rezi_resume_id, storage_key=excluded.storage_key,"
+                " verdict=excluded.verdict, detail=excluded.detail",
+                (job_id, kind, sha256, rezi_resume_id, storage_key, verdict, detail, now),
+            )
+            conn.commit()
+
+    def get_resume_artifact(self, job_id):
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM resume_artifacts WHERE job_id = ?", (job_id,)).fetchone()
+            return dict(row) if row else None
 
     def save_answers(
         self,

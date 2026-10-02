@@ -20,7 +20,7 @@ import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
 import { boardUrlForDef, classifyHost } from "./lib/hosts.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
-import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
+import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
 import { ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
@@ -37,6 +37,7 @@ export interface Env {
   LIVE_APPLY?: string;
   APPROVE_GREENHOUSE?: string;
   APPROVE_LEVER?: string;
+  MASTER_RESUME_SHA?: string;
   PROFILE_JSON?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
@@ -211,12 +212,19 @@ export default {
           ).bind(m.hash).first();
           if (!row || !row.url) continue;
           await setJobState(db, m.hash, "TAILORED", "worker tailor");
-          const text = buildTailoredText({ title: row.title, company: row.company }, profile);
-          const pdf = await renderPdfBytes(text, profile.fullName);
-          const key = `cvs/${m.hash}.pdf`;
-          await env.CV_BUCKET.put(key, pdf, {
-            httpMetadata: { contentType: "application/pdf" },
-          });
+          const sha = (env.MASTER_RESUME_SHA || "").trim();
+          if (!sha) {
+            await saveApplication(db, m.hash, "FAILED", "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)", null);
+            continue;
+          }
+          // Master-only until per-job Rezi sync lands (see follow-up): no D1 column or artifact sync exists yet
+          const key = `cvs/master/${sha}.pdf`;
+          const obj = await env.CV_BUCKET.get(key);
+          if (!obj) {
+            await saveApplication(db, m.hash, "FAILED", `resume bytes missing: ${key}`, null);
+            continue;
+          }
+          const resumeBytes = new Uint8Array(await obj.arrayBuffer());
           // Route ATS boards to direct HTTP apply; everything else waits human.
           const src: string = row.source || "";
           const live = env.LIVE_APPLY === "true";
@@ -241,7 +249,7 @@ export default {
             {
               firstName: names[0] || "", lastName: names.slice(1).join(" ") || "",
               email: profile.email, phone: profile.phone,
-              resumeBytes: pdf, resumeFilename: "cv.pdf",
+              resumeBytes: resumeBytes, resumeFilename: "cv.pdf",
             },
             { dryRun: !live, approved },
           );
