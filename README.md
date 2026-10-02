@@ -7,8 +7,9 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 ## High-Level Architecture
 
 ```
-                                 [298 Active Sources & Job Boards]
-                    (LinkedIn, Greenhouse, Ashby, Lever, SmartRecruiters, Workable, BambooHR)
+                [317 Configured Sources & Job Boards]
+     (233 Worker-runnable + 84 Python-only; LinkedIn, Greenhouse, Ashby,
+      Lever, SmartRecruiters, RSS/JSON, Indeed, Bayt, Naukri, HTML scrape)
                                                 │
                                                 ▼
                                     [High-Throughput Discovery]
@@ -31,8 +32,9 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
                                                      (Positive SWE regex, negative role filter)
                                                                       │
                                                                       ▼
-                                                        [FreeLLM Structured AI Eval]
-                                                       (Skills alignment, seniority, location)
+                                                      [Deterministic Evaluation]
+                                          (skills alignment, seniority, location,
+                                       sponsorship, work-auth, language, blocked lists)
                                                                       │
                           ┌───────────────────────────────────────────┴───────────────────────┐
                           ▼                                                                   ▼
@@ -41,7 +43,7 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
                                                                                               │
                                                                                               ▼
                                                                                   [Fact-Preserving CV Stamping]
-                                                                                (Master PDF + 1pt white ATS text)
+                                                                   (Master PDF copy + visible skill line)
                                                                                               │
                                                                                               ▼
                                                                                    [Playwright Stealth Engine]
@@ -64,10 +66,11 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 ## Core Capabilities & Operational Moats
 
-### 1. High-Throughput Multi-ATS Discovery (298 Active Sources)
+### 1. High-Throughput Multi-ATS Discovery (317 Configured Sources)
 - **Extensive ATS Coverage**: Native adapters for **LinkedIn**, **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
 - **Dedicated LinkedIn Guest Scraper**: Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Standing target: `backend` / `fullstack` / `software`, past-12h window (`f_TPR=r43200`), worldwide geo radius — ~60 fresh postings per run.
 - **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
+- **Coverage is measured, not assumed**: Probing all 213 configured ATS boards live on 2026-10-02 showed only **81 return any jobs**; 132 org slugs are dead (GitHub, DoorDash, Canva and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone). SmartRecruiters is 1/15, Lever 2/45. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
 
 ### 2. Multi-Signal Deduplication & Provenance
 - **Canonical URL Normalization**: Strips RFC 3986 tracking parameters (`utm_*`, `gh_src`, `ref`, `source`, `fbclid`).
@@ -78,10 +81,12 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 - **Liveness Gate**: Performs fast HTTP HEAD/GET checks to immediately filter out 404s, expired postings, and filled jobs before spending LLM tokens.
 - **Stale Job / Repost Detector**: Detects recycled requisitions across dates and avoids applying to expired reposts.
 
-### 4. Rezi-Compliant ATS Stealth Injection
-- **Single Source of Truth**: Candidate master PDF (`Abdulsamed_Hamdy.pdf`) is strictly preserved without visual destruction, layout shifting, or text refactoring.
-- **ATS White-Text Stamping**: Automatically converts the complete job description into single-line 1pt invisible white text stamped onto the final page via PyMuPDF. Guarantees maximum keyword matching in automated ATS parsers while maintaining human readability.
-- **Metadata Compliance**: Injects standardized document metadata titles (`Candidate Name - Target Role - Resume`) to pass Rezi AI parsing audits with scores $\ge 88/100$.
+### 4. Honest ATS Tailoring (no hidden text)
+- **Single Source of Truth**: The candidate master PDF is strictly preserved. Tailoring writes a *copy*; the master is never modified.
+- **Visible verified-skill line only**: `append_keyword_line` appends one visible line containing **only skills already verified on the profile**. No white text, no 1pt stamps, no invisible layers, no keyword stuffing.
+- **Gaps stay missing**: Skills the candidate does not have are never added to reach a match count.
+- **Text-layer verification**: `verify_pdf_text_layer` confirms what a real ATS parser would extract, so claims are checked rather than assumed.
+- **Why this is deliberate**: hidden text and keyword stuffing are never used — they produce rejections, misrepresent the candidate, and violate the standing rule in [`AGENTS.md`](AGENTS.md).
 
 ### 5. Robust Browser Automation Engine
 - **Anti-Bot Stealth**: Injects evasions to neutralize `navigator.webdriver`, mock runtime plugins, and bypass client-side bot detection.
@@ -120,9 +125,10 @@ Edit `config/candidate_profile.json` with your verified skills, experience bulle
   "email": "abdulsamedhamdy@gmail.com",
   "location": "Cairo, Egypt",
   "open_to_remote": true,
-  "work_authorization": "Authorized to work in Egypt, Remote Worldwide",
+  "citizenship": "Egypt",
+  "authorized_countries": ["Egypt"],
   "sponsorship_required": false,
-  "years_of_experience": 6,
+  "years_of_experience": 4,
   "verified_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Kubernetes", "AWS", "Distributed Systems"]
 }
 ```
@@ -140,18 +146,69 @@ uv run python -m job_hunt.cli run --interval 3600
 
 ---
 
+## Cloudflare Worker (24/7 free-tier operation)
+
+The full pipeline also runs on Cloudflare Workers at
+`https://jobhunt.habdulsamed777.workers.dev`, so the hunt keeps running when
+the laptop is off. See [`worker/README.md`](worker/README.md) for internals.
+
+```text
+[hourly cron :15 + daily cron 02:00]
+        │
+        ▼  one source per queue message (≤50/batch)
+[jobhunt-discover] ──► filter_recent + filter_remote ──► D1 upsert
+        │                        (rich descriptions only)
+        ▼
+[jobhunt-evaluate] ──► deterministic score + gates
+        │
+        ▼  eligible only
+[jobhunt-apply] ──► tailor text ──► pdf-lib PDF ──► R2 ──► ATS route
+                     (greenhouse/lever POST | ashby dry-run | human queue)
+```
+
+**What runs where**
+
+| Stage | Cloudflare Worker | Python / Actions |
+|---|---|---|
+| Fetch + parse all 317 sources | ✅ | ✅ (also covers the 84 python-only) |
+| Deterministic evaluation | ✅ | ✅ |
+| Tailored PDF via `pdf-lib` | ✅ | ✅ (master + visible skill line) |
+| Direct ATS HTTP POST | ✅ per-board flags, OFF by default | ✅ |
+| Playwright / Easy Apply / LinkedIn submit | ❌ no browser | ✅ human-approved only |
+| CAPTCHA jobs | ❌ | ✅ human queue |
+| Rezi mirroring + LLM-heavy work | ❌ | ✅ |
+
+**HTTP API**
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Job count **plus profile sanity** (`profile_skills`, `live_apply`, `threshold`) — an empty `verified_skills` silently rejects every job |
+| `GET /recent` | `actionable` list (tailored/submitted/human-queue) + `eligible` + `latest`. Read `actionable`, not `eligible`: qualifying jobs leave the `ELIGIBLE` state once tailored |
+| `GET /coverage` | Measured coverage: configured vs attempted vs yielding sources, by kind |
+| `GET /sources` | Configured Worker shard and hourly subset size |
+| `POST /run?deep=1` | Fan out the **whole** shard (omit `deep` for the hourly subset) |
+| `POST /probe` | Run one source read-only: `{"name":"stripe"}` → raw / fresh_24h / remote_fresh |
+
+**Safety boundaries** — LinkedIn submits are never automated; non-ATS boards and
+CAPTCHA jobs stay human-queued; live ATS POSTs stay `LIVE_APPLY=false` behind
+per-board `APPROVE_*` flags.
+
+---
+
 ## CLI Reference
 
 | Command | Arguments | Description |
 |---|---|---|
 | `ui` | `--port 8000 --host 0.0.0.0` | Launch the Mission Control web dashboard |
 | `status` | `--db data/jobs.db` | Print current pipeline state counts and 24h metrics |
-| `llm-status` | `--llm-url http://127.0.0.1:4000/v1` | Check FreeLLMAPI connectivity and health |
+| `llm-status` | `--llm-url http://127.0.0.1:4000/v1` | Check local LLM endpoint connectivity (optional; eval is deterministic by default) |
 | `scan` | `--limit 50 --sources config/sources.yaml` | Run discovery across configured ATS sources |
-| `evaluate` | `--limit 100 --threshold 70.0` | Run AI evaluation and scoring on discovered jobs |
-| `tailor` | `--limit 50` | Generate fact-checked, ATS-stamped CVs for eligible jobs |
+| `evaluate` | `--limit 100 --threshold 70.0` | Run deterministic evaluation and scoring on discovered jobs |
+| `tailor` | `--limit 50 [--use-rezi]` | Generate fact-checked CVs for eligible jobs (optional Rezi mirroring) |
 | `apply` | `--limit 10 [--live]` | Launch browser automation (defaults to safe dry-run) |
 | `run` | `--interval 3600 [--live]` | Start 24/7 continuous autonomous loop |
+| `doctor` | `--db data/jobs.db` | Cold-start diagnostics (DB, adapters, secrets, source config) |
+| `outcome` | `--job-id N --status applied\|interview\|offer\|rejected\|hired\|ghosted` | Record what actually happened to an application, for calibration |
 
 ---
 
@@ -159,7 +216,7 @@ uv run python -m job_hunt.cli run --interval 3600
 
 The backend provides a REST API powering the Mission Control UI:
 
-- **`GET /api/health`**: Real-time system health, database state, FreeLLMAPI status, and active operations.
+- **`GET /api/health`**: Real-time system health, database state, LLM connectivity, and active operations.
 - **`GET /api/stats`**: Aggregate pipeline statistics, state breakdown, and 24h daily throughput.
 - **`GET /api/jobs`**: Paginated jobs list supporting `state`, `source`, `min_score`, and `search` query params.
 - **`GET /api/jobs/{id}`**: Complete job requisition details, AI evaluation breakdown, and audit trail.
@@ -176,27 +233,17 @@ The backend provides a REST API powering the Mission Control UI:
 
 ## Running Automated Tests
 
-Run the complete test suite across discovery, normalization, ATS tailoring, browser automation, and web endpoints:
+Run the complete suite across discovery, dedup, evaluation gates, CV tailoring,
+browser automation, storage, and web endpoints. The Worker has its own suite:
 
 ```bash
-uv run pytest -v
+uv run pytest tests/ -q -p no:cacheprovider
+cd worker && npm test && npm run typecheck
 ```
 
 ```text
-tests/test_browser_automation.py ...  [  4%]
-tests/test_cv_tailor.py .......       [ 16%]
-tests/test_dedup.py .......           [ 27%]
-tests/test_discovery.py .......       [ 38%]
-tests/test_evaluation.py ....         [ 45%]
-tests/test_liveness.py .....          [ 53%]
-tests/test_llm.py .....               [ 61%]
-tests/test_new_adapters.py ....       [ 67%]
-tests/test_orchestrator.py .....      [ 75%]
-tests/test_questionnaire.py ..        [ 79%]
-tests/test_reposts.py ...             [ 83%]
-tests/test_storage.py ...             [ 88%]
-tests/test_web_ui.py .......          [100%]
-======================= 62 passed in 12.76s =======================
+uv run pytest tests/ -q          # 209 passed, 1 skipped
+cd worker && npm test            # 32 passed (vitest) + tsc --noEmit clean
 ```
 
 ---

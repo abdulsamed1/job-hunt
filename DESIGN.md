@@ -114,8 +114,8 @@ An actionable Design System specification following the **getdesign.md** & **Goo
 3. **Verifiable Auditability**:
    - Applications and AI match scores must be immediately inspectable:
      - Real-time Playwright screenshot proof modal.
-     - FreeLLMAPI reasoning drawer with matched vs. missing skills breakdown.
-     - Tailored CV preview with ATS keyword injection proof.
+     - Evaluation reasoning drawer with matched vs. missing skills breakdown.
+     - Tailored CV preview showing the visible verified-skill line (no hidden text).
 
 4. **Keyboard & Action Agility**:
    - One-click trigger buttons for Scan, Evaluate, Tailor, Apply, and Full Cycle execution.
@@ -156,8 +156,8 @@ An actionable Design System specification following the **getdesign.md** & **Goo
 ### 4.1 Bento Metrics Grid
 - Top-level dashboard cards showing pipeline metrics:
   - **Daily Velocity**: `2,156 / 500` jobs with visual percentage progress bar.
-  - **Eligible Matches**: Jobs scored `>= 70%` by FreeLLMAPI.
-  - **Tailored CVs**: Generated and stealth ATS keyword-verified.
+  - **Eligible Matches**: Jobs scored `>= 70%` and holding at least one matched skill.
+  - **Tailored CVs**: Generated and text-layer verified. The skill line is visible and contains only verified skills.
   - **Live Submissions**: Actual applications delivered with proof screenshots.
   - **Daemon Liveness**: Pulsing emerald indicator with uptime and active loop status.
 
@@ -175,10 +175,10 @@ An actionable Design System specification following the **getdesign.md** & **Goo
 - Slide-over or central modal with tabs:
   1. **Match & AI Analysis**:
      - Match percentage gauge.
-     - FreeLLMAPI reasoning paragraph.
+     - Evaluation reasoning paragraph.
      - Green chips for matched skills; red chips for missing skills.
      - Full job posting description formatted in clean prose.
-  2. **Tailored CV & ATS Stealth**:
+  2. **Tailored CV & ATS Text Verification**:
      - Candidate PDF download link.
      - ATS keywords injection verification report.
      - Tailored markdown summary.

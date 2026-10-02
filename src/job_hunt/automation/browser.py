@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from playwright.async_api import Browser, BrowserContext, Frame, Page, async_playwright
 
+from job_hunt import settings
 from job_hunt.automation.captcha_solver import CaptchaSolver, is_captcha_error
 from job_hunt.models import ApplicationRecord, CandidateProfile, JobPosting, JobState
 
@@ -1393,6 +1394,15 @@ class BrowserApplicationEngine:
             state=JobState.APPLICATION_STARTED,
             submission_payload={"url": job.raw_url, "dry_run": dry_run},
         )
+
+        if not settings.linkedin_enabled() and settings.is_linkedin_job(job):
+            record.state = JobState.FAILED
+            record.error_message = (
+                "Blocked: LinkedIn applications are disabled "
+                "(LINKEDIN_ENABLED=false / linkedin_enabled=false)"
+            )
+            logger.warning("Job %s blocked: %s", job.id, record.error_message)
+            return record
 
         async with async_playwright() as p:
             launch_args = [

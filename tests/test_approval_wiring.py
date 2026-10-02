@@ -65,9 +65,10 @@ def test_web_action_request_accepts_approval_field():
 
 
 @pytest.mark.asyncio
-async def test_run_application_stage_forwards_approval(tmp_path):
+async def test_run_application_stage_forwards_approval(tmp_path, monkeypatch):
     from job_hunt.models import ApplicationRecord
 
+    monkeypatch.setattr("job_hunt.settings.linkedin_enabled", lambda *a, **k: True)
     orch = PipelineOrchestrator(
         storage=Storage(tmp_path / "t3.db"), db_path=str(tmp_path / "t3.db"), use_llm=False
     )

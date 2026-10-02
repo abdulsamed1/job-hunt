@@ -6,6 +6,11 @@ from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.models import CandidateProfile, JobPosting, JobState
 
 
+@pytest.fixture(autouse=True)
+def _enable_linkedin(monkeypatch):
+    monkeypatch.setattr("job_hunt.settings.linkedin_enabled", lambda *a, **k: True)
+
+
 @pytest.fixture
 def candidate():
     return CandidateProfile(

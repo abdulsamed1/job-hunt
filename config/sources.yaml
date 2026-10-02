@@ -1,3 +1,4 @@
+linkedin_enabled: false
 sources:
 - adapter: linkedin
   name: linkedin_geo_recent

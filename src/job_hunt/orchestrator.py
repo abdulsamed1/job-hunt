@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+from job_hunt import settings
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
 from job_hunt.discovery.freshness import filter_recent, filter_remote
@@ -126,6 +127,11 @@ class PipelineOrchestrator:
         if source_name:
             sources = [s for s in sources
                        if isinstance(s, dict) and s.get("name") == source_name]
+        if not settings.linkedin_enabled(self.sources_path):
+            linkedin_sources = [s for s in sources if settings.is_linkedin_entry(s)]
+            for s in linkedin_sources:
+                logger.warning("LinkedIn source %s skipped: LinkedIn is disabled", s.get("name"))
+            sources = [s for s in sources if not settings.is_linkedin_entry(s)]
         if max_sources:
             sources = sources[:max_sources]
         for entry in sources:
@@ -152,6 +158,8 @@ class PipelineOrchestrator:
     async def run_evaluation_stage_async(self, limit: int = 100, threshold: float = 70.0) -> int:
         """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs asynchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
+        if not settings.linkedin_enabled(self.sources_path):
+            pending_jobs = [j for j in pending_jobs if not settings.is_linkedin_job(j)]
         evaluated_count = 0
         async with httpx.AsyncClient() as client:
             for job in pending_jobs:
@@ -172,6 +180,8 @@ class PipelineOrchestrator:
     def run_evaluation_stage(self, limit: int = 100, threshold: float = 70.0) -> int:
         """Stage 3, 4, 5: Pre-filter, evaluate, and score discovered jobs synchronously."""
         pending_jobs = self.storage.get_jobs_by_state(JobState.DISCOVERED, limit=limit)
+        if not settings.linkedin_enabled(self.sources_path):
+            pending_jobs = [j for j in pending_jobs if not settings.is_linkedin_job(j)]
         evaluated_count = 0
         for job in pending_jobs:
             eval_result = self.eval_engine.evaluate(job, self.profile, threshold=threshold)
@@ -191,6 +201,8 @@ class PipelineOrchestrator:
     ) -> int:
         """Stage 6 & 7: Generate fact-checked tailored CVs for eligible jobs."""
         eligible_jobs = self.storage.get_jobs_by_state(JobState.ELIGIBLE, limit=limit)
+        if not settings.linkedin_enabled(self.sources_path):
+            eligible_jobs = [j for j in eligible_jobs if not settings.is_linkedin_job(j)]
         tailored_count = 0
         rezi_done = 0
         for job in eligible_jobs:
@@ -268,6 +280,8 @@ class PipelineOrchestrator:
         tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
         retry_jobs = self.storage.get_jobs_by_state(JobState.RETRY_PENDING, limit=limit)
         queue = tailored_jobs + retry_jobs
+        if not settings.linkedin_enabled(self.sources_path):
+            queue = [j for j in queue if not settings.is_linkedin_job(j)]
 
         processed = 0
         for job in queue:
