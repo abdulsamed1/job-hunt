@@ -240,7 +240,10 @@ class PipelineOrchestrator:
             build_rezi_resume_data,
         )
 
-        if job.id is not None and self.storage.get_rezi_resume_id(job.id):
+        if job.id is None:
+            logger.warning("Rezi mirror skipped: job.id is None")
+            return 0
+        if self.storage.get_rezi_resume_id(job.id):
             logger.info("Job %s already mirrored to Rezi; skipping", job.id)
             return 0
 
@@ -255,6 +258,14 @@ class PipelineOrchestrator:
             ]
             if any(s not in verified_skills for s in payload_skills):
                 logger.warning("Rezi payload failed fact gate for job %s; skipping", job.id)
+                return 0
+            expected_fallback = (
+                f"Software Engineer with {self.profile.years_of_experience}+ years of experience "
+                "building reliable backend systems."
+            )
+            summary = payload.get("data", {}).get("summary")
+            if summary != self.profile.summary and summary != expected_fallback:
+                logger.warning("Rezi payload failed summary gate for job %s; skipping", job.id)
                 return 0
             created = await client.write_resume(payload)  # create: no resume_id
             rezi_id = created.get("id")
@@ -272,8 +283,10 @@ class PipelineOrchestrator:
             if pdf_bytes:
                 ok, issues = self._verify_rezi_artifact(pdf_bytes, job)
                 if ok:
-                    key = f"cvs/rezi/{job.id}-{rezi_id}.pdf"
-                    (Path("data/cvs") / f"rezi_{job.id}_{rezi_id}.pdf").write_bytes(pdf_bytes)
+                    key = f"cvs/rezi/rezi_{job.id}_{rezi_id}.pdf"
+                    target = Path("data/cvs") / Path(key).name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(pdf_bytes)
                     self.storage.save_resume_artifact(job.id, "rezi", sha256=hashlib.sha256(pdf_bytes).hexdigest(), rezi_resume_id=rezi_id, storage_key=key, verdict="verified")
                     return 1
                 reason = "; ".join(issues[:3])
@@ -331,11 +344,16 @@ class PipelineOrchestrator:
                 continue
 
             # Resolve the resume artifact: verified Rezi variant, else immutable master.
-            artifact = self.storage.get_resume_artifact(job.id) if job.id is not None else None
-            if artifact and artifact.get("kind") == "rezi" and artifact.get("storage_key"):
-                resume_path = str((Path("data/cvs") / Path(artifact["storage_key"]).name).resolve())
-            else:
-                resume_path = str(Path("data/cvs/Abdulsamed_Hamdy.pdf").resolve())
+            from job_hunt.cv.resume_store import resolve_resume_path
+            resume_path = resolve_resume_path(job.id, self.storage)
+            if resume_path is None:
+                logger.warning("Job %s has no resolvable resume bytes; marking FAILED", job.id)
+                self.storage.update_job_state(
+                    job.id, JobState.FAILED,
+                    details=f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
+                    force=True,
+                )
+                continue
 
             # Fast liveness check before launching browser session
             is_live, liveness_reason = await self.liveness.check_url_async(job.raw_url)
