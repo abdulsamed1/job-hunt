@@ -17,3 +17,16 @@ export function detectDegraded(jobs: DegradedRow[], sourceUrl: string): string[]
   }
   return [...signals];
 }
+
+/**
+ * Transport/rate-limit failures carry no signal about the source itself (a
+ * throttled or unreachable board is not a rotted one), so the /probe caller
+ * should report them as inconclusive rather than as a dead source.
+ */
+const INCONCLUSIVE_PROBE_ERROR =
+  /(?:\b429\b|rate[\s_-]*limit|too many requests|fetch failed|network|timed?\s?out|timeout|econn\w*|enotfound|eai_again|epipe|socket|abort|service unavailable|bad gateway|gateway timeout)/i;
+
+export function isInconclusiveProbeError(e: unknown): boolean {
+  const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+  return INCONCLUSIVE_PROBE_ERROR.test(msg.slice(0, 500));
+}

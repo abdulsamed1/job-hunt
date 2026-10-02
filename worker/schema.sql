@@ -75,5 +75,7 @@ CREATE TABLE IF NOT EXISTS source_health (
   last_raw INTEGER NOT NULL DEFAULT 0,
   last_kept INTEGER NOT NULL DEFAULT 0,
   last_error TEXT NOT NULL DEFAULT '',
+  last_degraded TEXT NOT NULL DEFAULT '',
+  degraded_hits INTEGER NOT NULL DEFAULT 0,
   last_seen TEXT NOT NULL DEFAULT ''
 );

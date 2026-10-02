@@ -18,7 +18,7 @@ import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
 import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
 import { classifyHost } from "./lib/hosts.js";
-import { detectDegraded } from "./lib/health.js";
+import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
@@ -166,7 +166,8 @@ export default {
           // Board APIs omit descriptions; enrich the few survivors so scoring
           // has real evidence instead of a title-only string.
           const enriched = await enrichDescriptions(remote.slice(0, 40));
-          await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "");
+          const degraded = detectDegraded(remote, m.def.url || "");
+          await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
           for (const j of enriched) {
             const canon = normalizeUrl(j.url);
             const isNew = await upsertJob(db, {
@@ -325,7 +326,14 @@ export default {
           sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });
       } catch (e) {
-        return Response.json({ name: def.name, kind: def.kind, error: String(e).slice(0, 200) }, { status: 502 });
+        // Transport/rate-limit failures are inconclusive (HTTP 200): the board
+        // may be throttling or unreachable, which says nothing about rot.
+        // 404 stays reserved for unknown source names above.
+        const error = String(e).slice(0, 200);
+        if (isInconclusiveProbeError(e)) {
+          return Response.json({ name: def.name, kind: def.kind, inconclusive: true, error });
+        }
+        return Response.json({ name: def.name, kind: def.kind, error }, { status: 502 });
       }
     }
     if (url.pathname === "/run" && request.method === "POST") {

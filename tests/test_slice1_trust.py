@@ -102,3 +102,27 @@ def test_questionnaire_verify_blocks_unpersisted_fill():
     asyncio.run(eng._fill_questionnaire(_WiringCtx(_WiringInput()), profile))
     assert any("Email" in label for label, _ in eng.last_unanswered)
     assert eng.submit_blocked_reason() is not None
+
+
+def test_doctor_flags_sources_without_identity(tmp_path):
+    import yaml
+
+    from job_hunt.doctor import run_diagnostics
+
+    yaml_path = tmp_path / "sources.yaml"
+    yaml_path.write_text(yaml.safe_dump({"sources": [
+        {"name": "good-board", "url": "https://example.com/feed"},
+        {"name": "careers-board", "careers_url": "https://example.com/careers"},
+        {"name": "ghost-board"},
+    ]}), encoding="utf-8")
+    report = run_diagnostics(
+        db_path=str(tmp_path / "d.db"),
+        sources_path=str(yaml_path),
+        profile_path=str(tmp_path / "missing.json"),
+    )
+    by_name = {c["name"]: c for c in report["checks"]}
+    check = by_name["sources_identity"]
+    assert check["ok"] is True  # warning-level: never fails the run
+    assert "ghost-board" in check["detail"]
+    assert "good-board" not in check["detail"]
+    assert "careers-board" not in check["detail"]

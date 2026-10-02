@@ -88,21 +88,50 @@ export async function saveApplication(
   await setJobState(db, jobHash, state, detail.slice(0, 200));
 }
 
+/** Add the degraded-signal columns to pre-existing source_health tables.
+ * Fresh databases already carry them (see schema.sql); this is the
+ * migration path for tables created before the columns existed. Mirrors the
+ * PRAGMA-check style in src/job_hunt/storage.py. Safe to re-run. */
+export async function ensureSourceHealthColumns(db: Db): Promise<void> {
+  try {
+    const res = await db.prepare(`PRAGMA table_info(source_health)`).all();
+    const cols = new Set((res.results || []).map((r: any) => r.name));
+    if (!cols.has("last_degraded")) {
+      try {
+        await db.prepare(`ALTER TABLE source_health ADD COLUMN last_degraded TEXT NOT NULL DEFAULT ''`).run();
+      } catch { /* raced with another invocation */ }
+    }
+    if (!cols.has("degraded_hits")) {
+      try {
+        await db.prepare(`ALTER TABLE source_health ADD COLUMN degraded_hits INTEGER NOT NULL DEFAULT 0`).run();
+      } catch { /* raced with another invocation */ }
+    }
+  } catch {
+    // PRAGMA unsupported here (or table missing): fresh databases get the
+    // columns from schema.sql, so there is nothing to migrate.
+  }
+}
+
 /** Record one discovery attempt so source coverage is measured, not assumed. */
 export async function recordSourceHealth(
-  db: Db, source: string, kind: string, raw: number, kept: number, error = "",
+  db: Db, source: string, kind: string, raw: number, kept: number, error = "", degraded: string[] = [],
 ): Promise<void> {
+  await ensureSourceHealthColumns(db);
+  const degradedSignals = degraded.join(",").slice(0, 200);
+  const degradedHit = degraded.length > 0 ? 1 : 0;
   await db.prepare(
-    `INSERT INTO source_health (source, kind, attempts, yields, last_raw, last_kept, last_error, last_seen)
-     VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+    `INSERT INTO source_health (source, kind, attempts, yields, last_raw, last_kept, last_error, last_seen, last_degraded, degraded_hits)
+     VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(source) DO UPDATE SET
        attempts = attempts + 1,
        yields = yields + excluded.yields,
        last_raw = excluded.last_raw,
        last_kept = excluded.last_kept,
        last_error = excluded.last_error,
-       last_seen = excluded.last_seen`,
-  ).bind(source, kind, kept > 0 ? 1 : 0, raw, kept, error.slice(0, 200), new Date().toISOString()).run();
+       last_seen = excluded.last_seen,
+       last_degraded = excluded.last_degraded,
+       degraded_hits = degraded_hits + excluded.degraded_hits`,
+  ).bind(source, kind, kept > 0 ? 1 : 0, raw, kept, error.slice(0, 200), new Date().toISOString(), degradedSignals, degradedHit).run();
 }
 
 /** Jobs that need a human or are already submitted -- the actionable morning list. */
