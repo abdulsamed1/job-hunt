@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
+// @ts-ignore: node types not installed in worker; vitest provides fs at runtime
+import { readFileSync } from "fs";
 import { routeChatCompletion, refuseSensitive, salvageRootJson } from "../src/lib/llm.js";
 
 const ok = (text: string) => async () => new Response(
@@ -39,5 +41,15 @@ describe("output discipline", () => {
     const r = salvageRootJson('{"a": {"value": "x", "needs_confirmation": true}, "b":');
     expect(r.obj.a.needs_confirmation).toBe(true);
     expect(r.truncated).toBe(true);
+  });
+});
+
+describe("advisory boundary", () => {
+  it("eligibility flows only from the deterministic score", () => {
+    const index = readFileSync("src/index.ts", "utf8");
+    // The only saveEvaluation call must pass the deterministic result's fields.
+    expect(index).toMatch(/saveEvaluation\(db, m\.hash, r\.score, r\.eligible/);
+    // No LLM output may feed eligibility.
+    expect(index).not.toMatch(/eligible[^\n]*completeJson|completeJson[^\n]*eligible/);
   });
 });
