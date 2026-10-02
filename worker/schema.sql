@@ -79,3 +79,12 @@ CREATE TABLE IF NOT EXISTS source_health (
   degraded_hits INTEGER NOT NULL DEFAULT 0,
   last_seen TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS llm_usage (
+  provider TEXT NOT NULL,
+  window TEXT NOT NULL DEFAULT 'cur',
+  requests INTEGER NOT NULL DEFAULT 0,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  disabled_until INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (provider, window)
+);

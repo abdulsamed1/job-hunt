@@ -21,6 +21,7 @@ import { boardUrlForDef, classifyHost } from "./lib/hosts.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
+import { completeJson } from "./lib/llm.js";
 import type { Profile } from "./lib/evaluate.js";
 import { ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
@@ -38,6 +39,7 @@ export interface Env {
   APPROVE_GREENHOUSE?: string;
   APPROVE_LEVER?: string;
   MASTER_RESUME_SHA?: string;
+  LLM_RATIONALE?: string;
   PROFILE_JSON?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
@@ -203,6 +205,21 @@ export default {
             profile, threshold,
           );
           await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning);
+          if (env.LLM_RATIONALE === "true" && r.eligible) {
+            try {
+              const out = await completeJson(env, db, {
+                messages: [
+                  { role: "system", content: "Summarize in one sentence why this candidate fits. JSON only: {\"rationale\": \"...\"}. Never invent facts." },
+                  { role: "user", content: `${row.title} @ ${row.company}. Matched: ${(r.matched || []).join(", ")}` },
+                ],
+                maxTokens: 120, purpose: "rationale",
+              });
+              const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
+              if (rationale) {
+                await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
+              }
+            } catch { /* rationale is optional; deterministic score stands */ }
+          }
           if (r.eligible) {
             await env.APPLY_Q.send({ stage: "tailor-apply", hash: m.hash });
           }
