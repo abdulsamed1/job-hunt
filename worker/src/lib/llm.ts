@@ -65,3 +65,41 @@ export async function routeChatCompletion(env: any, db: any, req: LlmRequest): P
 export async function recordUsage(db: any, provider: string, tokens: number): Promise<void> {
   await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, 'cur', 1, ?, 0) ON CONFLICT(provider, window) DO UPDATE SET requests=requests+1, tokens=tokens+excluded.tokens`).bind(provider, tokens).run();
 }
+
+const SENSITIVE_RX = /authoriz|visa|sponsor|citizen|current salary|compensat|pay histor|disab|veteran|gender|race|religion|arrest|convict|background check|perjury|attest|certif|swear/i;
+
+export function refuseSensitive(label: string): boolean {
+  return SENSITIVE_RX.test(label || "");
+}
+
+export function salvageRootJson(raw: string): { obj: any; truncated: boolean } {
+  try { return { obj: JSON.parse(raw), truncated: false }; } catch { /* fall through */ }
+  let best: any = null;
+  let depth = 0; let inStr = false; let esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{") depth++;
+    if (c === "}" || c === ",") {
+      if (depth === 1 && (c === "}" || raw[i] === ",")) {
+        try { const cand = JSON.parse(raw.slice(0, i + (c === "}" ? 1 : 0)) + (c === "}" ? "" : "}")); best = cand; } catch { /* keep scanning */ }
+      }
+    }
+    if (c === "}") depth = Math.max(0, depth - 1);
+  }
+  if (best) return { obj: best, truncated: true };
+  throw new Error("unparseable LLM output");
+}
+
+export async function completeJson(env: any, db: any, req: LlmRequest): Promise<{ obj: any; truncated: boolean; provider: string }> {
+  const r = await routeChatCompletion(env, db, req);
+  try {
+    const s = salvageRootJson(r.text);
+    return { obj: s.obj, truncated: s.truncated || r.truncated, provider: r.provider };
+  } catch {
+    const retry = await routeChatCompletion(env, db, { ...req, messages: [...req.messages, { role: "user", content: "Your last reply was not valid JSON. Reply with valid JSON only, same schema." }] });
+    const s = salvageRootJson(retry.text);
+    return { obj: s.obj, truncated: true, provider: retry.provider };
+  }
+}

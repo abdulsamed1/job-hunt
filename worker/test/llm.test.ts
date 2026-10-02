@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { routeChatCompletion } from "../src/lib/llm.js";
+import { routeChatCompletion, refuseSensitive, salvageRootJson } from "../src/lib/llm.js";
 
 const ok = (text: string) => async () => new Response(
   JSON.stringify({ choices: [{ message: { content: text } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }),
@@ -24,5 +24,18 @@ describe("routeChatCompletion", () => {
     const r = await routeChatCompletion(env, db, { messages: [{ role: "user", content: "hi" }], maxTokens: 200, purpose: "test" });
     expect(r.provider).toBe("p2");
     expect(calls.length).toBe(2);
+  });
+});
+
+describe("output discipline", () => {
+  it("refuses sensitive fields", () => {
+    expect(refuseSensitive("Are you authorized to work in the US?")).toBe(true);
+    expect(refuseSensitive("Desired salary")).toBe(false);
+    expect(refuseSensitive("Current salary")).toBe(true);
+  });
+  it("salvages root-level JSON only", () => {
+    const r = salvageRootJson('{"a": {"value": "x", "needs_confirmation": true}, "b":');
+    expect(r.obj.a.needs_confirmation).toBe(true);
+    expect(r.truncated).toBe(true);
   });
 });
