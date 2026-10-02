@@ -12,6 +12,7 @@ from playwright.async_api import Browser, BrowserContext, Frame, Page, async_pla
 
 from job_hunt import settings
 from job_hunt.automation.captcha_solver import CaptchaSolver, is_captcha_error
+from job_hunt.automation.env_scrub import scrubbed_env
 from job_hunt.models import ApplicationRecord, CandidateProfile, JobPosting, JobState
 
 logger = logging.getLogger(__name__)
@@ -110,14 +111,28 @@ CLOUDFLARE_TURNSTILE_SELECTORS = [
 ]
 
 # Hosts we trust for direct application-URL navigation.
+# Audit vs ATS_LINK_PATTERNS: every stable-apex pattern has an entry here.
+# recruitee.com / jobvite.com / teamtailor.com are those vendors' stable board
+# apexes, so they are trusted the same way (exact-apex match only).
+# Entries mirror the discovery host tables (hosts.py / worker hosts.ts) host
+# for host so the three-way parity test holds; workday.com stays as a
+# browser-only extra (corporate SSO landing pages link out to boards).
 KNOWN_ATS_APEXES = (
-    "greenhouse.io",
-    "lever.co",
+    "boards.greenhouse.io",
+    "boards-api.greenhouse.io",
+    "jobs.lever.co",
+    "api.lever.co",
     "myworkdayjobs.com",
     "workday.com",
-    "ashbyhq.com",
-    "smartrecruiters.com",
+    "jobs.ashbyhq.com",
+    "api.ashbyhq.com",
+    "jobs.smartrecruiters.com",
+    "api.smartrecruiters.com",
     "workable.com",
+    "bamboohr.com",
+    "recruitee.com",
+    "jobvite.com",
+    "teamtailor.com",
 )
 
 PORTAL_HOSTS = (
@@ -346,6 +361,72 @@ class BrowserApplicationEngine:
             return None
         shown = "; ".join(required[:3])
         return f"Blocked: {len(required)} required question(s) unanswered: {shown}"
+
+    async def verify_fill(self, ctx, fields) -> list:
+        """Re-read live field values; return (index, message) warnings (empty = OK).
+
+        Read-back is scoped per control type ("kind" on each field dict):
+        text inputs/textareas compare input_value(); selects compare the
+        selected option text; radios/checkboxes compare is_checked() against
+        intended-checked; combobox divs have no reliable read-back so they are
+        recorded as unverifiable and assumed OK (never warned). Warnings are
+        keyed by field index so same-label fields map back 1:1 (no substring
+        matching, no double-count).
+        """
+        warnings = []
+        for i, f in enumerate(fields or []):
+            kind = f.get("kind") or "text"
+            if kind == "combobox":
+                continue  # no reliable read-back; unverifiable, assume OK
+            label = f.get("label") or "field"
+            intended = f.get("intended") or ""
+            required = f.get("required")
+            el = f.get("el")
+            try:
+                if kind == "select":
+                    current = await self._read_selected_option_text(el)
+                    if intended and (current or "").strip() != intended.strip():
+                        warnings.append((i, f"fill-mismatch: {label} reads {current!r} after fill"))
+                    if required and not (current or ""):
+                        warnings.append((i, f"required-empty: {label}"))
+                elif kind in ("radio", "checkbox"):
+                    try:
+                        checked = await el.is_checked() if el and hasattr(el, "is_checked") else None
+                    except Exception:
+                        checked = None
+                    if kind == "checkbox":
+                        want_checked = "checked" in intended.lower()
+                    else:
+                        want_checked = True  # the picked radio was checked by us
+                    if want_checked and checked is not True:
+                        warnings.append((i, f"fill-mismatch: {label} not checked after fill"))
+                    if required and checked is not True:
+                        warnings.append((i, f"required-empty: {label}"))
+                else:  # text, textarea, and any unknown kind
+                    try:
+                        current = await el.input_value() if el and hasattr(el, "input_value") else ""
+                    except Exception:
+                        current = None
+                    if intended and not (current or ""):
+                        warnings.append((i, f"fill-mismatch: {label} reads empty after fill"))
+                    if required and not (current or ""):
+                        warnings.append((i, f"required-empty: {label}"))
+            except Exception:
+                warnings.append((i, f"fill-mismatch: {label} unreadable after fill"))
+        return warnings
+
+    @staticmethod
+    async def _read_selected_option_text(el):
+        """Best-effort read of a <select>'s selected option text (None if unreadable)."""
+        if el is None or not hasattr(el, "query_selector"):
+            return None
+        try:
+            opt = await el.query_selector("option:checked")
+            if opt is not None and hasattr(opt, "inner_text"):
+                return await opt.inner_text()
+        except Exception:
+            return None
+        return None
 
     async def _is_element_required(self, ctx: Union[Page, Frame], el, label_text: str) -> bool:
         """Best-effort required-field detection: attr, aria, or label asterisk."""
@@ -812,6 +893,7 @@ class BrowserApplicationEngine:
         answers_captured: Dict[str, str] = {}
         self.last_unanswered = []
         self.last_confirmation_needed = []
+        filled: list = []
 
         # 1. Custom text inputs and textareas
         custom_inputs = await ctx.query_selector_all("input[type='text'], textarea")
@@ -829,6 +911,7 @@ class BrowserApplicationEngine:
                 if ans:
                     await inp.fill(ans)
                     answers_captured[label_text] = ans
+                    filled.append((label_text, inp, ans, await self._is_element_required(ctx, inp, label_text), "text"))
                 else:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, inp, label_text))
@@ -860,6 +943,7 @@ class BrowserApplicationEngine:
                 if target_option:
                     await sel.select_option(label=target_option)
                     answers_captured[label_text or "select"] = target_option
+                    filled.append((label_text or "select", sel, target_option, await self._is_element_required(ctx, sel, label_text), "select"))
                 elif label_text:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, sel, label_text))
@@ -881,6 +965,7 @@ class BrowserApplicationEngine:
                     await asyncio.sleep(0.3)
                     await ctx.page.keyboard.press("Enter")
                     answers_captured[label_text or "combobox"] = ans
+                    filled.append((label_text or "combobox", cb, ans, await self._is_element_required(ctx, cb, label_text), "combobox"))
             except Exception:
                 continue
 
@@ -916,6 +1001,7 @@ class BrowserApplicationEngine:
                 if picked is not None:
                     await candidate_els[candidates.index(picked)].check()
                     answers_captured[group_label or group_name] = ans
+                    filled.append((group_label or group_name, candidate_els[candidates.index(picked)], ans, await self._is_element_required(ctx, radio, group_label), "radio"))
                 elif group_label:
                     self.last_unanswered.append(
                         (group_label, await self._is_element_required(ctx, radio, group_label))
@@ -936,12 +1022,22 @@ class BrowserApplicationEngine:
                 if checkbox_action(cb_label) == "check" and await cb.is_visible():
                     await cb.check()
                     answers_captured[cb_label] = "checked (routine consent)"
+                    filled.append((cb_label, cb, "checked (routine consent)", await self._is_element_required(ctx, cb, cb_label), "checkbox"))
                 else:
                     self.last_unanswered.append(
                         (cb_label, await self._is_element_required(ctx, cb, cb_label))
                     )
             except Exception:
                 continue
+
+        verify_results = await self.verify_fill(ctx, [
+            {"label": label, "el": el, "intended": intended, "required": required, "kind": kind}
+            for (label, el, intended, required, kind) in filled
+        ])
+        warned = {idx for idx, _msg in verify_results}
+        for i, (label, _el, _intended, _required, _kind) in enumerate(filled):
+            if i in warned:
+                self.last_unanswered.append((label, True))
 
         return answers_captured
 
@@ -1416,6 +1512,7 @@ class BrowserApplicationEngine:
                 executable_path=exec_path,
                 headless=self.headless,
                 args=launch_args,
+                env=scrubbed_env(),
             )
             context_kwargs: Dict[str, Any] = {
                 "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",

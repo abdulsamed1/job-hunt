@@ -52,13 +52,33 @@ def run_diagnostics(
         from job_hunt.discovery.registry import SourceRegistry
 
         sources = SourceRegistry().load_sources_file(sources_path)
+        loaded_sources = [s for s in sources if isinstance(s, dict)]
         checks.append(_check(
             "sources_config",
             len(sources) > 0,
             f"{len(sources)} source(s) in {sources_path}",
         ))
     except Exception as exc:
+        loaded_sources = []
         checks.append(_check("sources_config", False, str(exc)[:120]))
+
+    # Identity check: entries with no url/careers_url/api cannot be
+    # probe-verified for rot. Warning-level only: never fails the run.
+    unverifiable = sorted(
+        s.get("name", "?")
+        for s in loaded_sources
+        if not (s.get("url") or s.get("careers_url") or s.get("api"))
+    )
+    checks.append(_check(
+        "sources_identity",
+        True,
+        (
+            f"{len(unverifiable)} source(s) without url/careers_url/api: "
+            f"{unverifiable[:10]}"
+        ) if unverifiable else (
+            f"all {len(loaded_sources)} source(s) have a probeable identity"
+        ),
+    ))
 
     try:
         profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))

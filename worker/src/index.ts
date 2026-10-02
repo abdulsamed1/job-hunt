@@ -17,10 +17,12 @@ import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
 import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
+import { boardUrlForDef, classifyHost } from "./lib/hosts.js";
+import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
-import { getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
@@ -131,30 +133,52 @@ export default {
     const db = env.DB as unknown as Db;
     const profile = profileFromEnv(env);
     const threshold = parseFloat(env.THRESHOLD || "70");
+    // Migrated once per batch, not once per health write (recordSourceHealth
+    // no longer ensures columns itself).
+    await ensureSourceHealthColumns(db);
     for (const msg of batch.messages) {
       try {
         const m = msg.body as any;
         if (m.stage === "discover" && m.def) {
+          const def = m.def as SourceDef;
+          // Fail closed on spoofed ATS hosts AND smuggled orgs: the board URL
+          // is rebuilt from def.org exactly as discoverSource() builds it, so
+          // a queue message carrying a hostile org or URL never reaches fetch.
+          // (No workday/workable/bamboohr board kinds exist on the Worker —
+          // see sources.ts — so the kind list is intentionally unchanged.)
+          if (
+            def.kind === "greenhouse" || def.kind === "lever" ||
+            def.kind === "ashby" || def.kind === "smartrecruiters"
+          ) {
+            const boardUrl = boardUrlForDef(def);
+            if (!boardUrl || classifyHost(boardUrl) === "unverified") {
+              console.log(`skipping source with unverified board URL: ${def.name}`);
+              continue;
+            }
+          }
           let jobs: RawJob[] = [];
-          let probeErr = "";
+          let healthRecorded = false;
           try {
             jobs = await discoverSource(m.def, env);
           } catch (e) {
-            probeErr = String(e).slice(0, 180);
+            await recordSourceHealth(db, m.def.name, m.def.kind || "", -1, -1, String(e).slice(0, 180));
+            healthRecorded = true;
             throw e;
-          } finally {
-            await recordSourceHealth(db, m.def.name, m.def.kind || "", -1, -1, probeErr);
           }
           const fresh = filterRecentList(
             jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
-            24,
+            12,
           );
           const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
           const now = new Date().toISOString();
           // Board APIs omit descriptions; enrich the few survivors so scoring
           // has real evidence instead of a title-only string.
           const enriched = await enrichDescriptions(remote.slice(0, 40));
-          await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "");
+          const degraded = detectDegraded(remote, m.def.url || "", m.def.kind || "");
+          if (!healthRecorded) {
+            await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
+            healthRecorded = true;
+          }
           for (const j of enriched) {
             const canon = normalizeUrl(j.url);
             const isNew = await upsertJob(db, {
@@ -303,16 +327,24 @@ export default {
       if (!def) return Response.json({ error: "unknown source" }, { status: 404 });
       try {
         const jobs = await discoverSource(def, env);
-        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 24);
+        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 12);
         const remote = filterRemoteList(
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
         return Response.json({
-          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length, remote_fresh: remote.length,
+          name: def.name, kind: def.kind, raw: jobs.length, fresh_12h: fresh.length, remote_fresh: remote.length,
+          degraded: detectDegraded(remote, def.url || "", def.kind || ""),
           sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });
       } catch (e) {
-        return Response.json({ name: def.name, kind: def.kind, error: String(e).slice(0, 200) }, { status: 502 });
+        // Transport/rate-limit failures are inconclusive (HTTP 200): the board
+        // may be throttling or unreachable, which says nothing about rot.
+        // 404 stays reserved for unknown source names above.
+        const error = String(e).slice(0, 200);
+        if (isInconclusiveProbeError(e)) {
+          return Response.json({ name: def.name, kind: def.kind, inconclusive: true, error });
+        }
+        return Response.json({ name: def.name, kind: def.kind, error }, { status: 502 });
       }
     }
     if (url.pathname === "/run" && request.method === "POST") {

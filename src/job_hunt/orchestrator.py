@@ -13,6 +13,7 @@ from job_hunt import settings
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
 from job_hunt.discovery.freshness import filter_recent, filter_remote
+from job_hunt.discovery.hosts import is_spoof_like
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
 from job_hunt.liveness import LivenessDetector
@@ -114,7 +115,7 @@ class PipelineOrchestrator:
         self._running = False
 
     async def run_discovery_stage(
-        self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False,
+        self, max_sources: Optional[int] = None, hours_old: int = 12, remote_only: bool = False,
         source_name: Optional[str] = None,
     ) -> int:
         """Stage 1 & 2: Discover jobs across all sources and deduplicate.
@@ -285,6 +286,10 @@ class PipelineOrchestrator:
 
         processed = 0
         for job in queue:
+            if is_spoof_like(job.raw_url):
+                logger.warning("Skipping job %s: spoof-like apply host %s", job.id, job.raw_url)
+                self.storage.update_job_state(job.id, JobState.FAILED, details=f"heuristic spoof-like host (needs human review): {job.raw_url}", force=True)
+                continue
             # Check if an application has already been submitted for this company/role/URL
             is_dup, dup_reason = self.storage.has_already_applied(
                 job_id=job.id,
@@ -360,7 +365,7 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 12, remote_only: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()

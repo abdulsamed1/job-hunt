@@ -34,7 +34,7 @@ Configured is not the same as working. Probing all 213 ATS boards:
 | lever | 2 / 45 | Lever is effectively abandoned by these orgs |
 | smartrecruiters | 1 / 15 | effectively dead |
 
-Under the 24h + remote filters, **17 sources currently yield**. `GET /coverage`
+Under the 12h + remote filters, **17 sources currently yield**. `GET /coverage`
 reports configured vs attempted vs yielding from D1 — coverage claims are
 measured, never asserted. Add a board only after `POST /probe` shows yield.
 
@@ -71,7 +71,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 | `GET /coverage` | Measured coverage from the `source_health` table, by kind. |
 | `GET /sources` | Configured shard: total, python-only, hourly subset, by kind. |
 | `POST /run?deep=1` | Fan out the whole shard, one source per message, ≤50 per `sendBatch`. Omit `deep` for the hourly subset. |
-| `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_24h` / `remote_fresh`. Writes nothing. |
+| `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_12h` / `remote_fresh`. Writes nothing. |
 | `POST /queue` | Fetch jobs by state (`{"state":"ELIGIBLE","count":10}`). |
 
 ## Pipeline gotchas worth not rediscovering
@@ -79,7 +79,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 - **Descriptions must be enriched.** ATS board *list* endpoints omit
   descriptions; scoring a title-only string rejects 100% of jobs for lack of
   evidence. `enrichDescriptions` fetches per-job content for the few jobs that
-  survive the 24h + remote filters (bounded to 12 to stay under the
+   survive the 12h + remote filters (bounded to 12 to stay under the
   50-subrequest ceiling). Greenhouse's `?content=true` on the *list* endpoint is
   rejected — it returns ~5.5 MB per board.
 - **`upsertJob` backfills, it does not skip.** `ON CONFLICT DO NOTHING` left
