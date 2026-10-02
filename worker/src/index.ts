@@ -22,7 +22,7 @@ import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
-import { getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
@@ -133,6 +133,9 @@ export default {
     const db = env.DB as unknown as Db;
     const profile = profileFromEnv(env);
     const threshold = parseFloat(env.THRESHOLD || "70");
+    // Migrated once per batch, not once per health write (recordSourceHealth
+    // no longer ensures columns itself).
+    await ensureSourceHealthColumns(db);
     for (const msg of batch.messages) {
       try {
         const m = msg.body as any;
@@ -154,14 +157,13 @@ export default {
             }
           }
           let jobs: RawJob[] = [];
-          let probeErr = "";
+          let healthRecorded = false;
           try {
             jobs = await discoverSource(m.def, env);
           } catch (e) {
-            probeErr = String(e).slice(0, 180);
+            await recordSourceHealth(db, m.def.name, m.def.kind || "", -1, -1, String(e).slice(0, 180));
+            healthRecorded = true;
             throw e;
-          } finally {
-            await recordSourceHealth(db, m.def.name, m.def.kind || "", -1, -1, probeErr);
           }
           const fresh = filterRecentList(
             jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
@@ -172,8 +174,11 @@ export default {
           // Board APIs omit descriptions; enrich the few survivors so scoring
           // has real evidence instead of a title-only string.
           const enriched = await enrichDescriptions(remote.slice(0, 40));
-          const degraded = detectDegraded(remote, m.def.url || "");
-          await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
+          const degraded = detectDegraded(remote, m.def.url || "", m.def.kind || "");
+          if (!healthRecorded) {
+            await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
+            healthRecorded = true;
+          }
           for (const j of enriched) {
             const canon = normalizeUrl(j.url);
             const isNew = await upsertJob(db, {
@@ -328,7 +333,7 @@ export default {
         );
         return Response.json({
           name: def.name, kind: def.kind, raw: jobs.length, fresh_12h: fresh.length, remote_fresh: remote.length,
-          degraded: detectDegraded(remote, def.url || ""),
+          degraded: detectDegraded(remote, def.url || "", def.kind || ""),
           sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });
       } catch (e) {

@@ -97,6 +97,11 @@ class FreeLLMClient:
             return False
 
         logger.info("Attempting to auto-start FreeLLMAPI on port %s...", port)
+        # Accepted residual: this child is the first-party local FreeLLMAPI
+        # server (same trust domain, loopback only), which legitimately needs
+        # the ambient env (PATH/HOME/model keys) — full-env inheritance is
+        # intended here. Browser-launched children stay scrubbed via
+        # scrubbed_env() (see automation/browser.py).
         env = dict(os.environ)
         env["PORT"] = port
 

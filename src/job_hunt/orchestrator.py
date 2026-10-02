@@ -288,7 +288,7 @@ class PipelineOrchestrator:
         for job in queue:
             if is_spoof_like(job.raw_url):
                 logger.warning("Skipping job %s: spoof-like apply host %s", job.id, job.raw_url)
-                self.storage.update_job_state(job.id, JobState.FAILED, details="spoof-like apply host", force=True)
+                self.storage.update_job_state(job.id, JobState.FAILED, details=f"heuristic spoof-like host (needs human review): {job.raw_url}", force=True)
                 continue
             # Check if an application has already been submitted for this company/role/URL
             is_dup, dup_reason = self.storage.has_already_applied(

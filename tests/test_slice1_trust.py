@@ -79,6 +79,18 @@ def test_secret_values_removed_by_value(monkeypatch):
     assert "lowercase_alias" not in env
 
 
+def test_embedded_secret_connection_string_scrubbed(monkeypatch):
+    monkeypatch.setenv("REZI_MCP_TOKEN", "sekrit-abc-123")
+    monkeypatch.setenv("DATABASE_URL", "postgres://user:sekrit-abc-123@host/db")
+    monkeypatch.setenv("TINY_KEY", "ab123")  # short secret: exact-scrub only
+    monkeypatch.setenv("NOTE", "see ab123 here")
+    env = scrubbed_env()
+    assert "REZI_MCP_TOKEN" not in env
+    assert "DATABASE_URL" not in env
+    assert "TINY_KEY" not in env
+    assert env.get("NOTE") == "see ab123 here"  # no over-scrub from short secret
+
+
 import asyncio
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.models import CandidateProfile

@@ -47,6 +47,11 @@ describe("detectDegraded", () => {
   it("returns [] for an empty job list", () => {
     expect(detectDegraded([], "https://example.com/feed")).toEqual([]);
   });
+  it("skips off-domain-url for rss aggregators", () => {
+    const rows = [{ title: "Backend Engineer", company: "Acme", url: "https://boards.greenhouse.io/x/1" }];
+    expect(detectDegraded(rows, "https://example.com/feed", "rss")).toEqual([]);
+    expect(detectDegraded(rows, "https://example.com/feed", "greenhouse")).toContain("off-domain-url");
+  });
 });
 
 describe("isInconclusiveProbeError", () => {
@@ -56,10 +61,15 @@ describe("isInconclusiveProbeError", () => {
     expect(isInconclusiveProbeError(new TypeError("fetch failed"))).toBe(true);
     expect(isInconclusiveProbeError(new Error("Connect timeout"))).toBe(true);
     expect(isInconclusiveProbeError(new Error("getaddrinfo ENOTFOUND boards-api.greenhouse.io"))).toBe(true);
+    expect(isInconclusiveProbeError(new Error("getaddrinfo EAI_AGAIN api.lever.co"))).toBe(true);
+    expect(isInconclusiveProbeError(new Error("AbortError: the operation was aborted"))).toBe(true);
+    expect(isInconclusiveProbeError(new Error("HTTP 503 Service Unavailable"))).toBe(true);
   });
   it("leaves real bugs as conclusive failures", () => {
     expect(isInconclusiveProbeError(new Error("Cannot read properties of undefined"))).toBe(false);
     expect(isInconclusiveProbeError("some weird string")).toBe(false);
+    expect(isInconclusiveProbeError(new Error("socket is not defined"))).toBe(false);
+    expect(isInconclusiveProbeError(new Error("network config missing"))).toBe(false);
   });
 });
 

@@ -10,4 +10,12 @@ def scrubbed_env(extra: dict | None = None) -> dict:
         env.update(extra)
     values = {v for k, v in env.items() if v and (k in ("REZI_MCP_TOKEN", "LLM_API_KEY", "TELEGRAM_BOT_TOKEN") or any(h in k.upper() for h in SECRET_NAME_HINTS))}
     values.discard("")
-    return {k: v for k, v in env.items() if v not in values}
+    # Drop vars whose value merely CONTAINS a secret (connection strings like
+    # postgres://user:sekrit@host). Only secrets of length >= 8 participate:
+    # shorter values over-scrub (a 1-char "secret" is a substring of everything).
+    long_secrets = {v for v in values if isinstance(v, str) and len(v) >= 8}
+    return {
+        k: v for k, v in env.items()
+        if v not in values
+        and not (isinstance(v, str) and any(s in v for s in long_secrets))
+    }

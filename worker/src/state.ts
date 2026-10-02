@@ -112,11 +112,12 @@ export async function ensureSourceHealthColumns(db: Db): Promise<void> {
   }
 }
 
-/** Record one discovery attempt so source coverage is measured, not assumed. */
+/** Record one discovery attempt so source coverage is measured, not assumed.
+ * Exactly one write per call; the caller hoists ensureSourceHealthColumns to
+ * once per batch (see queue() in index.ts). */
 export async function recordSourceHealth(
   db: Db, source: string, kind: string, raw: number, kept: number, error = "", degraded: string[] = [],
 ): Promise<void> {
-  await ensureSourceHealthColumns(db);
   const degradedSignals = degraded.join(",").slice(0, 200);
   const degradedHit = degraded.length > 0 ? 1 : 0;
   await db.prepare(
