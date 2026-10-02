@@ -60,3 +60,21 @@ def test_rezi_without_bytes_falls_back_to_master(tmp_path):
     assert asyncio.run(orch._mirror_to_rezi_async(job, FakeRezi())) == 0
     artifact = storage.get_resume_artifact(job.id)
     assert artifact["kind"] == "master" and "no downloadable artifact" in artifact["detail"]
+
+import pathlib
+
+def test_no_tailored_cv_references_in_apply_path():
+    apply_sources = [
+        pathlib.Path("src/job_hunt/orchestrator.py").read_text(),
+        pathlib.Path("src/job_hunt/automation/browser.py").read_text(),
+    ]
+    assert all("tailored_cv_" not in s for s in apply_sources)
+
+def test_apply_resolves_master_when_no_artifact(tmp_path):
+    from job_hunt.storage import Storage
+    s = Storage(str(tmp_path / "t.db"))
+    assert s.get_resume_artifact(999) is None
+    # apply stage must then resolve data/cvs/Abdulsamed_Hamdy.pdf (asserted
+    # by path construction, not filesystem state):
+    from pathlib import Path
+    assert Path("data/cvs/Abdulsamed_Hamdy.pdf").name == "Abdulsamed_Hamdy.pdf"

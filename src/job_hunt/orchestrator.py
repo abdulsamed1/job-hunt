@@ -330,19 +330,12 @@ class PipelineOrchestrator:
                 self.storage.update_job_state(job.id, JobState.DUPLICATE, details=dup_reason, force=True)
                 continue
 
-            # Resolve tailored ATS-optimized PDF for this specific job posting
-            tailored_pdf = Path(f"data/cvs/tailored_cv_{job.id}.pdf")
-            if tailored_pdf.exists():
-                resume_path = str(tailored_pdf.resolve())
-            elif Path("Abdulsamed_Hamdy.pdf").exists():
-                resume_path = str(Path("Abdulsamed_Hamdy.pdf").resolve())
+            # Resolve the resume artifact: verified Rezi variant, else immutable master.
+            artifact = self.storage.get_resume_artifact(job.id) if job.id is not None else None
+            if artifact and artifact.get("kind") == "rezi" and artifact.get("storage_key"):
+                resume_path = str((Path("data/cvs") / Path(artifact["storage_key"]).name).resolve())
             else:
-                cv_dir = Path("data/cvs")
-                cv_dir.mkdir(parents=True, exist_ok=True)
-                cv_file = cv_dir / f"resume_{self.profile.last_name.lower()}.txt"
-                if not cv_file.exists():
-                    cv_file.write_text(self.cv_tailor.build_master_cv(self.profile), encoding="utf-8")
-                resume_path = str(cv_file.resolve())
+                resume_path = str(Path("data/cvs/Abdulsamed_Hamdy.pdf").resolve())
 
             # Fast liveness check before launching browser session
             is_live, liveness_reason = await self.liveness.check_url_async(job.raw_url)
