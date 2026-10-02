@@ -188,7 +188,7 @@ export async function fetchGreenhouseJobText(org: string, jobId: string, max = 3
  * filters: typically 0-3 per source, which keeps us far under the 50-subrequest
  * ceiling. Lever/Ashby already ship full text in the board response.
  */
-export async function enrichDescriptions(jobs: RawJob[], maxEnrich = 8): Promise<RawJob[]> {
+export async function enrichDescriptions(jobs: RawJob[], maxEnrich = 12): Promise<RawJob[]> {
   let budget = maxEnrich;
   const out: RawJob[] = [];
   for (const j of jobs) {

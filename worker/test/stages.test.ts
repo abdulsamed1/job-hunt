@@ -69,3 +69,30 @@ describe("applyToAts", () => {
     expect(r.detail).toMatch(/dry-run/i);
   });
 });
+
+describe("upsertJob backfill semantics", () => {
+  const row = (description: string, location = "Remote", posted = "2026-10-01") => ({
+    canonical_hash: "h1", title: "t", company: "c", location, url: "u",
+    description, source: "greenhouse:x", posted_at: posted, discovered_at: "now",
+    score: 0, remote: true,
+  });
+
+  const fakeDb = (changes: number) => ({
+    prepare: () => ({ bind: () => ({ run: async () => ({ meta: { changes } }) }) }),
+  }) as any;
+
+  it("reports true for a brand-new job", async () => {
+    const { upsertJob } = await import("../src/state.js");
+    expect(await upsertJob(fakeDb(1), row("short"))).toBe(true);
+  });
+
+  it("reports true when a stale description gets richer (re-score needed)", async () => {
+    const { upsertJob } = await import("../src/state.js");
+    expect(await upsertJob(fakeDb(1), row("x".repeat(900)))).toBe(true);
+  });
+
+  it("reports false on a no-op upsert so sweeps do not flood the queue", async () => {
+    const { upsertJob } = await import("../src/state.js");
+    expect(await upsertJob(fakeDb(0), row("x".repeat(900)))).toBe(false);
+  });
+});

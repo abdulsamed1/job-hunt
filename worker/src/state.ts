@@ -19,10 +19,30 @@ export async function upsertJob(
     score: number; remote: boolean;
   },
 ): Promise<boolean> {
+  // Returns true when the row is new OR was materially improved (richer
+  // description / backfilled location or date). That is exactly the set of
+  // jobs whose stored score may now be stale, so the caller re-evaluates them
+  // and nothing else. A no-op upsert returns false and costs no queue message.
+
   const res = await db.prepare(
     `INSERT INTO jobs (canonical_hash, title, company, location, url, description, source, posted_at, discovered_at, score, remote, state, notified)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DISCOVERED', 0)
-     ON CONFLICT (canonical_hash) DO NOTHING`,
+     ON CONFLICT (canonical_hash) DO UPDATE SET
+       -- Backfill richer text: board APIs can start returning descriptions
+       -- (or we add enrichment later), and a stale title-only row would keep
+       -- scoring as REJECTED forever. Never shrink an existing description.
+       description = CASE
+         WHEN length(excluded.description) > length(jobs.description) THEN excluded.description
+         ELSE jobs.description END,
+       location = CASE
+         WHEN length(jobs.location) = 0 THEN excluded.location
+         ELSE jobs.location END,
+       posted_at = CASE
+         WHEN length(jobs.posted_at) = 0 THEN excluded.posted_at
+         ELSE jobs.posted_at END
+     WHERE length(excluded.description) > length(jobs.description)
+        OR length(jobs.location) = 0
+        OR length(jobs.posted_at) = 0`,
   ).bind(
     job.canonical_hash, job.title.slice(0, 200), job.company.slice(0, 120),
     job.location.slice(0, 120), job.url.slice(0, 500), job.description.slice(0, 4000),
@@ -83,4 +103,15 @@ export async function recordSourceHealth(
        last_error = excluded.last_error,
        last_seen = excluded.last_seen`,
   ).bind(source, kind, kept > 0 ? 1 : 0, raw, kept, error.slice(0, 200), new Date().toISOString()).run();
+}
+
+/** Jobs that need a human or are already submitted -- the actionable morning list. */
+export async function getActionableJobs(db: Db, limit = 50): Promise<Array<Record<string, any>>> {
+  const { results } = await db.prepare(
+    `SELECT canonical_hash, title, company, location, url, source, posted_at, score, state
+     FROM jobs
+     WHERE state IN ('APPLICATION_STARTED', 'TAILORED', 'SUBMITTED', 'ELIGIBLE')
+     ORDER BY score DESC, discovered_at DESC LIMIT ?`,
+  ).bind(limit).all();
+  return results;
 }

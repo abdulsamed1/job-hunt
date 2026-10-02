@@ -20,7 +20,7 @@ import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
-import { getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
@@ -237,14 +237,27 @@ export default {
     const db = env.DB as unknown as Db;
     if (url.pathname === "/health") {
       const row: any = await db.prepare(`SELECT COUNT(*) AS n FROM jobs`).first();
-      return Response.json({ ok: true, jobs: row?.n ?? 0 });
+      // Profile sanity: an empty verified_skills list silently rejects every job.
+      const prof = profileFromEnv(env);
+      return Response.json({
+        ok: true,
+        jobs: row?.n ?? 0,
+        profile_skills: (prof.verifiedSkills || []).length,
+        profile_languages: (prof.languages || []).length,
+        profile_has_name: !!prof.fullName,
+        threshold: parseFloat(env.THRESHOLD || "70"),
+        live_apply: env.LIVE_APPLY === "true",
+      });
     }
     if (url.pathname === "/recent") {
-      const rows = await getJobsByState(db, "ELIGIBLE", 50);
+      // `actionable` is the morning list: qualifying jobs are moved out of the
+      // ELIGIBLE state once tailored, so querying ELIGIBLE alone always looked empty.
+      const actionable = await getActionableJobs(db, 50);
+      const rows = actionable.filter((r: any) => r.state === "ELIGIBLE");
       const latest: any = await db.prepare(
         `SELECT title, company, location, url, source, score, state, discovered_at FROM jobs ORDER BY discovered_at DESC LIMIT 50`,
       ).bind().all();
-      return Response.json({ eligible: rows, latest: latest.results });
+      return Response.json({ actionable, eligible: rows, latest: latest.results });
     }
     if (url.pathname === "/queue" && request.method === "POST") {
       const body: any = await request.json().catch(() => ({}));
