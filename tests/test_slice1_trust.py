@@ -41,3 +41,15 @@ def test_twelve_hour_defaults():
     assert p.parse_args(["run", "--once"]).hours_old == 12
     sig = inspect.signature(orch_mod.PipelineOrchestrator.run_discovery_stage)
     assert sig.parameters["hours_old"].default == 12
+
+
+import os
+from job_hunt.automation.env_scrub import scrubbed_env
+
+def test_secret_values_removed_by_value(monkeypatch):
+    monkeypatch.setenv("REZI_MCP_TOKEN", "sekrit-abc-123")
+    monkeypatch.setenv("lowercase_alias", "sekrit-abc-123")
+    env = scrubbed_env()
+    assert "sekrit-abc-123" not in env.values()
+    assert "REZI_MCP_TOKEN" not in env
+    assert "lowercase_alias" not in env

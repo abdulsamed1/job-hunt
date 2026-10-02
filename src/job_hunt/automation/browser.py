@@ -12,6 +12,7 @@ from playwright.async_api import Browser, BrowserContext, Frame, Page, async_pla
 
 from job_hunt import settings
 from job_hunt.automation.captcha_solver import CaptchaSolver, is_captcha_error
+from job_hunt.automation.env_scrub import scrubbed_env
 from job_hunt.models import ApplicationRecord, CandidateProfile, JobPosting, JobState
 
 logger = logging.getLogger(__name__)
@@ -1416,6 +1417,7 @@ class BrowserApplicationEngine:
                 executable_path=exec_path,
                 headless=self.headless,
                 args=launch_args,
+                env=scrubbed_env(),
             )
             context_kwargs: Dict[str, Any] = {
                 "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
