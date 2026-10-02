@@ -17,6 +17,7 @@ import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
 import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
+import { classifyHost } from "./lib/hosts.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
 import type { Profile } from "./lib/evaluate.js";
@@ -135,6 +136,16 @@ export default {
       try {
         const m = msg.body as any;
         if (m.stage === "discover" && m.def) {
+          const def = m.def as SourceDef;
+          // Fail closed on spoofed ATS hosts; RSS feeds carry their own hosts.
+          if (
+            (def.kind === "greenhouse" || def.kind === "lever" || def.kind === "ashby" || def.kind === "smartrecruiters") &&
+            def.url &&
+            classifyHost(def.url) === "unverified"
+          ) {
+            console.log(`skipping unverified host for source ${def.name}: ${def.url}`);
+            continue;
+          }
           let jobs: RawJob[] = [];
           let probeErr = "";
           try {
