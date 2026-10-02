@@ -23,3 +23,17 @@ def classify_host(url: str) -> str:
         if host == apex or host.endswith("." + apex):
             return "ats"
     return "unverified"
+
+
+SPOOF_TOKENS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workday", "workable", "bamboohr")
+
+def is_spoof_like(url: str) -> bool:
+    """True when the host mentions a known ATS token yet fails exact-apex verification."""
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except Exception:
+        return False
+    if not host or classify_host(url) != "unverified":
+        return False
+    return any(t in host for t in SPOOF_TOKENS)

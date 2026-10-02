@@ -1,4 +1,4 @@
-from job_hunt.discovery.hosts import classify_host
+from job_hunt.discovery.hosts import classify_host, is_spoof_like
 from job_hunt.discovery.registry import SourceRegistry
 
 
@@ -16,3 +16,11 @@ def test_registry_drops_spoofed_url():
     reg = SourceRegistry()
     entry = {"name": "evil", "url": "https://greenhouse.io@evil.com/x"}
     assert reg.resolve_adapter(entry) is None
+
+
+def test_spoof_like_matrix():
+    assert is_spoof_like("https://evil-greenhouse.io/stripe") is True
+    assert is_spoof_like("https://job-boards.greenhouse.io.evil.com/x") is True
+    assert is_spoof_like("https://www.linkedin.com/jobs/view/999") is False
+    assert is_spoof_like("https://gitlab.com/jobs/3") is False
+    assert is_spoof_like("https://boards.greenhouse.io/stripe") is False
