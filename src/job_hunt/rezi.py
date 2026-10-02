@@ -323,6 +323,15 @@ class ReziMCPClient:
             raise ReziError("Unexpected read_resume result shape")
         return result
 
+    async def download_resume_pdf(self, resume_id: str) -> Optional[bytes]:
+        """Download the rendered PDF bytes for a resume.
+
+        The Rezi MCP surface exposes no download/export tool (only
+        list/read/format/write), so this returns None and the caller falls
+        back to the master resume artifact.
+        """
+        return None
+
     async def get_format(self) -> Dict[str, Any]:
         result = await self._call_tool("get_resume_format", {})
         if not isinstance(result, dict):

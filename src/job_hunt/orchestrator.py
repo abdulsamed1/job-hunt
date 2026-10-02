@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import signal
 from pathlib import Path
@@ -233,6 +234,7 @@ class PipelineOrchestrator:
     async def _mirror_to_rezi_async(
         self, job: JobPosting, rezi_client: Optional[Any] = None
     ) -> int:
+        from job_hunt.cv.resume_store import register_master
         from job_hunt.rezi import (
             ReziMCPClient,
             build_rezi_resume_data,
@@ -266,10 +268,31 @@ class PipelineOrchestrator:
             if job.id is not None:
                 self.storage.save_rezi_resume_id(job.id, rezi_id)
             logger.info("Mirrored job %s to Rezi resume %s", job.id, rezi_id)
-            return 1
+            pdf_bytes = await client.download_resume_pdf(rezi_id)
+            if pdf_bytes:
+                ok, issues = self._verify_rezi_artifact(pdf_bytes, job)
+                if ok:
+                    key = f"cvs/rezi/{job.id}-{rezi_id}.pdf"
+                    (Path("data/cvs") / f"rezi_{job.id}_{rezi_id}.pdf").write_bytes(pdf_bytes)
+                    self.storage.save_resume_artifact(job.id, "rezi", sha256=hashlib.sha256(pdf_bytes).hexdigest(), rezi_resume_id=rezi_id, storage_key=key, verdict="verified")
+                    return 1
+                reason = "; ".join(issues[:3])
+            else:
+                reason = "no downloadable artifact"
+            master = register_master()
+            self.storage.save_resume_artifact(job.id, "master", sha256=master["sha256"], storage_key=f"cvs/master/{master['sha256']}.pdf", verdict="fallback", detail=reason)
+            return 0
         finally:
             if owns_client:
                 await client.aclose()
+
+    def _verify_rezi_artifact(self, pdf_bytes: bytes, job: JobPosting) -> tuple:
+        """Extract text from Rezi PDF bytes and run the fact gate."""
+        import fitz
+
+        with fitz.open(stream=bytes(pdf_bytes), filetype="pdf") as doc:
+            text = "\n".join(page.get_text() for page in doc)
+        return self.cv_tailor.verify_cv_facts(text, self.profile)
 
     # Alias for web API & consistency
     def run_tailoring_stage(self, limit: int = 50, use_rezi: bool = False) -> int:
