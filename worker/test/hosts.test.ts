@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyHost } from "../src/lib/hosts.js";
+import { boardUrlForDef, classifyHost, isValidOrg } from "../src/lib/hosts.js";
 import { detectDegraded, isInconclusiveProbeError } from "../src/lib/health.js";
 
 describe("classifyHost", () => {
@@ -13,6 +13,30 @@ describe("classifyHost", () => {
   });
 });
 
+describe("boardUrlForDef", () => {
+  it("builds the same board URLs discoverSource fetches", () => {
+    expect(boardUrlForDef({ kind: "greenhouse", name: "x", org: "stripe", cadence: "hourly" }))
+      .toBe("https://boards-api.greenhouse.io/v1/boards/stripe/jobs");
+    expect(boardUrlForDef({ kind: "lever", name: "x", org: "ashby", cadence: "hourly" }))
+      .toBe("https://api.lever.co/v0/postings/ashby?mode=json");
+    expect(boardUrlForDef({ kind: "ashby", name: "x", org: "stellar", cadence: "hourly" }))
+      .toBe("https://api.ashbyhq.com/posting-api/job-board/stellar?includeCompensation=true");
+    expect(boardUrlForDef({ kind: "smartrecruiters", name: "x", org: "acme", cadence: "hourly" }))
+      .toBe("https://api.smartrecruiters.com/v1/companies/acme/postings?limit=100");
+  });
+  it("rejects orgs outside [A-Za-z0-9_-] (fail closed)", () => {
+    expect(isValidOrg("evil org")).toBe(false);
+    expect(isValidOrg("a;b")).toBe(false);
+    expect(isValidOrg("x/y")).toBe(false);
+    expect(isValidOrg("stripe")).toBe(true);
+    expect(boardUrlForDef({ kind: "greenhouse", name: "evil", org: "evil org", cadence: "hourly" })).toBeNull();
+    expect(boardUrlForDef({ kind: "lever", name: "evil", org: "a;b", cadence: "hourly" })).toBeNull();
+  });
+  it("falls back to def.url for non-org kinds", () => {
+    expect(boardUrlForDef({ kind: "rss", name: "f", url: "https://example.com/feed", cadence: "hourly" }))
+      .toBe("https://example.com/feed");
+  });
+});
 describe("detectDegraded", () => {
   it("flags garbage rows but not clean ones", () => {
     const bad = [{ title: "<b>Dev &amp; Ops", company: "", url: "https://evil.com/x", location: "Remote", desc: "x" }];

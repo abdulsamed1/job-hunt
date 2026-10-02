@@ -20,6 +20,30 @@ def test_registry_drops_spoofed_url():
     assert reg.resolve_adapter(entry) is None
 
 
+def test_explicit_adapter_with_spoofed_url_resolves_to_none():
+    reg = SourceRegistry()
+    entry = {"name": "evil", "adapter": "greenhouse", "url": "https://evil-greenhouse.io/stripe"}
+    assert reg.resolve_adapter(entry) is None
+
+
+def test_explicit_adapter_with_verified_host_resolves():
+    reg = SourceRegistry()
+    entry = {"name": "gh", "adapter": "greenhouse", "url": "https://boards.greenhouse.io/stripe"}
+    resolved = reg.resolve_adapter(entry)
+    assert resolved is not None
+    assert resolved.adapter_id == "greenhouse"
+
+
+def test_explicit_feed_adapter_with_plain_url_still_resolves():
+    # Feed/web adapters legitimately serve non-ATS hosts; only the
+    # spoof-like (deceptive) case fails closed before the explicit return.
+    reg = SourceRegistry()
+    entry = {"name": "feed", "adapter": "feed", "url": "https://example.com/feed"}
+    resolved = reg.resolve_adapter(entry)
+    assert resolved is not None
+    assert resolved.adapter_id == "feed"
+
+
 def test_spoof_like_matrix():
     assert is_spoof_like("https://evil-greenhouse.io/stripe") is True
     assert is_spoof_like("https://job-boards.greenhouse.io.evil.com/x") is True

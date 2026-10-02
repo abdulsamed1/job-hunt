@@ -111,14 +111,28 @@ CLOUDFLARE_TURNSTILE_SELECTORS = [
 ]
 
 # Hosts we trust for direct application-URL navigation.
+# Audit vs ATS_LINK_PATTERNS: every stable-apex pattern has an entry here.
+# recruitee.com / jobvite.com / teamtailor.com are those vendors' stable board
+# apexes, so they are trusted the same way (exact-apex match only).
+# Entries mirror the discovery host tables (hosts.py / worker hosts.ts) host
+# for host so the three-way parity test holds; workday.com stays as a
+# browser-only extra (corporate SSO landing pages link out to boards).
 KNOWN_ATS_APEXES = (
-    "greenhouse.io",
-    "lever.co",
+    "boards.greenhouse.io",
+    "boards-api.greenhouse.io",
+    "jobs.lever.co",
+    "api.lever.co",
     "myworkdayjobs.com",
     "workday.com",
-    "ashbyhq.com",
-    "smartrecruiters.com",
+    "jobs.ashbyhq.com",
+    "api.ashbyhq.com",
+    "jobs.smartrecruiters.com",
+    "api.smartrecruiters.com",
     "workable.com",
+    "bamboohr.com",
+    "recruitee.com",
+    "jobvite.com",
+    "teamtailor.com",
 )
 
 PORTAL_HOSTS = (

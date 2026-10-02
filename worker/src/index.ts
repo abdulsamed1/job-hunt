@@ -17,7 +17,7 @@ import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
 import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
-import { classifyHost } from "./lib/hosts.js";
+import { boardUrlForDef, classifyHost } from "./lib/hosts.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, buildTailoredText, evaluateJob, renderPdfBytes } from "./stages/pipeline.js";
@@ -138,14 +138,20 @@ export default {
         const m = msg.body as any;
         if (m.stage === "discover" && m.def) {
           const def = m.def as SourceDef;
-          // Fail closed on spoofed ATS hosts; RSS feeds carry their own hosts.
+          // Fail closed on spoofed ATS hosts AND smuggled orgs: the board URL
+          // is rebuilt from def.org exactly as discoverSource() builds it, so
+          // a queue message carrying a hostile org or URL never reaches fetch.
+          // (No workday/workable/bamboohr board kinds exist on the Worker —
+          // see sources.ts — so the kind list is intentionally unchanged.)
           if (
-            (def.kind === "greenhouse" || def.kind === "lever" || def.kind === "ashby" || def.kind === "smartrecruiters") &&
-            def.url &&
-            classifyHost(def.url) === "unverified"
+            def.kind === "greenhouse" || def.kind === "lever" ||
+            def.kind === "ashby" || def.kind === "smartrecruiters"
           ) {
-            console.log(`skipping unverified host for source ${def.name}: ${def.url}`);
-            continue;
+            const boardUrl = boardUrlForDef(def);
+            if (!boardUrl || classifyHost(boardUrl) === "unverified") {
+              console.log(`skipping source with unverified board URL: ${def.name}`);
+              continue;
+            }
           }
           let jobs: RawJob[] = [];
           let probeErr = "";

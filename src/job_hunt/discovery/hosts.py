@@ -10,6 +10,12 @@ ATS_APEXES = (
     "myworkdayjobs.com",
     "workable.com",
     "bamboohr.com",
+    # Stable board apexes for the remaining ATS_LINK_PATTERNS vendors
+    # (browser.py): Recruitee, Jobvite, and Teamtailor all serve boards
+    # under these apexes, so exact-apex matches are trusted ATS traffic.
+    "recruitee.com",
+    "jobvite.com",
+    "teamtailor.com",
 )
 
 def classify_host(url: str) -> str:

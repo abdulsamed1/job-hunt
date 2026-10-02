@@ -27,7 +27,7 @@ from job_hunt.discovery.adapters.workday import WorkdayAdapter
 from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
 from job_hunt.discovery.base import DiscoveryAdapter
-from job_hunt.discovery.hosts import classify_host
+from job_hunt.discovery.hosts import classify_host, is_spoof_like
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -60,12 +60,21 @@ class SourceRegistry:
 
     def resolve_adapter(self, entry: Dict[str, Any]) -> Optional[DiscoveryAdapter]:
         """Resolve adapter for a given configuration entry."""
+        url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
+        # Spoof-deception check runs BEFORE the explicit-adapter early return:
+        # an explicit adapter must never launder a lookalike host. Plain
+        # unverified URLs with an explicit adapter still resolve below — feed
+        # and web adapters legitimately serve non-ATS hosts, so only the
+        # spoof-like (deceptive) case fails closed here.
+        if url and classify_host(url) == "unverified" and is_spoof_like(url):
+            name = entry.get("name", "unknown")
+            logger.warning("Spoof-like source host, skipping: %s (%s)", name, url)
+            return None
         explicit = entry.get("adapter")
         if explicit and explicit in self._adapter_map:
             return self._adapter_map[explicit]
 
-        url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
-        if url and classify_host(url) == "unverified" and not explicit:
+        if url and classify_host(url) == "unverified":
             name = entry.get("name", "unknown")
             logger.warning("Unverified source host, skipping: %s (%s)", name, url)
             return None
