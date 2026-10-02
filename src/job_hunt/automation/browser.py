@@ -348,6 +348,23 @@ class BrowserApplicationEngine:
         shown = "; ".join(required[:3])
         return f"Blocked: {len(required)} required question(s) unanswered: {shown}"
 
+    async def verify_fill(self, ctx, fields) -> list:
+        """Re-read live field values; return human-readable warnings (empty = OK)."""
+        warnings = []
+        for f in fields or []:
+            try:
+                el = f.get("el")
+                current = await el.input_value() if el and hasattr(el, "input_value") else ""
+            except Exception:
+                current = None
+            intended = f.get("intended") or ""
+            label = f.get("label") or "field"
+            if intended and not (current or ""):
+                warnings.append(f"fill-mismatch: {label} reads empty after fill")
+            if f.get("required") and not (current or ""):
+                warnings.append(f"required-empty: {label}")
+        return warnings
+
     async def _is_element_required(self, ctx: Union[Page, Frame], el, label_text: str) -> bool:
         """Best-effort required-field detection: attr, aria, or label asterisk."""
         try:

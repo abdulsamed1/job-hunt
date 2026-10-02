@@ -53,3 +53,17 @@ def test_secret_values_removed_by_value(monkeypatch):
     assert "sekrit-abc-123" not in env.values()
     assert "REZI_MCP_TOKEN" not in env
     assert "lowercase_alias" not in env
+
+
+import asyncio
+from job_hunt.automation.browser import BrowserApplicationEngine
+
+class FakeEl:
+    def __init__(self, value): self._v = value
+    async def input_value(self): return self._v
+
+def test_verify_fill_detects_mismatch():
+    eng = BrowserApplicationEngine.__new__(BrowserApplicationEngine)
+    fields = [{"label": "Email", "el": FakeEl(""), "intended": "a@b.com", "required": True}]
+    warnings = asyncio.run(eng.verify_fill(None, fields))
+    assert any("Email" in w for w in warnings)
