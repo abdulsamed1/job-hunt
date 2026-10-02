@@ -365,7 +365,7 @@ class PipelineOrchestrator:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 12, remote_only: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
