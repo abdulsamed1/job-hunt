@@ -15,6 +15,7 @@ export function evaluateJob(input: EvalInput, profile: Profile, threshold: numbe
   return scoreJob(input.title, input.description, input.location, profile, threshold);
 }
 
+/** @deprecated — apply path must attach stored bytes */
 export function buildTailoredText(
   job: { title: string; company: string },
   profile: Profile & { fullName: string; email: string; phone: string; summary?: string },
@@ -37,6 +38,7 @@ export function buildTailoredText(
   return lines.join("\n");
 }
 
+/** @deprecated — apply path must attach stored bytes */
 export async function renderPdfBytes(textCv: string, fullName: string): Promise<Uint8Array> {
   // Minimal single-font PDF (Helvetica, no embedding): tiny CPU + bundle cost.
   const doc = await PDFDocument.create();
