@@ -57,6 +57,7 @@ def test_secret_values_removed_by_value(monkeypatch):
 
 import asyncio
 from job_hunt.automation.browser import BrowserApplicationEngine
+from job_hunt.models import CandidateProfile
 
 class FakeEl:
     def __init__(self, value): self._v = value
@@ -67,3 +68,37 @@ def test_verify_fill_detects_mismatch():
     fields = [{"label": "Email", "el": FakeEl(""), "intended": "a@b.com", "required": True}]
     warnings = asyncio.run(eng.verify_fill(None, fields))
     assert any("Email" in w for w in warnings)
+
+
+class _WiringInput:
+    def __init__(self): self._v = ""
+    async def input_value(self): return self._v
+    async def fill(self, v): pass  # fill does NOT persist: simulates React-controlled drop
+    async def get_attribute(self, name):
+        return "Email" if name == "aria-label" else None
+    async def evaluate(self, js): return ""
+
+
+class _WiringCtx:
+    def __init__(self, el): self._el = el
+    async def query_selector_all(self, sel):
+        return [self._el] if "textarea" in sel else []
+    async def query_selector(self, sel): return None
+
+
+def test_questionnaire_verify_blocks_unpersisted_fill():
+    eng = BrowserApplicationEngine.__new__(BrowserApplicationEngine)
+    eng.last_unanswered = []
+    eng.last_confirmation_needed = []
+    profile = CandidateProfile(
+        full_name="Robin Diaz",
+        first_name="Robin",
+        last_name="Diaz",
+        email="a@b.com",
+        phone="+1-555-0188",
+        location="Austin, TX",
+        custom_answers={"Email": "a@b.com"},
+    )
+    asyncio.run(eng._fill_questionnaire(_WiringCtx(_WiringInput()), profile))
+    assert any("Email" in label for label, _ in eng.last_unanswered)
+    assert eng.submit_blocked_reason() is not None

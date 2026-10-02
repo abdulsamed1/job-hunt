@@ -830,6 +830,7 @@ class BrowserApplicationEngine:
         answers_captured: Dict[str, str] = {}
         self.last_unanswered = []
         self.last_confirmation_needed = []
+        filled: list = []
 
         # 1. Custom text inputs and textareas
         custom_inputs = await ctx.query_selector_all("input[type='text'], textarea")
@@ -847,6 +848,7 @@ class BrowserApplicationEngine:
                 if ans:
                     await inp.fill(ans)
                     answers_captured[label_text] = ans
+                    filled.append((label_text, inp, ans, await self._is_element_required(ctx, inp, label_text)))
                 else:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, inp, label_text))
@@ -878,6 +880,7 @@ class BrowserApplicationEngine:
                 if target_option:
                     await sel.select_option(label=target_option)
                     answers_captured[label_text or "select"] = target_option
+                    filled.append((label_text or "select", sel, target_option, await self._is_element_required(ctx, sel, label_text)))
                 elif label_text:
                     self.last_unanswered.append(
                         (label_text, await self._is_element_required(ctx, sel, label_text))
@@ -899,6 +902,7 @@ class BrowserApplicationEngine:
                     await asyncio.sleep(0.3)
                     await ctx.page.keyboard.press("Enter")
                     answers_captured[label_text or "combobox"] = ans
+                    filled.append((label_text or "combobox", cb, ans, await self._is_element_required(ctx, cb, label_text)))
             except Exception:
                 continue
 
@@ -934,6 +938,7 @@ class BrowserApplicationEngine:
                 if picked is not None:
                     await candidate_els[candidates.index(picked)].check()
                     answers_captured[group_label or group_name] = ans
+                    filled.append((group_label or group_name, candidate_els[candidates.index(picked)], ans, await self._is_element_required(ctx, radio, group_label)))
                 elif group_label:
                     self.last_unanswered.append(
                         (group_label, await self._is_element_required(ctx, radio, group_label))
@@ -954,12 +959,21 @@ class BrowserApplicationEngine:
                 if checkbox_action(cb_label) == "check" and await cb.is_visible():
                     await cb.check()
                     answers_captured[cb_label] = "checked (routine consent)"
+                    filled.append((cb_label, cb, "checked (routine consent)", await self._is_element_required(ctx, cb, cb_label)))
                 else:
                     self.last_unanswered.append(
                         (cb_label, await self._is_element_required(ctx, cb, cb_label))
                     )
             except Exception:
                 continue
+
+        verify_warnings = await self.verify_fill(ctx, [
+            {"label": label, "el": el, "intended": intended, "required": required}
+            for (label, el, intended, required) in filled
+        ])
+        for (label, _el, _intended, _required) in filled:
+            if any(label in w for w in verify_warnings):
+                self.last_unanswered.append((label, True))
 
         return answers_captured
 
