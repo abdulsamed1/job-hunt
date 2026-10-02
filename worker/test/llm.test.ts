@@ -32,6 +32,8 @@ describe("output discipline", () => {
     expect(refuseSensitive("Are you authorized to work in the US?")).toBe(true);
     expect(refuseSensitive("Desired salary")).toBe(false);
     expect(refuseSensitive("Current salary")).toBe(true);
+    expect(refuseSensitive("Salary history")).toBe(true);
+    expect(refuseSensitive("What are your salary expectations?")).toBe(false);
   });
   it("salvages root-level JSON only", () => {
     const r = salvageRootJson('{"a": {"value": "x", "needs_confirmation": true}, "b":');

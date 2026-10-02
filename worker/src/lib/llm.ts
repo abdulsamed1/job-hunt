@@ -66,7 +66,7 @@ export async function recordUsage(db: any, provider: string, tokens: number): Pr
   await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, 'cur', 1, ?, 0) ON CONFLICT(provider, window) DO UPDATE SET requests=requests+1, tokens=tokens+excluded.tokens`).bind(provider, tokens).run();
 }
 
-const SENSITIVE_RX = /authoriz|visa|sponsor|citizen|current salary|compensat|pay histor|disab|veteran|gender|race|religion|arrest|convict|background check|perjury|attest|certif|swear/i;
+const SENSITIVE_RX = /authoriz|visa|sponsor|citizen|current salary|salary histor|compensat|pay histor|disab|veteran|gender|race|religion|arrest|convict|background check|perjury|attest|certif|swear/i;
 
 export function refuseSensitive(label: string): boolean {
   return SENSITIVE_RX.test(label || "");
