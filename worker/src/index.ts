@@ -319,7 +319,7 @@ export default {
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
         return Response.json({
-          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length, remote_fresh: remote.length,
+          name: def.name, kind: def.kind, raw: jobs.length, fresh_12h: fresh.length, remote_fresh: remote.length,
           sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });
       } catch (e) {
