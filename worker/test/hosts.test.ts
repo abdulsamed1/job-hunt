@@ -7,5 +7,7 @@ describe("classifyHost", () => {
     expect(classifyHost("https://evil-greenhouse.io/x")).toBe("unverified");
     expect(classifyHost("https://greenhouse.io@evil.com/x")).toBe("unverified");
     expect(classifyHost("ftp://boards.greenhouse.io/x")).toBe("unverified");
+    expect(classifyHost("https://acme.myworkdayjobs.com/jobs")).toBe("ats");
+    expect(classifyHost("https://evil-myworkdayjobs.com/x")).toBe("unverified");
   });
 });

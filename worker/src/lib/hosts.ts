@@ -3,6 +3,9 @@ const ATS_APEXES = [
   "jobs.lever.co", "api.lever.co",
   "jobs.ashbyhq.com", "api.ashbyhq.com",
   "jobs.smartrecruiters.com", "api.smartrecruiters.com",
+  "myworkdayjobs.com",
+  "workable.com",
+  "bamboohr.com",
 ];
 
 export function classifyHost(url: string): "ats" | "unverified" {

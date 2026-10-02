@@ -10,6 +10,8 @@ def test_classify_host_spoof_matrix():
     assert classify_host("https://greenhouse.io@evil.com/x") == "unverified"
     assert classify_host("ftp://boards.greenhouse.io/x") == "unverified"
     assert classify_host("not a url") == "unverified"
+    assert classify_host("https://acme.myworkdayjobs.com/jobs") == "ats"
+    assert classify_host("https://evil-myworkdayjobs.com/x") == "unverified"
 
 
 def test_registry_drops_spoofed_url():
@@ -24,3 +26,5 @@ def test_spoof_like_matrix():
     assert is_spoof_like("https://www.linkedin.com/jobs/view/999") is False
     assert is_spoof_like("https://gitlab.com/jobs/3") is False
     assert is_spoof_like("https://boards.greenhouse.io/stripe") is False
+    assert is_spoof_like("https://acme.myworkdayjobs.com/jobs") is False
+    assert is_spoof_like("https://evil-myworkdayjobs.com/x") is True
