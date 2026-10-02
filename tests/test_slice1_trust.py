@@ -1,4 +1,5 @@
 from job_hunt.discovery.hosts import classify_host
+from job_hunt.discovery.registry import SourceRegistry
 
 
 def test_classify_host_spoof_matrix():
@@ -9,3 +10,9 @@ def test_classify_host_spoof_matrix():
     assert classify_host("https://greenhouse.io@evil.com/x") == "unverified"
     assert classify_host("ftp://boards.greenhouse.io/x") == "unverified"
     assert classify_host("not a url") == "unverified"
+
+
+def test_registry_drops_spoofed_url():
+    reg = SourceRegistry()
+    entry = {"name": "evil", "url": "https://greenhouse.io@evil.com/x"}
+    assert reg.resolve_adapter(entry) is None

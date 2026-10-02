@@ -27,6 +27,7 @@ from job_hunt.discovery.adapters.workday import WorkdayAdapter
 from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
 from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.hosts import classify_host
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,10 @@ class SourceRegistry:
             return self._adapter_map[explicit]
 
         url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
+        if url and classify_host(url) == "unverified" and not explicit:
+            name = entry.get("name", "unknown")
+            logger.warning("Unverified source host, skipping: %s (%s)", name, url)
+            return None
         for adapter in self.adapters:
             if adapter.matches_url(url):
                 return adapter

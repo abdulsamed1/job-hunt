@@ -13,6 +13,7 @@ from job_hunt import settings
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
 from job_hunt.discovery.freshness import filter_recent, filter_remote
+from job_hunt.discovery.hosts import classify_host
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
 from job_hunt.liveness import LivenessDetector
@@ -285,6 +286,10 @@ class PipelineOrchestrator:
 
         processed = 0
         for job in queue:
+            if classify_host(job.raw_url) == "unverified":
+                logger.warning("Skipping job %s: unverified apply host %s", job.id, job.raw_url)
+                self.storage.update_job_state(job.id, JobState.FAILED, details="unverified apply host", force=True)
+                continue
             # Check if an application has already been submitted for this company/role/URL
             is_dup, dup_reason = self.storage.has_already_applied(
                 job_id=job.id,
