@@ -12,6 +12,7 @@
 
 import { fetchRssFeed } from "./adapters/rss.js";
 import { fetchArbeitnow, fetchBdJobs, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
+import { fetchPersonio, fetchRecruitee, fetchTeamtailor } from "./adapters/tenants.js";
 import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
@@ -138,6 +139,9 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
       }
       return out;
     }
+    case "teamtailor": return fetchTeamtailor(def.url || "", def.name);
+    case "recruitee": return fetchRecruitee(def.url || "", def.name);
+    case "personio": return fetchPersonio(def.url || "", def.name);
     case "linkedin": {
       if (!linkedinEnabled(env)) return [];
       const out: RawJob[] = [];

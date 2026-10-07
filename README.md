@@ -7,8 +7,8 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 ## High-Level Architecture
 
 ```
-                [319 Configured Sources & Job Boards]
-     (235 Worker-runnable + 84 Python-only; LinkedIn [disabled 2026-10-02],
+                [325 Configured Sources & Job Boards]
+     (241 Worker-runnable + 84 Python-only; LinkedIn [disabled 2026-10-02],
       Greenhouse, Ashby,
       Lever, SmartRecruiters, RSS/JSON, Indeed, Bayt, Naukri, HTML scrape)
                                                 │
@@ -67,7 +67,7 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 ## Core Capabilities & Operational Moats
 
-### 1. High-Throughput Multi-ATS Discovery (319 Configured Sources)
+### 1. High-Throughput Multi-ATS Discovery (325 Configured Sources)
 - **Extensive ATS Coverage**: Native adapters for **LinkedIn** (disabled 2026-10-02, account ban), **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
 - **Dedicated LinkedIn Guest Scraper** (DISABLED — account ban 2026-10-02; `LINKEDIN_ENABLED=false`): Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Standing target when re-enabled: `backend` / `fullstack` / `software`, past-12h window (`f_TPR=r43200`), worldwide geo radius — ~60 fresh postings per run.
 - **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
@@ -171,7 +171,7 @@ the laptop is off. See [`worker/README.md`](worker/README.md) for internals.
 
 | Stage | Cloudflare Worker | Python / Actions |
 |---|---|---|
-| Fetch + parse all 319 sources | ✅ | ✅ (also covers the 84 python-only) |
+| Fetch + parse all 325 sources | ✅ | ✅ (also covers the 84 python-only) |
 | Deterministic evaluation | ✅ | ✅ |
 | Tailored PDF via `pdf-lib` | ✅ | ✅ (master + visible skill line) |
 | Direct ATS HTTP POST | ✅ per-board flags, OFF by default | ✅ |
