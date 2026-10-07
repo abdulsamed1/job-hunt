@@ -14,7 +14,9 @@ from job_hunt.discovery.adapters.ashby import AshbyAdapter
 from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
 from job_hunt.discovery.adapters.bamboohr import BambooHRAdapter
 from job_hunt.discovery.adapters.bayt import BaytAdapter
+from job_hunt.discovery.adapters.bdjobs import BdJobsAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
+from job_hunt.discovery.adapters.freehire import FreehireAdapter
 from job_hunt.discovery.adapters.glassdoor import GlassdoorAdapter
 from job_hunt.discovery.adapters.google_jobs import GoogleJobsAdapter
 from job_hunt.discovery.adapters.greenhouse import GreenhouseAdapter
@@ -53,6 +55,8 @@ class SourceRegistry:
             BaytAdapter(),
             NaukriAdapter(),
             IndeedAdapter(),
+            FreehireAdapter(),
+            BdJobsAdapter(),
             ZipRecruiterAdapter(),
             GlassdoorAdapter(),
             GoogleJobsAdapter(),

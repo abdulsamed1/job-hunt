@@ -59,6 +59,31 @@ sources:
   max_pages_per_query: 2
   target_jobs_count: 40
   hours_old: 72
+- adapter: freehire
+  name: freehire-remote-tech
+  url: https://freehire.me/api/v1/agent/jobs/search
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: bdjobs
+  name: bdjobs-bangladesh-tech
+  url: https://www.bdjobs.com/api/jobs/search
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Dhaka, Bangladesh
+  - Bangladesh
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
