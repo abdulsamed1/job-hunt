@@ -135,3 +135,37 @@ export async function fetchLinkedInGuest(
   }
   return out;
 }
+
+export interface JsonSearchQuery {
+  searchUrl: string;
+  source: string;
+  query: string;
+  location: string;
+}
+
+/** Generic JSON job-search fetch (freehire + bdjobs mirrors of the Python adapters). */
+export async function fetchJsonSearchBoard(q: JsonSearchQuery, limit = 40): Promise<RawJob[]> {
+  const params = new URLSearchParams({ q: q.query, location: q.location, page: "1" });
+  const data: any = await fetchJson(`${q.searchUrl}?${params}`);
+  const arr = Array.isArray(data) ? data : data?.jobs || data?.data || data?.results || [];
+  const out: RawJob[] = [];
+  for (const j of arr) {
+    if (out.length >= limit) break;
+    const title = String(j?.title || j?.jobTitle || j?.position || "");
+    const url = String(j?.url || j?.apply_url || j?.applyUrl || j?.link || "");
+    if (!title || !url) continue;
+    const company = String(j?.company || j?.companyName || j?.company_name || j?.employer || "Unknown");
+    const desc = String(j?.description || j?.jobDescription || j?.content || title);
+    out.push({
+      title,
+      company,
+      location: String(j?.location || j?.jobLocation || q.location || "Remote"),
+      url,
+      source: q.source,
+      posted_at: String(j?.posted_at || j?.publishedDate || j?.date || j?.created_at || ""),
+      desc,
+      external_id: j?.id != null ? `${q.source}-${j.id}` : null,
+    });
+  }
+  return out;
+}

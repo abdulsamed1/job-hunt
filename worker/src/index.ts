@@ -11,7 +11,7 @@
  */
 
 import { fetchRssFeed } from "./adapters/rss.js";
-import { fetchArbeitnow, fetchJobicy, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
+import { fetchArbeitnow, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
 import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
@@ -103,6 +103,18 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
       const out: RawJob[] = [];
       for (const query of def.queries || ["backend"]) {
         out.push(...(await fetchIndeed({ query, location: (def.locations || ["Cairo, Egypt"])[0], country: def.country })));
+      }
+      return out;
+    }
+    case "freehire":
+    case "bdjobs": {
+      const out: RawJob[] = [];
+      for (const query of def.queries || ["backend"]) {
+        for (const location of def.locations || ["Remote"]) {
+          out.push(...(await fetchJsonSearchBoard({
+            searchUrl: def.url || "", source: def.kind, query, location,
+          })));
+        }
       }
       return out;
     }

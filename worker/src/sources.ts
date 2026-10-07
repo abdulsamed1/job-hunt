@@ -10,7 +10,9 @@ export type SourceKind =
   | "ashby-index"
   | "smartrecruiters"
   | "linkedin"
-  | "indeed";
+  | "indeed"
+  | "freehire"
+  | "bdjobs";
 
 export type Cadence = "hourly" | "6h";
 
