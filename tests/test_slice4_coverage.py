@@ -110,3 +110,14 @@ def test_bdjobs_search_params_use_keyword_and_location_code():
     assert params["pg"] == 1
     widened = ad._search_params("backend", "Bangladesh", 1, 72)
     assert "location" not in widened
+
+
+def test_indeed_direct_url_and_compensation():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"id": "1", "title": "Backend Engineer", "companyName": {"text": "Acme"},
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/1"},
+           "compensation": {"baseSalary": {"range": {"min": 100000, "max": 140000}, "unitOfWork": "YEAR"}}}
+    posting = ad._parse_job(job, {})
+    assert posting.job_url_direct == "https://acme.com/jobs/1"
+    assert posting.salary_source == "stated"

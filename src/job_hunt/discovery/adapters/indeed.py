@@ -81,9 +81,19 @@ JOB_QUERY = """
                 city
             }
             compensation {
+                baseSalary {
+                unitOfWork
+                range {
+                    min
+                    max
+                }
+                }
                 estimated {
                 currencyCode
                 }
+            }
+            recruit {
+                viewJobUrl
             }
             attributes {
                 key
@@ -215,7 +225,7 @@ class IndeedAdapter(DiscoveryAdapter):
         return None, None
 
     def _parse_job(self, job: Dict[str, Any], base_url: str) -> Optional[JobPosting]:
-        key = job.get("key")
+        key = job.get("key") or job.get("id")
         title = job.get("title") or ""
         if not key or not title:
             return None
@@ -242,11 +252,23 @@ class IndeedAdapter(DiscoveryAdapter):
         attrs = " ".join(a.get("label", "") for a in (job.get("attributes") or []))
         is_remote = "remote" in attrs.lower() or "remote" in description.lower()[:500]
 
+        recruit = job.get("recruit") or {}
+        job_url_direct = recruit.get("viewJobUrl") or ""
+
         comp = job.get("compensation") or {}
         salary_min = salary_max = salary_currency = None
+        salary_source = None
         try:
             est = comp.get("estimated") or {}
             salary_currency = est.get("currencyCode")
+            base = comp.get("baseSalary") or {}
+            base_range = base.get("range") or {}
+            if base_range.get("min") is not None or base_range.get("max") is not None:
+                salary_min = base_range.get("min")
+                salary_max = base_range.get("max")
+                salary_source = "stated"
+            elif est:
+                salary_source = "inferred"
         except AttributeError:
             pass
 
@@ -271,6 +293,8 @@ class IndeedAdapter(DiscoveryAdapter):
             salary_min=salary_min,
             salary_max=salary_max,
             salary_currency=salary_currency,
+            job_url_direct=job_url_direct,
+            salary_source=salary_source,
             posted_at=posted_at,
             metadata=metadata,
         )
