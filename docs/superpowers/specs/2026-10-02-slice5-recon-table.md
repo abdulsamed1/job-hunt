@@ -27,14 +27,14 @@ GOs proceed to Task 2**. Later GO evidence is recorded but held out of scope.
 | 3 | Personio | `https://finn.jobs.personio.de/xml` → **200**, 72-byte empty `<workzag-jobs/>` | No | 0 | — | Tenant resolves but publishes zero positions — endpoint shape valid, board empty (supports GO above, not a counter-signal) |
 | 4 | Pinpoint | `https://workwithus.pinpointhq.com/postings.json` → **200** `application/json` | No | **3** `data[]` | `id` (posting UUID in `url`/`path`, e.g. `/en/postings/<uuid>`) | **GO on evidence, HELD OUT** — probed in-scope (only 2 GOs banked at probe time) but 4th in priority order, so out of Task 2 scope after the 3-board bound |
 | 4 | Pinpoint | `https://clearbank.pinpointhq.com/postings.json` → **404** (empty body) | — | — | — | Bad tenant guess, not a board signal (ClearBank is not a Pinpoint tenant) |
-| 5 | iCIMS | `https://careers-fedex.icims.com/...`, `https://careers-ibm.icims.com/...` → **404** | — | — | — | **DEFERRED** — both slugs were guesses and neither resolves; never probed with a confirmed tenant (Centric Brands / NV5 portals found but left unprobed after the 3-GO bound hit). No board signal either way |
+| 5 | iCIMS | `careers-centricbrands.icims.com/jobs/search` → **200** (43KB job-search page); `careers-nv5.icims.com/jobs/search` → **200** (23KB, "Job Listings at NV5") | No (public search pages) | Unproven (HTML search pages, no clean JSON array observed) | **DEFERRED** — confirmed tenants resolve with live listings, but extraction needs an HTML/JS path (no JSON array); out of scope after the 3-GO bound. Earlier `careers-fedex/careers-ibm` guesses → 404 (bad slugs, not board signals) |
 | 6 | JobIndex | `https://www.jobindex.dk/jobsoegning?q=python&jobage=7` → **200** `text/html` | No | **14** results w/ `tid` | `tid` (e.g. `h1647303`, canonical `/jobannonce/<tid>`) | **GO on evidence, HELD OUT** — `var Stash = {...}` hydrated state parses (jobsearch/result_app → searchResponse → results[]); `/jobsoegning.json` is dead (204) so HTML-scrape-of-Stash is the technique (validates T3). Out of Task 2 scope after the 3-board bound |
 | 7 | Jobbank.dk | `https://jobbank.dk/job/rss?key=python` → **403** (single attempt, minimal headers) | Bot wall | 0 | — | **NO-GO (provisional)** — Cloudflare bot protection blocks plain-Python fetch, consistent with the skill docs' warning; the skill CLI path may work but was not retried post-bound. Re-probe candidate if a DK slot opens |
 
 Wrong-guess log (no board signal, recorded so nobody re-probes these):
 `einride/northvolt.teamtailor.com`, `hotjar/getyourguide/careem.recruitee.com`,
 `tier/hellofresh.jobs.personio.de`, `monzo.pinpointhq.com`,
-`careers-fedex/careers-ibm.icims.com` → all 404 (bad slugs, not dead boards).
+`careers-fedex/careers-ibm.icims.com` → 404 (bad slugs, not dead boards); `careers-centricbrands/careers-nv5.icims.com` → 200 live search pages (controller probe 2026-10-07, extraction path still unproven).
 
 ## Proceeding to Task 2 (3 boards)
 
@@ -44,4 +44,4 @@ Wrong-guess log (no board signal, recorded so nobody re-probes these):
 
 ## Requests-per-board audit (politeness)
 
-teamtailor 6 · recruitee 6 · personio 6 · pinpoint 4 · icims 2 · jobindex 1 · jobbank 1 — all single-digit.
+teamtailor 6 · recruitee 6 · personio 6 · pinpoint 4 · icims 4 · jobindex 1 · jobbank 1 — all single-digit.
