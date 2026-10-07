@@ -10,6 +10,8 @@ No live network in these tests (httpx.MockTransport only).
 import httpx
 import pytest
 
+from job_hunt.discovery.adapters.personio import PersonioAdapter
+from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
 from job_hunt.discovery.adapters.teamtailor import TeamtailorAdapter
 
 TEAMTAILOR_RSS = """<?xml version="1.0" encoding="UTF-8"?>
@@ -92,7 +94,6 @@ RECRUITEE_PAYLOAD = {
 
 
 def test_recruitee_matches_url():
-    from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
     adapter = RecruiteeAdapter()
     assert adapter.matches_url("https://make.recruitee.com/api/offers/") is True
     assert adapter.matches_url("https://happeo.recruitee.com/o/some-role") is True
@@ -101,8 +102,6 @@ def test_recruitee_matches_url():
 
 @pytest.mark.asyncio
 async def test_recruitee_parses_real_shape():
-    from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
-
     async def mock_handler(request):
         return httpx.Response(200, json=RECRUITEE_PAYLOAD)
 
@@ -124,8 +123,6 @@ async def test_recruitee_parses_real_shape():
 
 @pytest.mark.asyncio
 async def test_recruitee_empty_and_wrong_shape():
-    from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
-
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"offers": []}))
     ) as client:
@@ -136,3 +133,78 @@ async def test_recruitee_empty_and_wrong_shape():
     ) as client:
         with pytest.raises(ValueError, match="Recruitee"):
             await RecruiteeAdapter().fetch({"url": "https://make.recruitee.com/api/offers/"}, client)
+
+
+PERSONIO_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+<position>
+    <id>2452785</id>
+    <subcompany>VividTech Limited</subcompany>
+    <office>Limassol</office>
+    <department>Engineering</department>
+    <name>Backend Engineer</name>
+    <jobDescriptions>
+        <jobDescription>
+            <name>About The Role</name>
+            <value>
+                <![CDATA[We are looking for an experienced <b>Backend Engineer</b> to build fintech systems. Unclosed <span>markup here]]>
+            </value>
+        </jobDescription>
+    </jobDescriptions>
+    <employmentType>permanent</employmentType>
+    <schedule>full-time</schedule>
+    <createdAt>2025-12-05T21:17:25+00:00</createdAt>
+    <salaryInformation>
+        <min>30000.00</min>
+        <max>40000.00</max>
+        <currencySymbol>EUR</currencySymbol>
+        <currencyCode>EUR</currencyCode>
+        <type>yearly</type>
+    </salaryInformation>
+</position>
+</workzag-jobs>
+"""
+
+
+def test_personio_matches_url():
+    adapter = PersonioAdapter()
+    assert adapter.matches_url("https://vivid.jobs.personio.de/xml") is True
+    assert adapter.matches_url("https://boards.greenhouse.io/stripe") is False
+
+
+@pytest.mark.asyncio
+async def test_personio_parses_real_shape():
+    async def mock_handler(request):
+        return httpx.Response(200, text=PERSONIO_XML)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = PersonioAdapter()
+        postings = await adapter.fetch(
+            {"name": "Vivid", "url": "https://vivid.jobs.personio.de/xml"}, client
+        )
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Backend Engineer"
+    assert p.external_id == "2452785"
+    assert p.raw_url == "https://vivid.jobs.personio.de/job/2452785"
+    assert p.salary_min == 30000.0
+    assert p.salary_max == 40000.0
+    assert p.salary_currency == "EUR"
+    assert p.source == "personio"
+
+
+@pytest.mark.asyncio
+async def test_personio_empty_board_yields_empty():
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, text="<workzag-jobs/>")
+        )
+    ) as client:
+        assert (
+            await PersonioAdapter().fetch(
+                {"url": "https://finn.jobs.personio.de/xml"}, client
+            )
+            == []
+        )
