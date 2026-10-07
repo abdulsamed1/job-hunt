@@ -26,5 +26,6 @@ export interface SourceDef {
   tprSeconds?: number;
   maxOrgs?: number;
   country?: string;
+  hoursOld?: number | null;
   cadence: Cadence;
 }

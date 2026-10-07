@@ -123,6 +123,7 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
         for (const location of def.locations || ["Bangladesh"]) {
           out.push(...(await fetchBdJobs({
             searchUrl: def.url || "", query, location,
+            hoursOld: def.hoursOld ?? 24,
           })));
         }
       }
