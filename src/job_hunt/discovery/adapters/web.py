@@ -22,6 +22,37 @@ from job_hunt.models import JobPosting
 logger = logging.getLogger(__name__)
 
 
+def extract_hydrated_jobs(html: str) -> list:
+    """Third fallback: SPA-hydrated state when JSON endpoints 204/404."""
+    out = []
+    for pattern in (r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                    r'<script[^>]*>var Stash = (\{.*?\});</script>'):
+        m = re.search(pattern, html, re.S)
+        if not m:
+            continue
+        try:
+            data = json.loads(m.group(1))
+        except Exception:
+            continue
+        out.extend(_find_job_dicts(data))
+        if out:
+            return out
+    return out
+
+
+def _find_job_dicts(node, depth=0):
+    found = []
+    if depth > 6 or not isinstance(node, (dict, list)):
+        return found
+    items = node.values() if isinstance(node, dict) else node
+    for v in items:
+        if isinstance(v, dict) and isinstance(v.get("title"), str) and v.get("url"):
+            found.append({"title": v["title"], "company": v.get("company", ""), "url": v["url"], "location": v.get("location", ""), "description": v.get("description", "")})
+        else:
+            found.extend(_find_job_dicts(v, depth + 1))
+    return found
+
+
 class UniversalWebAdapter(DiscoveryAdapter):
     """Fetches job postings from web portals using Schema.org JobPosting LD+JSON and HTML heuristics."""
 
@@ -173,6 +204,36 @@ class UniversalWebAdapter(DiscoveryAdapter):
 
         return postings
 
+    def _hydrated_dict_to_posting(self, item: Dict[str, Any], base_url: str, source_name: str) -> JobPosting:
+        """Convert one hydrated-state job dict to a JobPosting."""
+        title = item.get("title", "")
+        company = item.get("company") or source_name
+        raw_url = item.get("url") or base_url
+        if not raw_url.startswith("http"):
+            raw_url = urllib.parse.urljoin(base_url, raw_url)
+        canon_url = normalize_url(raw_url)
+        loc_str = item.get("location") or "Remote"
+        description = item.get("description") or title
+        parsed = parse_salary_text(description)
+        return JobPosting(
+            source=source_name.lower().replace(" ", "_"),
+            source_name=company,
+            title=title,
+            company=company,
+            raw_url=raw_url,
+            canonical_url=canon_url,
+            canonical_url_hash=canonical_url_hash(canon_url),
+            role_fingerprint=compute_role_fingerprint(company, title, loc_str),
+            content_hash=content_hash(description),
+            location=loc_str,
+            description=description,
+            salary_min=parsed[0] if parsed else None,
+            salary_max=parsed[1] if parsed else None,
+            salary_currency=parsed[2] if parsed else None,
+            salary_source=parsed[3] if parsed else None,
+            metadata={"hydrated_spa": True},
+        )
+
     async def fetch(self, entry: Dict[str, Any], client: httpx.AsyncClient) -> List[JobPosting]:
         url = entry.get("url") or entry.get("careers_url") or ""
         name = entry.get("name", "web_portal")
@@ -197,7 +258,13 @@ class UniversalWebAdapter(DiscoveryAdapter):
                 return jobs
 
             # 2. Try HTML link heuristic
-            return self._extract_html_link_jobs(html, url, name)
+            heur_jobs = self._extract_html_link_jobs(html, url, name)
+            if heur_jobs:
+                return heur_jobs
+
+            # 3. Hydrated-SPA fallback (JSON-dead boards), capped at 40 postings.
+            hydrated = extract_hydrated_jobs(html)[:40]
+            return [self._hydrated_dict_to_posting(j, url, name) for j in hydrated]
         except Exception as e:
             logger.debug("Web adapter fetch failed for %s (%s): %s", name, url, e)
             return []

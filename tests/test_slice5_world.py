@@ -208,3 +208,10 @@ async def test_personio_empty_board_yields_empty():
             )
             == []
         )
+
+
+def test_web_falls_back_to_next_data():
+    html = '<html><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"jobs":[{"title":"Backend Engineer","company":"Acme","url":"https://x/1"}]}}}</script></html>'
+    from job_hunt.discovery.adapters.web import extract_hydrated_jobs
+    jobs = extract_hydrated_jobs(html)
+    assert jobs and jobs[0]["title"] == "Backend Engineer"
