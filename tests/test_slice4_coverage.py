@@ -157,3 +157,16 @@ def test_salary_parser_bounds():
     assert parse_salary_text("$25/hr") == (25 * 2080, 25 * 2080, "USD", "inferred")
     assert parse_salary_text("competitive salary") is None
     assert parse_salary_text("$999999999 a year") is None
+
+
+from job_hunt.discovery.simhash import simhash64, is_cross_listing
+
+DESC = "build distributed systems in python with postgresql and docker " * 20
+
+def test_simhash_cross_listing_rules():
+    assert simhash64("hi") is None
+    a = {"text": DESC, "company": "Acme", "url": "https://a/1", "title": "Backend Engineer"}
+    b = {"text": DESC, "company": "Agency X", "url": "https://b/9", "title": "Backend Engineer"}
+    assert is_cross_listing(a, b) is True
+    c = dict(b, title="Backend Engineer Berlin")
+    assert is_cross_listing(a, c) is False  # title set differs: sibling req, not repost

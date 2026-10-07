@@ -255,3 +255,22 @@ def compute_role_fingerprint(company: Optional[str], title: Optional[str], locat
 
     key = f"{c}::{t}::{l}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def flag_cross_listing(company_a: Optional[str], title_a: Optional[str], url_a: Optional[str],
+                       text_a: Optional[str], company_b: Optional[str], title_b: Optional[str],
+                       url_b: Optional[str], text_b: Optional[str]) -> bool:
+    """Flag-only SimHash cross-listing check (same content, different company).
+
+    Returns True when the pair looks like the same job re-posted via a
+    different company/URL. This is a flag, never a merge signal: callers must
+    not silently merge or drop either posting on a True result.
+    """
+    from job_hunt.discovery.simhash import is_cross_listing
+
+    return is_cross_listing(
+        {"text": text_a or "", "company": company_a or "",
+         "url": url_a or "", "title": title_a or ""},
+        {"text": text_b or "", "company": company_b or "",
+         "url": url_b or "", "title": title_b or ""},
+    )
