@@ -7,9 +7,30 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - `uv run pytest tests/ -q -p no:cacheprovider` — full suite (must stay green)
 - `uv run python -m job_hunt.cli <scan|evaluate|tailor|apply|run>` — pipeline stages
 - `python scripts/rezi_login.py` — Rezi OAuth (laptop with browser, human signs in)
-- `uv run python scripts/linkedin_login.py` — LinkedIn session (laptop, human logs in)
+- `uv run python scripts/linkedin_login.py` — LinkedIn session (unused while LinkedIn is disabled)
 
-## Standing LinkedIn target (do not change without user approval)
+## LinkedIn status: DISABLED (account ban, 2026-10-02)
+
+LinkedIn is off in both local and Cloudflare. Do not re-enable without the
+user's explicit approval.
+
+- Local switch: `LINKEDIN_ENABLED` env var or top-level `linkedin_enabled` in
+  `config/sources.yaml`. Default is **off**; set env/config to `true` to
+  re-enable. Gating lives in `src/job_hunt/settings.py`; entry points that
+  respect it: discovery (`orchestrator.run_discovery_stage`), evaluate,
+  tailor, application stage, and `BrowserApplicationEngine.fill_and_submit`
+  (hard block, no browser launch).
+- Worker switch: `LINKEDIN_ENABLED` var in `worker/wrangler.toml`
+  (currently `"false"`). `activeSources()` in `worker/src/index.ts` filters
+  `kind === "linkedin"` out of every shard; the `linkedin` apply path was
+  already unreachable (human-queue only).
+- Nothing is deleted: adapter, Easy Apply engine, `scripts/linkedin_login.py`,
+  worker guest adapter all remain. The `linkedin-sr` SmartRecruiters board
+  (LinkedIn-as-employer) is a different source and stays active.
+- CI: the 6-hourly LinkedIn micro sweep and `linkedin_approved` input were
+  removed from `.github/workflows/scheduled-sweep.yml`.
+
+## Standing LinkedIn target (disabled; kept for reference)
 
 - Queries: `backend`, `fullstack`, `software`
 - Window: `f_TPR=r43200` (past 12 hours), every run
@@ -19,8 +40,8 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 
 ## Discovery defaults (all 319 sources)
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
-  Server-side where supported (LinkedIn TPR, Bayt/Naukri/Zip intervals,
-  Indeed date filter); central `filter_recent` backstops the rest.
+  Server-side where supported (Bayt/Naukri/Zip intervals, Indeed date filter;
+  LinkedIn TPR unused while disabled); central `filter_recent` backstops the rest.
   Dateless postings always pass — only provably-stale ones drop.
 - Remote: `scan --remote-only` keeps remote-signalled + unknown-location
   postings, drops placed on-site ones. Helpers in `discovery/freshness.py`.
@@ -70,6 +91,7 @@ derivation is correct, those orgs migrated ATS. Under the 24h + remote filters
 
 1. **LinkedIn never auto-submits.** `require_linkedin_approval=True` default;
    live runs need explicit `linkedin_approved=True`. Dry-run is the default mode.
+   (Moot while LinkedIn is disabled; enforced again on re-enable.)
 2. **Wrong-job guards stay on.** Target-job verification + Easy Apply modal
    company check in `src/job_hunt/automation/browser.py` must pass before any
    submit path. Never weaken to first-match clicking.
@@ -133,12 +155,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
 ## Deployment (free tiers)
 
 - **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
-  319-source 24h-remote sweep + 6-hourly LinkedIn micro sweep + dry-run apply.
-  Live runs only via manual dispatch with `live` + `linkedin_approved`.
+  319-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
+  see LinkedIn status above; manual dispatch without `full` runs apply only).
+  Live runs only via manual dispatch with `live`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
 - **Cloudflare Worker** (`worker/`, full pipeline, not just scout): live at
   `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (18 sources)
-  + daily deep sweep (all 235) across RSS/JSON/ATS/LinkedIn-guest sources →
+  + daily deep sweep (all 235) across RSS/JSON/ATS sources (LinkedIn-guest
+  filtered out while disabled, see LinkedIn status above) →
   queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic
   evaluate → tailor (pdf-lib PDF → R2) → direct ATS HTTP POST applies
   (Greenhouse/Lever approved per-board; Ashby dry-run until pinned).

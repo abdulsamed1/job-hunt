@@ -35,6 +35,7 @@ export interface Env {
   TPR_SECONDS?: string;
   THRESHOLD?: string;
   REQUIRE_LINKEDIN_APPROVAL?: string;
+  LINKEDIN_ENABLED?: string;
   LIVE_APPLY?: string;
   APPROVE_GREENHOUSE?: string;
   APPROVE_LEVER?: string;
@@ -47,6 +48,14 @@ export interface Env {
 }
 
 const SOURCES: SourceDef[] = GENERATED_SOURCES;
+
+export function linkedinEnabled(env: Env): boolean {
+  return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
+}
+
+export function activeSources(env: Env): SourceDef[] {
+  return linkedinEnabled(env) ? SOURCES : SOURCES.filter((s) => s.kind !== "linkedin");
+}
 
 function profileFromEnv(env: Env): Profile & { fullName: string; email: string; phone: string; summary?: string } {
   try {
@@ -130,6 +139,7 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
       return out;
     }
     case "linkedin": {
+      if (!linkedinEnabled(env)) return [];
       const out: RawJob[] = [];
       for (const q of def.queries || ["backend"]) {
         out.push(...(await fetchLinkedInGuest(q, (def.locations || ["Remote"])[0], 1, def.tprSeconds || parseInt(env.TPR_SECONDS || "43200", 10))));
@@ -143,7 +153,7 @@ export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     // Hourly scout vs daily deep sweep selected by cron expression.
     const deep = event.cron === "0 2 * * *";
-    const defs = SOURCES.filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+    const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
     ctx.waitUntil(
       (async () => {
         const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
@@ -398,7 +408,7 @@ export default {
     if (url.pathname === "/run" && request.method === "POST") {
       // Fan out the WHOLE shard (hourly subset unless deep=1), one source per message.
       const deep = url.searchParams.get("deep") === "1";
-      const defs = SOURCES.filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+      const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
       const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
       for (let i = 0; i < batch.length; i += 50) {
         await env.DISCOVER_Q.sendBatch(batch.slice(i, i + 50).map((body) => ({ body })));

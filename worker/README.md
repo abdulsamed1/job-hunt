@@ -2,7 +2,8 @@
 
 24/7 job capture + application across every configured source with **zero
 browser**: discovery → evaluate → tailor (text CV + PDF) → direct ATS HTTP
-applies, with LinkedIn Easy Apply and CAPTCHA jobs held for humans.
+applies, with LinkedIn disabled (account ban 2026-10-02, `LINKEDIN_ENABLED=false`)
+and Easy Apply + CAPTCHA jobs held for humans.
 
 Live: `https://jobhunt.habdulsamed777.workers.dev`
 
@@ -19,7 +20,7 @@ python worker/scripts/gen_sources.py --check  # fail on drift (used by tests)
 
 | Split | Count | Why |
 |---|---|---|
-| Worker-runnable | **235** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin, indeed, ashby-index |
+| Worker-runnable | **235** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin (disabled), indeed, ashby-index, freehire, bdjobs |
 | Python-only | **84** | Bayt (TLS impersonation), Naukri (RSA handshake), HTML scraping (`web`) |
 | Total in `sources.yaml` | **319** | every source accounted for, none silently dropped |
 
@@ -52,7 +53,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 ## Layout
 
 - `src/adapters/` — RSS, JSON boards (RemoteOK/Remotive/Arbeitnow/Jobicy),
-  Greenhouse/Lever/Ashby/SmartRecruiters APIs, LinkedIn guest shard
+  Greenhouse/Lever/Ashby/SmartRecruiters APIs, LinkedIn guest shard (disabled via `LINKEDIN_ENABLED`)
 - `src/lib/` — hash, freshness, gates, deterministic scoring, honest Q&A mapping
 - `src/stages/pipeline.ts` — evaluate, tailor (pdf-lib PDF → R2), ATS apply
 - `src/state.ts` — D1 state machine (mirrors the SQLite lifecycle)
@@ -124,7 +125,7 @@ Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for match alerts.
 
 ## Boundaries (non-negotiable)
 
-- LinkedIn submits: never automated (auth + checkpoints). Guest discovery only.
+- LinkedIn: discovery disabled (`LINKEDIN_ENABLED=false`); submits never automated (auth + checkpoints).
 - Ashby live submit: dry-run until an org endpoint is pinned by a supervised run.
 - CAPTCHA/Turnstile jobs: BLOCKED queue + alert, never bypassed.
 - Rezi mirroring + heavy PDF layouts stay in the Python pipeline / Actions.

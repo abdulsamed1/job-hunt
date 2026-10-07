@@ -239,3 +239,16 @@ describe("enrichDescriptions", () => {
     expect(out).toHaveLength(1);
   });
 });
+
+describe("linkedin runtime disable", () => {
+  it("filters linkedin sources unless LINKEDIN_ENABLED=true", async () => {
+    const { activeSources, linkedinEnabled } = await import("../src/index.js");
+    expect(linkedinEnabled({} as any)).toBe(false);
+    expect(linkedinEnabled({ LINKEDIN_ENABLED: "false" } as any)).toBe(false);
+    expect(linkedinEnabled({ LINKEDIN_ENABLED: "true" } as any)).toBe(true);
+    const off = activeSources({} as any);
+    expect(off.some((s) => s.kind === "linkedin")).toBe(false);
+    const on = activeSources({ LINKEDIN_ENABLED: "true" } as any);
+    expect(on.some((s) => s.kind === "linkedin")).toBe(true);
+  });
+});

@@ -48,6 +48,7 @@ TPR_SECONDS = "43200"
 THRESHOLD = "70"
 # Safety defaults: everything is dry-run unless a human flips these.
 REQUIRE_LINKEDIN_APPROVAL = "true"
+LINKEDIN_ENABLED = "false"
 LIVE_APPLY = "false"
 APPROVE_GREENHOUSE = "false"
 APPROVE_LEVER = "false"
