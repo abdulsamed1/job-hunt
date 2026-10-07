@@ -148,3 +148,12 @@ def test_indeed_estimated_compensation_inferred():
     posting2 = ad._parse_job(currency_only, {})
     assert posting2.salary_min is None and posting2.salary_max is None
     assert posting2.salary_source is None
+
+
+from job_hunt.discovery.salary_parse import parse_salary_text
+
+def test_salary_parser_bounds():
+    assert parse_salary_text("Salary: $120k - $150k per year") == (120000, 150000, "USD", "inferred")
+    assert parse_salary_text("$25/hr") == (25 * 2080, 25 * 2080, "USD", "inferred")
+    assert parse_salary_text("competitive salary") is None
+    assert parse_salary_text("$999999999 a year") is None
