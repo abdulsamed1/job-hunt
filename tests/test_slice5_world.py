@@ -215,3 +215,57 @@ def test_web_falls_back_to_next_data():
     from job_hunt.discovery.adapters.web import extract_hydrated_jobs
     jobs = extract_hydrated_jobs(html)
     assert jobs and jobs[0]["title"] == "Backend Engineer"
+
+
+def test_dead_boards_counts_only_404(tmp_path):
+    from job_hunt.discovery.dead_boards import record_result, should_skip
+    mem = tmp_path / "dead.json"
+    record_result(str(mem), "greenhouse:acme", 429)
+    record_result(str(mem), "greenhouse:acme", 500)
+    assert not should_skip(str(mem), "greenhouse:acme")  # throttles never kill
+    for _ in range(3):
+        record_result(str(mem), "greenhouse:acme", 404)
+    assert should_skip(str(mem), "greenhouse:acme")
+
+
+def _load_resolver():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "scripts" / "resolve_boards.py"
+    spec = importlib.util.spec_from_file_location("resolve_boards", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_resolver_slug_strips_suffixes():
+    mod = _load_resolver()
+    assert mod.slugify("Acme Inc.") == "acme"
+    assert mod.slugify("Globex LLC") == "globex"
+    assert mod.slugify("Initech Corporation") == "initech"
+    assert mod.slugify("Acme Co") == "acme"
+    assert mod.slugify("Umbrella Health") == "umbrella-health"
+
+
+def test_resolver_first_board_with_jobs_wins():
+    mod = _load_resolver()
+
+    def fake_fetch(url):
+        if url.startswith("https://boards-api.greenhouse.io/v1/boards/acme/jobs"):
+            return (404, [])
+        if url.startswith("https://api.lever.co/v0/postings/acme"):
+            return (200, [{"id": "abc123"}])
+        raise AssertionError(f"should not probe ashby once lever hits: {url}")
+
+    board, slug, count = mod.resolve_company("Acme Inc.", fetch=fake_fetch)
+    assert (board, slug, count) == ("lever", "acme", 1)
+
+
+def test_resolver_unresolving_company_is_manual():
+    mod = _load_resolver()
+
+    def fake_fetch(url):
+        return (404, [])
+
+    assert mod.resolve_company("Nonexistent Corp", fetch=fake_fetch) is None
+    assert mod.format_result("Nonexistent Corp", None) == "MANUAL: Nonexistent Corp"
