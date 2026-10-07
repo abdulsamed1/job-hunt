@@ -115,9 +115,36 @@ def test_bdjobs_search_params_use_keyword_and_location_code():
 def test_indeed_direct_url_and_compensation():
     from job_hunt.discovery.adapters.indeed import IndeedAdapter
     ad = IndeedAdapter()
-    job = {"id": "1", "title": "Backend Engineer", "companyName": {"text": "Acme"},
+    job = {"key": "1", "title": "Backend Engineer", "companyName": {"text": "Acme"},
            "recruit": {"viewJobUrl": "https://acme.com/jobs/1"},
            "compensation": {"baseSalary": {"range": {"min": 100000, "max": 140000}, "unitOfWork": "YEAR"}}}
     posting = ad._parse_job(job, {})
     assert posting.job_url_direct == "https://acme.com/jobs/1"
     assert posting.salary_source == "stated"
+
+
+def test_indeed_missing_key_returns_none():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/1"},
+           "compensation": {"baseSalary": {"range": {"min": 100000, "max": 140000}}}}
+    assert ad._parse_job(job, {}) is None
+
+
+def test_indeed_estimated_compensation_inferred():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "2", "title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/2"},
+           "compensation": {"estimated": {"currencyCode": "USD", "unitOfWork": "YEAR",
+                                          "range": {"min": 90000, "max": 120000}}}}
+    posting = ad._parse_job(job, {})
+    assert posting.salary_min == 90000
+    assert posting.salary_max == 120000
+    assert posting.salary_source == "inferred"
+    currency_only = {"key": "3", "title": "Backend Engineer",
+                     "compensation": {"estimated": {"currencyCode": "USD"}}}
+    posting2 = ad._parse_job(currency_only, {})
+    assert posting2.salary_min is None and posting2.salary_max is None
+    assert posting2.salary_source is None

@@ -90,6 +90,11 @@ JOB_QUERY = """
                 }
                 estimated {
                 currencyCode
+                unitOfWork
+                range {
+                    min
+                    max
+                }
                 }
             }
             recruit {
@@ -225,7 +230,7 @@ class IndeedAdapter(DiscoveryAdapter):
         return None, None
 
     def _parse_job(self, job: Dict[str, Any], base_url: str) -> Optional[JobPosting]:
-        key = job.get("key") or job.get("id")
+        key = job.get("key")
         title = job.get("title") or ""
         if not key or not title:
             return None
@@ -267,8 +272,12 @@ class IndeedAdapter(DiscoveryAdapter):
                 salary_min = base_range.get("min")
                 salary_max = base_range.get("max")
                 salary_source = "stated"
-            elif est:
-                salary_source = "inferred"
+            else:
+                est_range = est.get("range") or {}
+                if est_range.get("min") is not None or est_range.get("max") is not None:
+                    salary_min = est_range.get("min")
+                    salary_max = est_range.get("max")
+                    salary_source = "inferred"
         except AttributeError:
             pass
 
