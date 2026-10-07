@@ -112,6 +112,36 @@ def test_bdjobs_search_params_use_keyword_and_location_code():
     assert "location" not in widened
 
 
+def _parse_js_location_table(path):
+    import re
+    from pathlib import Path
+    text = Path(path).read_text()
+    block = re.search(r"BD_LOCATION_CODES[^=]*=\s*\{(.*?)\n\};", text, re.S)
+    assert block, "BD_LOCATION_CODES table not found in boards.ts"
+    out = {}
+    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*:\s*(\d+)|(\b[a-z][\w]*)\s*:\s*(\d+)', block.group(1)):
+        key = m.group(1) if m.group(1) is not None else m.group(3)
+        out[key] = int(m.group(2) if m.group(2) is not None else m.group(4))
+    return out
+
+
+def test_bdjobs_location_table_parity():
+    """Worker boards.ts table must equal bdjobs.py BD_LOCATION_CODES key-for-key."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    py_text = (root / "src" / "job_hunt" / "discovery" / "adapters" / "bdjobs.py").read_text()
+    py_block = re.search(r"BD_LOCATION_CODES\s*=\s*\{(.*?)\n\}", py_text, re.S)
+    assert py_block, "BD_LOCATION_CODES not found in bdjobs.py"
+    py_codes = {k: int(v) for k, v in re.findall(r'"((?:[^"\\]|\\.)*)"\s*:\s*(\d+)', py_block.group(1))}
+    ts_codes = _parse_js_location_table(
+        root / "worker" / "src" / "adapters" / "boards.ts")
+    assert set(ts_codes) == set(py_codes), (
+        f"TS-only: {sorted(set(ts_codes) - set(py_codes))} "
+        f"Python-only: {sorted(set(py_codes) - set(ts_codes))}")
+    assert ts_codes == py_codes
+
+
 def test_indeed_direct_url_and_compensation():
     from job_hunt.discovery.adapters.indeed import IndeedAdapter
     ad = IndeedAdapter()
@@ -148,6 +178,35 @@ def test_indeed_estimated_compensation_inferred():
     posting2 = ad._parse_job(currency_only, {})
     assert posting2.salary_min is None and posting2.salary_max is None
     assert posting2.salary_source is None
+    assert posting2.salary_currency is None
+
+
+def test_indeed_stated_hourly_annualizes():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "4", "title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/4"},
+           "compensation": {"baseSalary": {"unitOfWork": "HOUR", "range": {"min": 20, "max": 30}},
+                             "estimated": {"currencyCode": "USD"}}}
+    posting = ad._parse_job(job, {})
+    assert (posting.salary_min, posting.salary_max) == (20 * 2080, 30 * 2080)
+    assert posting.salary_source == "stated"
+    # Base block carries no currencyCode; falls back to the estimated block.
+    assert posting.salary_currency == "USD"
+
+
+def test_indeed_stated_monthly_and_own_block_currency():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "5", "title": "Backend Engineer",
+           "compensation": {"baseSalary": {"unitOfWork": "MONTH", "currencyCode": "EGP",
+                                           "range": {"min": 5000, "max": 6000}},
+                             "estimated": {"currencyCode": "USD"}}}
+    posting = ad._parse_job(job, {})
+    assert (posting.salary_min, posting.salary_max) == (60000, 72000)
+    # Currency comes from the SAME (base) block the amounts came from.
+    assert posting.salary_currency == "EGP"
+    assert posting.salary_source == "stated"
 
 
 from job_hunt.discovery.salary_parse import parse_salary_text
@@ -157,6 +216,16 @@ def test_salary_parser_bounds():
     assert parse_salary_text("$25/hr") == (25 * 2080, 25 * 2080, "USD", "inferred")
     assert parse_salary_text("competitive salary") is None
     assert parse_salary_text("$999999999 a year") is None
+
+
+def test_salary_parser_k_scoped_to_match():
+    # "k" nowhere in the salary expression: plain $120-$150 must not inflate.
+    # (Without scoping, "Work from home" has no k either — this pins the
+    # matched-group rule against whole-text matching of nearby words.)
+    assert parse_salary_text("Work from home, $120 - $150 per day") is None
+    assert parse_salary_text("Join our 50k-strong team, $120 - $150 per day") is None
+    # Hourly range: the range branch wins and annualizes before the gate.
+    assert parse_salary_text("$20 - $30/hour, weekend work") == (41600, 62400, "USD", "inferred")
 
 
 from job_hunt.discovery.simhash import simhash64, is_cross_listing

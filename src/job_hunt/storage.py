@@ -58,6 +58,8 @@ class Storage:
                     salary_min REAL,
                     salary_max REAL,
                     salary_currency TEXT,
+                    salary_source TEXT,
+                    job_url_direct TEXT,
                     application_type TEXT,
                     rezi_resume_id TEXT,
                     state TEXT NOT NULL DEFAULT 'DISCOVERED',
@@ -183,6 +185,10 @@ class Storage:
                 conn.execute("ALTER TABLE jobs ADD COLUMN application_type TEXT")
             if "rezi_resume_id" not in job_cols:
                 conn.execute("ALTER TABLE jobs ADD COLUMN rezi_resume_id TEXT")
+            if "salary_source" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN salary_source TEXT")
+            if "job_url_direct" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN job_url_direct TEXT")
             conn.commit()
 
     def add_job(self, job: JobPosting) -> Tuple[JobPosting, bool]:
@@ -229,8 +235,8 @@ class Storage:
                     external_id, source, source_name, title, company,
                     raw_url, canonical_url, canonical_url_hash, role_fingerprint,
                     content_hash, location, description, salary_min, salary_max,
-                    salary_currency, application_type, state, posted_at, created_at, updated_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    salary_currency, salary_source, job_url_direct, application_type, state, posted_at, created_at, updated_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.external_id,
@@ -248,6 +254,8 @@ class Storage:
                     job.salary_min,
                     job.salary_max,
                     job.salary_currency,
+                    job.salary_source,
+                    job.job_url_direct,
                     job.application_type,
                     job.state.value,
                     job.posted_at,
@@ -997,6 +1005,8 @@ class Storage:
             salary_min=row["salary_min"],
             salary_max=row["salary_max"],
             salary_currency=row["salary_currency"],
+            salary_source=row["salary_source"] if "salary_source" in row.keys() else None,
+            job_url_direct=row["job_url_direct"] if "job_url_direct" in row.keys() else "",
             application_type=row["application_type"],
             rezi_resume_id=row["rezi_resume_id"] if "rezi_resume_id" in row.keys() else None,
             state=JobState(row["state"]),

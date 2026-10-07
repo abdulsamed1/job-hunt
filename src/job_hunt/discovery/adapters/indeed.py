@@ -264,19 +264,27 @@ class IndeedAdapter(DiscoveryAdapter):
         salary_min = salary_max = salary_currency = None
         salary_source = None
         try:
-            est = comp.get("estimated") or {}
-            salary_currency = est.get("currencyCode")
             base = comp.get("baseSalary") or {}
+            est = comp.get("estimated") or {}
             base_range = base.get("range") or {}
             if base_range.get("min") is not None or base_range.get("max") is not None:
-                salary_min = base_range.get("min")
-                salary_max = base_range.get("max")
+                # Stated employer range. The base block carries unitOfWork but
+                # no currencyCode (only the estimated block does), so amounts
+                # are normalized here while currency falls back to estimated.
+                unit = str(base.get("unitOfWork") or "").upper()
+                mult = 2080 if "HOUR" in unit else 12 if "MONTH" in unit else 1
+                if base_range.get("min") is not None:
+                    salary_min = base_range["min"] * mult
+                if base_range.get("max") is not None:
+                    salary_max = base_range["max"] * mult
+                salary_currency = base.get("currencyCode") or est.get("currencyCode")
                 salary_source = "stated"
             else:
                 est_range = est.get("range") or {}
                 if est_range.get("min") is not None or est_range.get("max") is not None:
                     salary_min = est_range.get("min")
                     salary_max = est_range.get("max")
+                    salary_currency = est.get("currencyCode")
                     salary_source = "inferred"
         except AttributeError:
             pass
