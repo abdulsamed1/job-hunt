@@ -145,7 +145,7 @@ describe("ashby index fan-out", () => {
 describe("generated source shard", () => {
   it("ships the full source set with hourly shard under the batch cap", async () => {
     const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
-    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBe(317);
+    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBe(319);
     expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(200);
     const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");
     expect(hourly.length).toBeGreaterThan(0);
@@ -166,6 +166,42 @@ describe("generated source shard", () => {
       if (["greenhouse", "lever", "ashby", "smartrecruiters"].includes(s.kind)) {
         expect(s.org, s.name).toBeTruthy();
       }
+    }
+  });
+});
+
+describe("fetchBdJobs", () => {
+  it("queries GetJobSearch with keyword params and parses data + premiumData", async () => {
+    const { fetchBdJobs, bdLocationCode, bdPostedWithinDays } = await import("../src/adapters/boards.js");
+    expect(bdLocationCode("Dhaka, Bangladesh")).toBe(14);
+    expect(bdLocationCode("Bangladesh")).toBeNull();
+    expect(bdPostedWithinDays(72)).toBe(4);
+    const seen: string[] = [];
+    const stub = async (url: string) => {
+      seen.push(url);
+      const payload = {
+        message: "Success",
+        data: [{ Jobid: "111", jobTitle: "Backend Engineer", companyName: "Acme Ltd", location: "Dhaka", publishDate: "2026-10-06T00:00:00Z" }],
+        premiumData: [{ Jobid: "222", jobTitle: "Fullstack Developer", companyName: "Beta Ltd", location: "Dhaka", publishDate: "2026-10-06T00:00:00Z" }],
+      };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const prev = globalThis.fetch;
+    (globalThis as any).fetch = stub;
+    try {
+      const out = await fetchBdJobs({ searchUrl: "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch", query: "backend", location: "Dhaka, Bangladesh", hoursOld: 72 }, 40);
+      expect(out).toHaveLength(2);
+      expect(seen[0]).toContain("keyword=backend");
+      expect(seen[0]).toContain("location=14");
+      expect(seen[0]).toContain("postedWithin=4");
+      expect(out[0].title).toBe("Backend Engineer");
+      expect(out[0].url).toBe("https://bdjobs.com/h/details/111");
+      expect(out[1].external_id).toBe("bdjobs-222");
+      for (const j of out) {
+        expect(j.title && j.company && j.url && j.desc).toBeTruthy();
+      }
+    } finally {
+      globalThis.fetch = prev;
     }
   });
 });

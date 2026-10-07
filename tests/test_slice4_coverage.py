@@ -1,0 +1,241 @@
+from job_hunt.discovery import robots
+
+
+def test_robots_parsing_rules():
+    assert robots.group_allows("User-agent: *\nDisallow: /jobs\n", "/jobs", "TestBot") is False
+    assert robots.group_allows("User-agent: *\nDisallow: /jobs\n", "/about", "TestBot") is True
+    assert robots.group_allows("", "/", "TestBot") is None  # empty/unreadable is not permission
+
+
+from job_hunt.discovery.adapters.freehire import FreehireAdapter
+from job_hunt.discovery.adapters.bdjobs import BdJobsAdapter
+
+
+def test_adapter_ids_registered():
+    from job_hunt.discovery.registry import SourceRegistry
+    reg = SourceRegistry()
+    assert "freehire" in reg._adapter_map and "bdjobs" in reg._adapter_map
+
+
+def test_freehire_parses_full_description():
+    import asyncio
+    from unittest.mock import AsyncMock
+    ad = FreehireAdapter()
+    client = AsyncMock()
+    resp = AsyncMock()
+    resp.status_code = 200
+    html = "<p><strong><span>Description</span></strong></p><p>" + ("Backend Python PostgreSQL remote role. " * 30) + "</p>"
+    resp.json.return_value = {
+        "data": [
+            {
+                "public_slug": "backend-engineer-acme-btehyuk3",
+                "source": "acme",
+                "manually_added": False,
+                "external_id": ":180950",
+                "url": "https://portal.acme.org/jobs/180950/backend-engineer?utm_source=freehire.me",
+                "title": "Backend Engineer",
+                "company": "Acme",
+                "company_slug": "acme",
+                "location": "Remote",
+                "description": html,
+            }
+        ],
+        "meta": {"total": 1},
+    }
+    client.get.return_value = resp
+    jobs = asyncio.run(ad.fetch({"url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["backend"], "locations": ["Remote"]}, client))
+    assert len(jobs) == 1
+    assert jobs[0].title == "Backend Engineer"
+    assert jobs[0].company == "Acme"
+    assert jobs[0].raw_url == "https://portal.acme.org/jobs/180950/backend-engineer?utm_source=freehire.me"
+    assert len(jobs[0].description) > 100
+
+
+def test_bdjobs_parses_getjobsearch_response():
+    import asyncio
+    from unittest.mock import AsyncMock
+    ad = BdJobsAdapter()
+    client = AsyncMock()
+
+    def _job(job_id, title, company, premium=False):
+        job = {
+            "Jobid": job_id,
+            "jobTitle": title,
+            "companyName": company,
+            "location": "Dhaka",
+            "publishDate": "2026-10-06T00:00:00Z",
+            "deadline": "2026-11-06T00:00:00Z",
+            "JobType": "FullTime",
+            "WorkPlace": "Office",
+            "Salary": "Tk. 50000 - 80000 (Monthly)",
+        }
+        if premium:
+            job["isPremium"] = True
+        return job
+
+    payload = {
+        "message": "Success",
+        "data": [_job("111", "Backend Engineer", "Acme Ltd")],
+        "premiumData": [_job("222", "Fullstack Developer", "Beta Ltd", premium=True)],
+        "common": {"totalpages": 1},
+    }
+    resp = AsyncMock()
+    resp.status_code = 200
+    resp.json.return_value = payload
+    client.get.return_value = resp
+    jobs = asyncio.run(ad.fetch({
+        "url": "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch",
+        "queries": ["backend"],
+        "locations": ["Dhaka, Bangladesh"],
+        "max_pages_per_query": 1,
+    }, client))
+    assert len(jobs) == 2
+    by_id = {j.external_id: j for j in jobs}
+    assert by_id["bdjobs-111"].title == "Backend Engineer"
+    assert by_id["bdjobs-111"].company == "Acme Ltd"
+    assert by_id["bdjobs-111"].raw_url == "https://bdjobs.com/h/details/111"
+    assert by_id["bdjobs-222"].title == "Fullstack Developer"
+    assert by_id["bdjobs-222"].company == "Beta Ltd"
+    assert by_id["bdjobs-222"].raw_url == "https://bdjobs.com/h/details/222"
+    for job in jobs:
+        assert job.title and job.company and job.raw_url and job.description
+
+
+def test_bdjobs_search_params_use_keyword_and_location_code():
+    ad = BdJobsAdapter()
+    params = ad._search_params("backend", "Dhaka, Bangladesh", 1, 72)
+    assert params["keyword"] == "backend"
+    assert params["location"] == 14
+    assert params["postedWithin"] == 4
+    assert params["pg"] == 1
+    widened = ad._search_params("backend", "Bangladesh", 1, 72)
+    assert "location" not in widened
+
+
+def _parse_js_location_table(path):
+    import re
+    from pathlib import Path
+    text = Path(path).read_text()
+    block = re.search(r"BD_LOCATION_CODES[^=]*=\s*\{(.*?)\n\};", text, re.S)
+    assert block, "BD_LOCATION_CODES table not found in boards.ts"
+    out = {}
+    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*:\s*(\d+)|(\b[a-z][\w]*)\s*:\s*(\d+)', block.group(1)):
+        key = m.group(1) if m.group(1) is not None else m.group(3)
+        out[key] = int(m.group(2) if m.group(2) is not None else m.group(4))
+    return out
+
+
+def test_bdjobs_location_table_parity():
+    """Worker boards.ts table must equal bdjobs.py BD_LOCATION_CODES key-for-key."""
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    py_text = (root / "src" / "job_hunt" / "discovery" / "adapters" / "bdjobs.py").read_text()
+    py_block = re.search(r"BD_LOCATION_CODES\s*=\s*\{(.*?)\n\}", py_text, re.S)
+    assert py_block, "BD_LOCATION_CODES not found in bdjobs.py"
+    py_codes = {k: int(v) for k, v in re.findall(r'"((?:[^"\\]|\\.)*)"\s*:\s*(\d+)', py_block.group(1))}
+    ts_codes = _parse_js_location_table(
+        root / "worker" / "src" / "adapters" / "boards.ts")
+    assert set(ts_codes) == set(py_codes), (
+        f"TS-only: {sorted(set(ts_codes) - set(py_codes))} "
+        f"Python-only: {sorted(set(py_codes) - set(ts_codes))}")
+    assert ts_codes == py_codes
+
+
+def test_indeed_direct_url_and_compensation():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "1", "title": "Backend Engineer", "companyName": {"text": "Acme"},
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/1"},
+           "compensation": {"baseSalary": {"range": {"min": 100000, "max": 140000}, "unitOfWork": "YEAR"}}}
+    posting = ad._parse_job(job, {})
+    assert posting.job_url_direct == "https://acme.com/jobs/1"
+    assert posting.salary_source == "stated"
+
+
+def test_indeed_missing_key_returns_none():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/1"},
+           "compensation": {"baseSalary": {"range": {"min": 100000, "max": 140000}}}}
+    assert ad._parse_job(job, {}) is None
+
+
+def test_indeed_estimated_compensation_inferred():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "2", "title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/2"},
+           "compensation": {"estimated": {"currencyCode": "USD", "unitOfWork": "YEAR",
+                                          "range": {"min": 90000, "max": 120000}}}}
+    posting = ad._parse_job(job, {})
+    assert posting.salary_min == 90000
+    assert posting.salary_max == 120000
+    assert posting.salary_source == "inferred"
+    currency_only = {"key": "3", "title": "Backend Engineer",
+                     "compensation": {"estimated": {"currencyCode": "USD"}}}
+    posting2 = ad._parse_job(currency_only, {})
+    assert posting2.salary_min is None and posting2.salary_max is None
+    assert posting2.salary_source is None
+    assert posting2.salary_currency is None
+
+
+def test_indeed_stated_hourly_annualizes():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "4", "title": "Backend Engineer",
+           "recruit": {"viewJobUrl": "https://acme.com/jobs/4"},
+           "compensation": {"baseSalary": {"unitOfWork": "HOUR", "range": {"min": 20, "max": 30}},
+                             "estimated": {"currencyCode": "USD"}}}
+    posting = ad._parse_job(job, {})
+    assert (posting.salary_min, posting.salary_max) == (20 * 2080, 30 * 2080)
+    assert posting.salary_source == "stated"
+    # Base block carries no currencyCode; falls back to the estimated block.
+    assert posting.salary_currency == "USD"
+
+
+def test_indeed_stated_monthly_and_own_block_currency():
+    from job_hunt.discovery.adapters.indeed import IndeedAdapter
+    ad = IndeedAdapter()
+    job = {"key": "5", "title": "Backend Engineer",
+           "compensation": {"baseSalary": {"unitOfWork": "MONTH", "currencyCode": "EGP",
+                                           "range": {"min": 5000, "max": 6000}},
+                             "estimated": {"currencyCode": "USD"}}}
+    posting = ad._parse_job(job, {})
+    assert (posting.salary_min, posting.salary_max) == (60000, 72000)
+    # Currency comes from the SAME (base) block the amounts came from.
+    assert posting.salary_currency == "EGP"
+    assert posting.salary_source == "stated"
+
+
+from job_hunt.discovery.salary_parse import parse_salary_text
+
+def test_salary_parser_bounds():
+    assert parse_salary_text("Salary: $120k - $150k per year") == (120000, 150000, "USD", "inferred")
+    assert parse_salary_text("$25/hr") == (25 * 2080, 25 * 2080, "USD", "inferred")
+    assert parse_salary_text("competitive salary") is None
+    assert parse_salary_text("$999999999 a year") is None
+
+
+def test_salary_parser_k_scoped_to_match():
+    # "k" nowhere in the salary expression: plain $120-$150 must not inflate.
+    # (Without scoping, "Work from home" has no k either — this pins the
+    # matched-group rule against whole-text matching of nearby words.)
+    assert parse_salary_text("Work from home, $120 - $150 per day") is None
+    assert parse_salary_text("Join our 50k-strong team, $120 - $150 per day") is None
+    # Hourly range: the range branch wins and annualizes before the gate.
+    assert parse_salary_text("$20 - $30/hour, weekend work") == (41600, 62400, "USD", "inferred")
+
+
+from job_hunt.discovery.simhash import simhash64, is_cross_listing
+
+DESC = "build distributed systems in python with postgresql and docker " * 20
+
+def test_simhash_cross_listing_rules():
+    assert simhash64("hi") is None
+    a = {"text": DESC, "company": "Acme", "url": "https://a/1", "title": "Backend Engineer"}
+    b = {"text": DESC, "company": "Agency X", "url": "https://b/9", "title": "Backend Engineer"}
+    assert is_cross_listing(a, b) is True
+    c = dict(b, title="Backend Engineer Berlin")
+    assert is_cross_listing(a, c) is False  # title set differs: sibling req, not repost

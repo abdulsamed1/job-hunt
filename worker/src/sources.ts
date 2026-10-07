@@ -10,7 +10,9 @@ export type SourceKind =
   | "ashby-index"
   | "smartrecruiters"
   | "linkedin"
-  | "indeed";
+  | "indeed"
+  | "freehire"
+  | "bdjobs";
 
 export type Cadence = "hourly" | "6h";
 
@@ -24,5 +26,6 @@ export interface SourceDef {
   tprSeconds?: number;
   maxOrgs?: number;
   country?: string;
+  hoursOld?: number | null;
   cadence: Cadence;
 }

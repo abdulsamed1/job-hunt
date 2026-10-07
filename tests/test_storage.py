@@ -183,3 +183,29 @@ def test_application_answers_roundtrip(tmp_path):
 
     storage.mark_answers_submitted(saved.id)
     assert all(r["submitted"] for r in storage.get_answers(saved.id))
+
+
+def test_salary_source_and_direct_url_round_trip(storage):
+    job = JobPosting(
+        source="indeed",
+        title="Backend Engineer",
+        company="Acme",
+        raw_url="https://eg.indeed.com/viewjob?jk=abc123",
+        canonical_url="https://eg.indeed.com/viewjob?jk=abc123",
+        canonical_url_hash="h-abc123",
+        role_fingerprint="rf-abc123",
+        content_hash="c-abc123",
+        salary_min=100000,
+        salary_max=140000,
+        salary_currency="EGP",
+        salary_source="stated",
+        job_url_direct="https://acme.com/jobs/1",
+    )
+    saved, is_new = storage.add_job(job)
+    assert is_new is True
+    fetched = storage.get_job(saved.id)
+    assert fetched.salary_source == "stated"
+    assert fetched.job_url_direct == "https://acme.com/jobs/1"
+    assert fetched.salary_min == 100000
+    assert fetched.salary_max == 140000
+    assert fetched.salary_currency == "EGP"

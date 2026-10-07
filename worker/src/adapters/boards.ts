@@ -135,3 +135,183 @@ export async function fetchLinkedInGuest(
   }
   return out;
 }
+
+export interface JsonSearchQuery {
+  searchUrl: string;
+  source: string;
+  query: string;
+  location: string;
+}
+
+/** Generic JSON job-search fetch (freehire mirror of the Python adapter). */
+export async function fetchJsonSearchBoard(q: JsonSearchQuery, limit = 40): Promise<RawJob[]> {
+  const params = new URLSearchParams({ q: q.query, location: q.location, page: "1" });
+  const data: any = await fetchJson(`${q.searchUrl}?${params}`);
+  const arr = Array.isArray(data) ? data : data?.jobs || data?.data || data?.results || [];
+  const out: RawJob[] = [];
+  for (const j of arr) {
+    if (out.length >= limit) break;
+    const title = String(j?.title || j?.jobTitle || j?.position || "");
+    const url = String(j?.url || j?.apply_url || j?.applyUrl || j?.link || "");
+    if (!title || !url) continue;
+    const company = String(j?.company || j?.companyName || j?.company_name || j?.employer || "Unknown");
+    const desc = String(j?.description || j?.jobDescription || j?.content || title);
+    out.push({
+      title,
+      company,
+      location: String(j?.location || j?.jobLocation || q.location || "Remote"),
+      url,
+      source: q.source,
+      posted_at: String(j?.posted_at || j?.publishedDate || j?.date || j?.created_at || ""),
+      desc,
+      external_id: j?.id != null ? `${q.source}-${j.id}` : null,
+    });
+  }
+  return out;
+}
+
+export interface BdJobsQuery {
+  searchUrl: string;
+  query: string;
+  location: string;
+  hoursOld?: number | null;
+}
+
+// Full BDJobs location-code table, kept in parity with
+// src/job_hunt/discovery/adapters/bdjobs.py BD_LOCATION_CODES
+// (worker/test/boards.test.ts asserts equal key sets).
+export const BD_LOCATION_CODES: Record<string, number> = {
+  dhaka: 14,
+  "dhaka division": 1003,
+  faridpur: 16,
+  gazipur: 19,
+  gopalganj: 20,
+  kishoreganj: 29,
+  madaripur: 34,
+  manikganj: 36,
+  munshiganj: 39,
+  narayanganj: 43,
+  narsingdi: 44,
+  rajbari: 53,
+  shariatpur: 58,
+  tangail: 63,
+  chattogram: 10,
+  "chattogram division": 1002,
+  bandarban: 3,
+  brahmanbaria: 1,
+  chandpur: 8,
+  "cox's bazar": 13,
+  cumilla: 12,
+  feni: 17,
+  khagrachhari: 27,
+  lakshmipur: 33,
+  noakhali: 48,
+  rangamati: 55,
+  barishal: 4,
+  "barishal division": 1001,
+  barguna: 7,
+  bhola: 5,
+  jhalakathi: 24,
+  patuakhali: 51,
+  pirojpur: 52,
+  khulna: 28,
+  "khulna division": 1004,
+  bagerhat: 2,
+  chuadanga: 11,
+  jashore: 23,
+  jhenaidah: 25,
+  kushtia: 31,
+  magura: 35,
+  meherpur: 37,
+  narail: 42,
+  satkhira: 57,
+  mymensingh: 40,
+  "mymensingh division": 1005,
+  jamalpur: 22,
+  netrokona: 46,
+  sherpur: 59,
+  rajshahi: 54,
+  "rajshahi division": 1006,
+  bogura: 6,
+  chapainawabganj: 9,
+  joypurhat: 26,
+  naogaon: 41,
+  natore: 45,
+  pabna: 49,
+  sirajganj: 60,
+  rangpur: 56,
+  "rangpur division": 1007,
+  dinajpur: 15,
+  gaibandha: 18,
+  kurigram: 30,
+  lalmonirhat: 32,
+  nilphamari: 47,
+  panchagarh: 50,
+  thakurgaon: 64,
+  sylhet: 62,
+  "sylhet division": 1008,
+  habiganj: 21,
+  moulvibazar: 38,
+  sunamganj: 61,
+};
+
+export function bdLocationCode(location: string): number | null {
+  const place = (location || "").split(",")[0].trim().toLowerCase();
+  if (!place || place === "bangladesh") return null;
+  return BD_LOCATION_CODES[place] ?? null;
+}
+
+export function bdPostedWithinDays(hoursOld: number | null | undefined): number | null {
+  if (!hoursOld || hoursOld <= 0) return null;
+  const days = Math.ceil(hoursOld / 24) + 1;
+  return days <= 5 ? days : null;
+}
+
+/** BDJobs GetJobSearch fetch (mirrors the Python bdjobs adapter params + parsing). */
+export async function fetchBdJobs(q: BdJobsQuery, limit = 40): Promise<RawJob[]> {
+  const params = new URLSearchParams({
+    rpp: "50",
+    isPro: "0",
+    ToggleJobs: "true",
+    isFresher: "false",
+    keyword: q.query,
+    pg: "1",
+  });
+  const code = bdLocationCode(q.location);
+  if (code !== null) params.set("location", String(code));
+  const within = bdPostedWithinDays(q.hoursOld);
+  if (within !== null) params.set("postedWithin", String(within));
+  const data: any = await fetchJson(`${q.searchUrl}?${params}`);
+  if (!data || typeof data !== "object") return [];
+  const chunks: any[] = [];
+  for (const key of ["data", "premiumData"]) {
+    const arr = (data as any)[key];
+    if (arr === undefined || arr === null) continue;
+    if (!Array.isArray(arr)) throw new Error(`BDJobs: unexpected jobs payload shape: ${key} is not a list`);
+    chunks.push(...arr);
+  }
+  const out: RawJob[] = [];
+  for (const j of chunks) {
+    if (out.length >= limit) break;
+    if (!j || typeof j !== "object") continue;
+    const title = String(j.jobTitle || j.title || "");
+    const jobId = j.Jobid ?? j.id ?? null;
+    const rawUrl = String(j.url || j.apply_url || j.link || "");
+    const url = rawUrl || (jobId !== null && String(jobId).trim() ? `https://bdjobs.com/h/details/${String(jobId).trim()}` : "");
+    if (!title || !url) continue;
+    const company = String(j.companyName || j.company || "Unknown");
+    const location = String(j.location || j.jobLocation || q.location || "Bangladesh");
+    const desc = String(j.description || j.jobDescription || `${title} at ${company} (${location}).`);
+    out.push({
+      title,
+      company,
+      location,
+      url,
+      source: "bdjobs",
+      posted_at: String(j.publishDate || j.pub || j.posted_at || j.deadline || j.date || ""),
+      desc,
+      external_id: jobId !== null ? `bdjobs-${jobId}` : null,
+    });
+  }
+  return out;
+}

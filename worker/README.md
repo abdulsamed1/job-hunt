@@ -19,9 +19,9 @@ python worker/scripts/gen_sources.py --check  # fail on drift (used by tests)
 
 | Split | Count | Why |
 |---|---|---|
-| Worker-runnable | **233** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin, indeed, ashby-index |
+| Worker-runnable | **235** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin, indeed, ashby-index |
 | Python-only | **84** | Bayt (TLS impersonation), Naukri (RSA handshake), HTML scraping (`web`) |
-| Total in `sources.yaml` | **317** | every source accounted for, none silently dropped |
+| Total in `sources.yaml` | **319** | every source accounted for, none silently dropped |
 
 ### Measured yield (live probe, 2026-10-02)
 

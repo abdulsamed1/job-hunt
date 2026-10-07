@@ -6,6 +6,7 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 import httpx
 import yaml
 
@@ -13,7 +14,9 @@ from job_hunt.discovery.adapters.ashby import AshbyAdapter
 from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
 from job_hunt.discovery.adapters.bamboohr import BambooHRAdapter
 from job_hunt.discovery.adapters.bayt import BaytAdapter
+from job_hunt.discovery.adapters.bdjobs import BdJobsAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
+from job_hunt.discovery.adapters.freehire import FreehireAdapter
 from job_hunt.discovery.adapters.glassdoor import GlassdoorAdapter
 from job_hunt.discovery.adapters.google_jobs import GoogleJobsAdapter
 from job_hunt.discovery.adapters.greenhouse import GreenhouseAdapter
@@ -28,6 +31,7 @@ from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
 from job_hunt.discovery.base import DiscoveryAdapter
 from job_hunt.discovery.hosts import classify_host, is_spoof_like
+from job_hunt.discovery.robots import group_allows
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -51,12 +55,15 @@ class SourceRegistry:
             BaytAdapter(),
             NaukriAdapter(),
             IndeedAdapter(),
+            FreehireAdapter(),
+            BdJobsAdapter(),
             ZipRecruiterAdapter(),
             GlassdoorAdapter(),
             GoogleJobsAdapter(),
             UniversalWebAdapter(),
         ]
         self._adapter_map = {a.adapter_id: a for a in self.adapters}
+        self._robots_cache: Dict[str, Optional[str]] = {}
 
     def resolve_adapter(self, entry: Dict[str, Any]) -> Optional[DiscoveryAdapter]:
         """Resolve adapter for a given configuration entry."""
@@ -96,6 +103,24 @@ class SourceRegistry:
             return data.get("sources", [])
         return []
 
+    async def _robots_verdict(self, url: str, client: httpx.AsyncClient) -> Optional[bool]:
+        """Fail-closed robots triage: True = allowed, False = disallowed, None = unconfirmed."""
+        parsed = urlparse(url or "")
+        if not parsed.netloc:
+            return None
+        host = parsed.netloc.lower()
+        if host not in self._robots_cache:
+            robots_url = f"{parsed.scheme or 'https'}://{parsed.netloc}/robots.txt"
+            try:
+                resp = await client.get(robots_url, timeout=10.0)
+                self._robots_cache[host] = resp.text if resp.status_code == 200 else None
+            except Exception:
+                self._robots_cache[host] = None
+        txt = self._robots_cache[host]
+        if txt is None:
+            return None
+        return group_allows(txt, parsed.path or "/")
+
     async def scan_source(
         self,
         entry: Dict[str, Any],
@@ -108,6 +133,15 @@ class SourceRegistry:
         if not adapter:
             logger.warning("No adapter found for source: %s", name)
             return []
+
+        url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
+        if url:
+            verdict = await self._robots_verdict(url, client)
+            if verdict is False:
+                logger.warning("Robots disallowed source, skipping: %s (%s)", name, url)
+                return []
+            if verdict is None:
+                logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, url)
 
         async with semaphore:
             try:

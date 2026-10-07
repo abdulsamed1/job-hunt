@@ -16,6 +16,7 @@ from job_hunt.dedup import (
     normalize_url,
 )
 from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.salary_parse import parse_salary_text
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,8 @@ class UniversalWebAdapter(DiscoveryAdapter):
 
                     description = item.get("description") or title
 
+                    # Backstop: no structured compensation on web pages; try free-text parse.
+                    parsed = parse_salary_text(description)
                     postings.append(
                         JobPosting(
                             external_id=str(item.get("identifier", {}).get("value") if isinstance(item.get("identifier"), dict) else item.get("identifier") or ""),
@@ -101,6 +104,10 @@ class UniversalWebAdapter(DiscoveryAdapter):
                             content_hash=content_hash(description),
                             location=loc_str,
                             description=description,
+                            salary_min=parsed[0] if parsed else None,
+                            salary_max=parsed[1] if parsed else None,
+                            salary_currency=parsed[2] if parsed else None,
+                            salary_source=parsed[3] if parsed else None,
                             posted_at=item.get("datePosted"),
                             metadata={"schema_org": True},
                         )
@@ -141,6 +148,8 @@ class UniversalWebAdapter(DiscoveryAdapter):
             company = source_name
             loc_str = "Remote"
 
+            # Backstop: no structured compensation on web pages; try free-text parse.
+            parsed = parse_salary_text(title)
             postings.append(
                 JobPosting(
                     source=source_name.lower().replace(" ", "_"),
@@ -154,6 +163,10 @@ class UniversalWebAdapter(DiscoveryAdapter):
                     content_hash=content_hash(title),
                     location=loc_str,
                     description=title,
+                    salary_min=parsed[0] if parsed else None,
+                    salary_max=parsed[1] if parsed else None,
+                    salary_currency=parsed[2] if parsed else None,
+                    salary_source=parsed[3] if parsed else None,
                     metadata={"html_heuristic": True},
                 )
             )

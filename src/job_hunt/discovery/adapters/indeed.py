@@ -81,9 +81,24 @@ JOB_QUERY = """
                 city
             }
             compensation {
+                baseSalary {
+                unitOfWork
+                range {
+                    min
+                    max
+                }
+                }
                 estimated {
                 currencyCode
+                unitOfWork
+                range {
+                    min
+                    max
                 }
+                }
+            }
+            recruit {
+                viewJobUrl
             }
             attributes {
                 key
@@ -242,11 +257,35 @@ class IndeedAdapter(DiscoveryAdapter):
         attrs = " ".join(a.get("label", "") for a in (job.get("attributes") or []))
         is_remote = "remote" in attrs.lower() or "remote" in description.lower()[:500]
 
+        recruit = job.get("recruit") or {}
+        job_url_direct = recruit.get("viewJobUrl") or ""
+
         comp = job.get("compensation") or {}
         salary_min = salary_max = salary_currency = None
+        salary_source = None
         try:
+            base = comp.get("baseSalary") or {}
             est = comp.get("estimated") or {}
-            salary_currency = est.get("currencyCode")
+            base_range = base.get("range") or {}
+            if base_range.get("min") is not None or base_range.get("max") is not None:
+                # Stated employer range. The base block carries unitOfWork but
+                # no currencyCode (only the estimated block does), so amounts
+                # are normalized here while currency falls back to estimated.
+                unit = str(base.get("unitOfWork") or "").upper()
+                mult = 2080 if "HOUR" in unit else 12 if "MONTH" in unit else 1
+                if base_range.get("min") is not None:
+                    salary_min = base_range["min"] * mult
+                if base_range.get("max") is not None:
+                    salary_max = base_range["max"] * mult
+                salary_currency = base.get("currencyCode") or est.get("currencyCode")
+                salary_source = "stated"
+            else:
+                est_range = est.get("range") or {}
+                if est_range.get("min") is not None or est_range.get("max") is not None:
+                    salary_min = est_range.get("min")
+                    salary_max = est_range.get("max")
+                    salary_currency = est.get("currencyCode")
+                    salary_source = "inferred"
         except AttributeError:
             pass
 
@@ -271,6 +310,8 @@ class IndeedAdapter(DiscoveryAdapter):
             salary_min=salary_min,
             salary_max=salary_max,
             salary_currency=salary_currency,
+            job_url_direct=job_url_direct,
+            salary_source=salary_source,
             posted_at=posted_at,
             metadata=metadata,
         )

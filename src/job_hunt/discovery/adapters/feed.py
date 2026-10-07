@@ -13,6 +13,7 @@ from job_hunt.dedup import (
     normalize_url,
 )
 from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.salary_parse import parse_salary_text
 from job_hunt.models import JobPosting
 
 
@@ -72,6 +73,8 @@ class FeedAdapter(DiscoveryAdapter):
             location_str = j.get("location") or ("Remote" if j.get("remote") else "")
             description = j.get("description") or title
 
+            # Backstop: feeds carry no structured compensation; try free-text parse.
+            parsed = parse_salary_text(description)
             posting = JobPosting(
                 external_id=str(j.get("id", "")),
                 source=entry.get("name", "feed").lower(),
@@ -85,6 +88,10 @@ class FeedAdapter(DiscoveryAdapter):
                 content_hash=content_hash(description),
                 location=location_str,
                 description=description,
+                salary_min=parsed[0] if parsed else None,
+                salary_max=parsed[1] if parsed else None,
+                salary_currency=parsed[2] if parsed else None,
+                salary_source=parsed[3] if parsed else None,
                 posted_at=str(j.get("date") or j.get("epoch") or ""),
                 metadata={"tags": j.get("tags", [])},
             )
@@ -137,6 +144,8 @@ class FeedAdapter(DiscoveryAdapter):
 
                 canon_url = normalize_url(raw_url)
                 desc = description or title
+                # Backstop: feeds carry no structured compensation; try free-text parse.
+                parsed = parse_salary_text(desc)
                 posting = JobPosting(
                     external_id=None,
                     source=entry.get("name", "rss").lower(),
@@ -150,6 +159,10 @@ class FeedAdapter(DiscoveryAdapter):
                     content_hash=content_hash(desc),
                     location="Remote",
                     description=desc,
+                    salary_min=parsed[0] if parsed else None,
+                    salary_max=parsed[1] if parsed else None,
+                    salary_currency=parsed[2] if parsed else None,
+                    salary_source=parsed[3] if parsed else None,
                     posted_at=posted_at or None,
                     metadata={"feed_format": "rss_xml"},
                 )
