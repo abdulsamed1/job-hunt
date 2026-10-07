@@ -24,6 +24,7 @@ from job_hunt.discovery.adapters.indeed import IndeedAdapter
 from job_hunt.discovery.adapters.lever import LeverAdapter
 from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
 from job_hunt.discovery.adapters.naukri import NaukriAdapter
+from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
 from job_hunt.discovery.adapters.smartrecruiters import SmartRecruitersAdapter
 from job_hunt.discovery.adapters.teamtailor import TeamtailorAdapter
 from job_hunt.discovery.adapters.workable import WorkableAdapter
@@ -56,6 +57,7 @@ class SourceRegistry:
             LinkedInAdapter(),
             BaytAdapter(),
             NaukriAdapter(),
+            RecruiteeAdapter(),
             IndeedAdapter(),
             FreehireAdapter(),
             BdJobsAdapter(),
