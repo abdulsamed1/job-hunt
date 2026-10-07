@@ -2,7 +2,7 @@ name: scheduled-sweep
 
 on:
   schedule:
-    # Daily full 317-source 24h-remote sweep (02:00 UTC)
+    # Daily full 319-source 24h-remote sweep (02:00 UTC)
     - cron: "0 2 * * *"
     # 6-hourly LinkedIn standing-target micro sweep
     - cron: "0 */6 * * *"
@@ -17,7 +17,7 @@ on:
         type: boolean
         default: false
       full:
-        description: "Full 317-source sweep (else LinkedIn micro sweep only)"
+        description: "Full 319-source sweep (else LinkedIn micro sweep only)"
         type: boolean
         default: false
 
