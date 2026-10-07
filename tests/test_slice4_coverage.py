@@ -28,3 +28,64 @@ def test_freehire_parses_full_description():
     client.get.return_value = resp
     jobs = asyncio.run(ad.fetch({"url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["backend"], "locations": ["Remote"]}, client))
     assert jobs and len(jobs[0].description) > 400
+
+
+def test_bdjobs_parses_getjobsearch_response():
+    import asyncio
+    from unittest.mock import AsyncMock
+    ad = BdJobsAdapter()
+    client = AsyncMock()
+
+    def _job(job_id, title, company, premium=False):
+        job = {
+            "Jobid": job_id,
+            "jobTitle": title,
+            "companyName": company,
+            "location": "Dhaka",
+            "publishDate": "2026-10-06T00:00:00Z",
+            "deadline": "2026-11-06T00:00:00Z",
+            "JobType": "FullTime",
+            "WorkPlace": "Office",
+            "Salary": "Tk. 50000 - 80000 (Monthly)",
+        }
+        if premium:
+            job["isPremium"] = True
+        return job
+
+    payload = {
+        "message": "Success",
+        "data": [_job("111", "Backend Engineer", "Acme Ltd")],
+        "premiumData": [_job("222", "Fullstack Developer", "Beta Ltd", premium=True)],
+        "common": {"totalpages": 1},
+    }
+    resp = AsyncMock()
+    resp.status_code = 200
+    resp.json.return_value = payload
+    client.get.return_value = resp
+    jobs = asyncio.run(ad.fetch({
+        "url": "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch",
+        "queries": ["backend"],
+        "locations": ["Dhaka, Bangladesh"],
+        "max_pages_per_query": 1,
+    }, client))
+    assert len(jobs) == 2
+    by_id = {j.external_id: j for j in jobs}
+    assert by_id["bdjobs-111"].title == "Backend Engineer"
+    assert by_id["bdjobs-111"].company == "Acme Ltd"
+    assert by_id["bdjobs-111"].raw_url == "https://bdjobs.com/h/details/111"
+    assert by_id["bdjobs-222"].title == "Fullstack Developer"
+    assert by_id["bdjobs-222"].company == "Beta Ltd"
+    assert by_id["bdjobs-222"].raw_url == "https://bdjobs.com/h/details/222"
+    for job in jobs:
+        assert job.title and job.company and job.raw_url and job.description
+
+
+def test_bdjobs_search_params_use_keyword_and_location_code():
+    ad = BdJobsAdapter()
+    params = ad._search_params("backend", "Dhaka, Bangladesh", 1, 72)
+    assert params["keyword"] == "backend"
+    assert params["location"] == 14
+    assert params["postedWithin"] == 4
+    assert params["pg"] == 1
+    widened = ad._search_params("backend", "Bangladesh", 1, 72)
+    assert "location" not in widened

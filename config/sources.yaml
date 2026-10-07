@@ -73,7 +73,7 @@ sources:
   hours_old: 72
 - adapter: bdjobs
   name: bdjobs-bangladesh-tech
-  url: https://www.bdjobs.com/api/jobs/search
+  url: https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch
   queries:
   - backend
   - fullstack
