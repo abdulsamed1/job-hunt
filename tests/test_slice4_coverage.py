@@ -23,11 +23,32 @@ def test_freehire_parses_full_description():
     ad = FreehireAdapter()
     client = AsyncMock()
     resp = AsyncMock()
-    resp.json.return_value = {"jobs": [{"id": "1", "title": "Backend Engineer", "company": "Acme", "location": "Remote", "url": "https://x/1", "description": "Python and PostgreSQL " * 50}]}
-    resp.raise_for_status.return_value = None
+    resp.status_code = 200
+    html = "<p><strong><span>Description</span></strong></p><p>" + ("Backend Python PostgreSQL remote role. " * 30) + "</p>"
+    resp.json.return_value = {
+        "data": [
+            {
+                "public_slug": "backend-engineer-acme-btehyuk3",
+                "source": "acme",
+                "manually_added": False,
+                "external_id": ":180950",
+                "url": "https://portal.acme.org/jobs/180950/backend-engineer?utm_source=freehire.me",
+                "title": "Backend Engineer",
+                "company": "Acme",
+                "company_slug": "acme",
+                "location": "Remote",
+                "description": html,
+            }
+        ],
+        "meta": {"total": 1},
+    }
     client.get.return_value = resp
     jobs = asyncio.run(ad.fetch({"url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["backend"], "locations": ["Remote"]}, client))
-    assert jobs and len(jobs[0].description) > 400
+    assert len(jobs) == 1
+    assert jobs[0].title == "Backend Engineer"
+    assert jobs[0].company == "Acme"
+    assert jobs[0].raw_url == "https://portal.acme.org/jobs/180950/backend-engineer?utm_source=freehire.me"
+    assert len(jobs[0].description) > 100
 
 
 def test_bdjobs_parses_getjobsearch_response():
