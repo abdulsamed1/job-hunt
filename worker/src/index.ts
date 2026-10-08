@@ -290,7 +290,7 @@ export default {
           const failDetailSha = "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)";
           if (!sha) {
             await saveApplication(db, m.hash, "FAILED", failDetailSha, null);
-            await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetailSha);
+            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetailSha) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           // Decided (2026-10-08): Worker is master-only BY DESIGN, not pending.
@@ -301,7 +301,7 @@ export default {
           if (!obj) {
             const failDetail = `resume bytes missing: ${key}`;
             await saveApplication(db, m.hash, "FAILED", failDetail, null);
-            await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetail);
+            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetail) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           const resumeBytes = new Uint8Array(await obj.arrayBuffer());
@@ -322,7 +322,7 @@ export default {
           if (!board) {
             const queuedDetail = "non-ATS board: queued for human review";
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
-            await notifyJobOnce(db, env, m.hash, row, "APPLICATION_STARTED", queuedDetail);
+            if (await notifyJobOnce(db, env, m.hash, row, "APPLICATION_STARTED", queuedDetail) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_STARTED)`);
             continue;
           }
           const names = profile.fullName.split(/\s+/);
@@ -337,7 +337,8 @@ export default {
           );
           const finalState: JobOutcome = result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
           await saveApplication(db, m.hash, finalState, result.detail, key);
-          await notifyJobOnce(db, env, m.hash, row, finalState, result.detail);
+          const notified = await notifyJobOnce(db, env, m.hash, row, finalState, result.detail);
+          if (notified !== "sent") console.log(`telegram notify ${notified} for ${m.hash} (${finalState})`);
         }
       } catch (e) {
         console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);

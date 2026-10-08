@@ -1,7 +1,10 @@
 // Telegram outbound alerts: match-ready, submitted, and failure notices.
-// Outbound only — the bot takes no inbound commands. Every send is
-// best-effort and idempotent per job (see notifyJobOnce): alert failures
-// must never break the pipeline or retry-storm Telegram.
+// Outbound only — the bot takes no inbound commands. Sends are best-effort
+// with at-most-once semantics under sequential delivery (queue retries see
+// notified=1 and skip); concurrent duplicate delivery of the same job could
+// double-send since the read-then-set spans a network round-trip — duplicates
+// only, never state corruption. Alert failures must never break the pipeline
+// or retry-storm Telegram.
 
 export type JobOutcome = "SUBMITTED" | "APPLICATION_STARTED" | "FAILED";
 
