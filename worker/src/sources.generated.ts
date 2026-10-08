@@ -4,7 +4,7 @@
 
 import type { SourceDef } from "./sources.js";
 
-// yaml_total=325 worker_supported=241 python_only=84 hourly=18
+// yaml_total=372 worker_supported=288 python_only=84 hourly=18
 
 export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "url": "https://www.linkedin.com/jobs/", "queries": ["backend", "fullstack", "software"], "locations": ["Remote"], "tprSeconds": 43200},
@@ -248,6 +248,53 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "recruitee", "name": "recruitee-happeo", "cadence": "6h", "url": "https://happeo.recruitee.com"},
   {"kind": "recruitee", "name": "recruitee-radix", "cadence": "6h", "url": "https://radix.recruitee.com"},
   {"kind": "personio", "name": "personio-vivid", "cadence": "6h", "url": "https://vivid.jobs.personio.de"},
+  {"kind": "greenhouse", "name": "acquia", "cadence": "6h", "org": "acquia"},
+  {"kind": "greenhouse", "name": "alphasights", "cadence": "6h", "org": "alphasights"},
+  {"kind": "ashby", "name": "andela", "cadence": "6h", "org": "andela"},
+  {"kind": "greenhouse", "name": "ark", "cadence": "6h", "org": "ark"},
+  {"kind": "lever", "name": "articulate", "cadence": "6h", "org": "articulate"},
+  {"kind": "lever", "name": "britecore", "cadence": "6h", "org": "britecore"},
+  {"kind": "ashby", "name": "buffer", "cadence": "6h", "org": "buffer"},
+  {"kind": "ashby", "name": "calibre", "cadence": "6h", "org": "calibre"},
+  {"kind": "ashby", "name": "capchase", "cadence": "6h", "org": "capchase"},
+  {"kind": "ashby", "name": "caremessage", "cadence": "6h", "org": "caremessage"},
+  {"kind": "ashby", "name": "close", "cadence": "6h", "org": "close"},
+  {"kind": "greenhouse", "name": "coalition", "cadence": "6h", "org": "coalition"},
+  {"kind": "lever", "name": "collabora", "cadence": "6h", "org": "collabora"},
+  {"kind": "greenhouse", "name": "customerio", "cadence": "6h", "org": "customerio"},
+  {"kind": "greenhouse", "name": "dashlane", "cadence": "6h", "org": "dashlane"},
+  {"kind": "greenhouse", "name": "datacamp", "cadence": "6h", "org": "datacamp"},
+  {"kind": "greenhouse", "name": "fastly", "cadence": "6h", "org": "fastly"},
+  {"kind": "greenhouse", "name": "godaddy", "cadence": "6h", "org": "godaddy"},
+  {"kind": "greenhouse", "name": "gohiring", "cadence": "6h", "org": "gohiring"},
+  {"kind": "greenhouse", "name": "intercom", "cadence": "6h", "org": "intercom"},
+  {"kind": "lever", "name": "kinsta", "cadence": "6h", "org": "kinsta"},
+  {"kind": "greenhouse", "name": "labelbox", "cadence": "6h", "org": "labelbox"},
+  {"kind": "ashby", "name": "lightspeed", "cadence": "6h", "org": "lightspeed"},
+  {"kind": "ashby", "name": "litmus", "cadence": "6h", "org": "litmus"},
+  {"kind": "greenhouse", "name": "liveperson", "cadence": "6h", "org": "liveperson"},
+  {"kind": "ashby", "name": "testgorilla", "cadence": "6h", "org": "testgorilla"},
+  {"kind": "ashby", "name": "zapier", "cadence": "6h", "org": "zapier"},
+  {"kind": "greenhouse", "name": "platformsh", "cadence": "6h", "org": "platformsh"},
+  {"kind": "greenhouse", "name": "securityscorecard", "cadence": "6h", "org": "securityscorecard"},
+  {"kind": "greenhouse", "name": "metalab", "cadence": "6h", "org": "metalab"},
+  {"kind": "greenhouse", "name": "okta", "cadence": "6h", "org": "okta"},
+  {"kind": "lever", "name": "renofi", "cadence": "6h", "org": "renofi"},
+  {"kind": "greenhouse", "name": "scandit", "cadence": "6h", "org": "scandit"},
+  {"kind": "greenhouse", "name": "streamnative", "cadence": "6h", "org": "streamnative"},
+  {"kind": "greenhouse", "name": "turing", "cadence": "6h", "org": "turing"},
+  {"kind": "ashby", "name": "quora", "cadence": "6h", "org": "quora"},
+  {"kind": "greenhouse", "name": "rocketchat", "cadence": "6h", "org": "rocketchat"},
+  {"kind": "greenhouse", "name": "twilio", "cadence": "6h", "org": "twilio"},
+  {"kind": "lever", "name": "mindful", "cadence": "6h", "org": "mindful"},
+  {"kind": "ashby", "name": "mux", "cadence": "6h", "org": "mux"},
+  {"kind": "ashby", "name": "percona", "cadence": "6h", "org": "percona"},
+  {"kind": "ashby", "name": "primer", "cadence": "6h", "org": "primer"},
+  {"kind": "ashby", "name": "recharge", "cadence": "6h", "org": "recharge"},
+  {"kind": "greenhouse", "name": "udacity", "cadence": "6h", "org": "udacity"},
+  {"kind": "greenhouse", "name": "wizeline", "cadence": "6h", "org": "wizeline"},
+  {"kind": "greenhouse", "name": "mixmax", "cadence": "6h", "org": "mixmax"},
+  {"kind": "greenhouse", "name": "openzeppelin", "cadence": "6h", "org": "openzeppelin"},
 ];
 
 export interface PythonOnlySource {

@@ -38,7 +38,7 @@ user's explicit approval.
 - Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
-## Discovery defaults (all 325 sources)
+## Discovery defaults (all 372 sources)
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
   Server-side where supported (Bayt/Naukri/Zip intervals, Indeed date filter;
   LinkedIn TPR unused while disabled); central `filter_recent` backstops the rest.
@@ -48,7 +48,7 @@ user's explicit approval.
 
 ## Board coverage (325 configured; probed live 2026-10-02)
 
-Configured ≠ working. `config/sources.yaml` holds **325** entries, but a live
+Configured ≠ working. `config/sources.yaml` holds **372** entries, but a live
 probe of all 213 ATS boards showed only **81 return any jobs**; 132 org slugs
 are dead (greenhouse 48/106, ashby 30/47, lever 2/45, smartrecruiters 1/15).
 GitHub and DoorDash now 404 on Greenhouse while `figma` returns 200 — slug
@@ -78,8 +78,8 @@ derivation is correct, those orgs migrated ATS. Under the 24h + remote filters
 ## Worker source coverage is generated (never hand-kept)
 
 - `worker/scripts/gen_sources.py` emits `worker/src/sources.generated.ts` from
-  `config/sources.yaml`: **241 Worker-runnable + 84 explicitly python-only**
-  (bayt TLS impersonation, naukri RSA, `web` HTML scraping) = 325 accounted for.
+  `config/sources.yaml`: **288 Worker-runnable + 84 explicitly python-only**
+  (bayt TLS impersonation, naukri RSA, `web` HTML scraping) = 372 accounted for.
 - `--check` mode fails on drift; `tests/test_worker_source_shard.py` enforces it
   in CI. **Never hand-edit `sources.generated.ts`** — edit `sources.yaml`.
 - Worker gotchas that cost real debugging time, documented in
@@ -155,13 +155,13 @@ gives you structural context (callers, dependents, test coverage) that file sear
 ## Deployment (free tiers)
 
 - **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
-  325-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
+  372-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
   see LinkedIn status above; manual dispatch without `full` runs apply only).
   Live runs only via manual dispatch with `live`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
 - **Cloudflare Worker** (`worker/`, full pipeline, not just scout): live at
   `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (18 sources)
-  + daily deep sweep (all 241) across RSS/JSON/ATS/tenant sources (LinkedIn-guest
+  + daily deep sweep (all 288) across RSS/JSON/ATS/tenant sources (LinkedIn-guest
   filtered out while disabled, see LinkedIn status above) →
   queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic
   evaluate → tailor (pdf-lib PDF → R2) → direct ATS HTTP POST applies
