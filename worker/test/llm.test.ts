@@ -70,8 +70,10 @@ describe("hardening: budgets, mapping, retry", () => {
             run: async () => { writes.push([sql, a]); return {}; },
             first: async () => {
               if (sql.includes("SUM(tokens)")) {
+                // Window-aware like the real table: only the bound window counts.
+                const w = a[0];
                 let t = 0;
-                for (const [k, v] of rows) if (k.startsWith("tok:")) t += v;
+                for (const [k, v] of rows) if (k === `tok:${w}`) t += v;
                 return { t };
               }
               if (sql.includes("disabled_until")) {
@@ -134,6 +136,20 @@ describe("hardening: budgets, mapping, retry", () => {
     await expect(routeChatCompletion(env, db, { messages: [{ role: "user", content: "hi" }], maxTokens: 10, purpose: "t" }))
       .rejects.toThrow(/budget exhausted/);
     expect(calls).toBe(0);
+  });
+
+  it("scopes usage and disables to the monthly window", async () => {
+    const { routeChatCompletion, currentWindow } = await import("../src/lib/llm.js");
+    const store = memDb();
+    const env: any = {
+      AI: null, LLM_PROVIDERS: "p1",
+      P1_URL: "https://1.example/v1", P1_KEY: "k", P1_MODEL: "m",
+      _fetch: async () => new Response("slow", { status: 429 }),
+    };
+    await expect(routeChatCompletion(env, store.db, { messages: [{ role: "user", content: "hi" }], maxTokens: 10, purpose: "t" })).rejects.toThrow();
+    const dis = store.writes.find((w) => String(w[0]).includes("disabled_until"));
+    expect(dis).toBeTruthy();
+    expect((dis as any[])[1][1]).toBe(currentWindow());
   });
 
   it("writes a 10-minute disable on 429", async () => {

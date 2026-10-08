@@ -25,6 +25,8 @@ def test_classify_probe_transport_errors_are_failures():
     mod = _load()
     assert mod.classify_probe("x", 502, {})[0] == "fail"
     assert mod.classify_probe("x", -1, {})[0] == "fail"
+    assert mod.classify_probe("x", 500, {})[0] == "fail"
+    assert mod.classify_probe("x", 503, {})[0] == "fail"
 
 
 def test_classify_probe_inconclusive_is_warning_not_failure():

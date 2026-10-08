@@ -72,8 +72,8 @@ def classify_probe(name: str, status: int, probe: dict):
     """Decide a probe outcome. Pure function — unit-tested, no network."""
     if status == 404:
         return ("fail", f"{name}: unknown source (not in deployed shard?)")
-    if status == 502 or status == -1:
-        return ("fail", f"{name}: transport error: {probe}")
+    if status == -1 or status >= 500:
+        return ("fail", f"{name}: transport/server error (HTTP {status}): {probe}")
     if probe.get("inconclusive"):
         return ("warn", f"{name}: inconclusive ({probe.get('error', '')[:80]})")
     if (probe.get("remote_fresh") or 0) == 0:
