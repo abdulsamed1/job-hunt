@@ -112,6 +112,8 @@ npx wrangler queues create jobhunt-evaluate
 npx wrangler queues create jobhunt-apply
 npx wrangler secret put PROFILE_JSON   # slim JSON; Workers Free caps env values at 5 KB
 npx wrangler deploy
+# then prove it (fails on unreachable endpoints or safety-flag drift):
+python scripts/verify_deploy.py --new-only
 ```
 
 Live applies stay OFF until a human flips per-board flags:
@@ -130,3 +132,7 @@ Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for match alerts.
 - Ashby live submit: dry-run until an org endpoint is pinned by a supervised run.
 - CAPTCHA/Turnstile jobs: BLOCKED queue + alert, never bypassed.
 - Rezi mirroring + heavy PDF layouts stay in the Python pipeline / Actions.
+- Worker resume policy (decided 2026-10-08): master-only by design. Rezi's API
+  exposes no download/export endpoint, so per-job variants cannot reach R2;
+  they live on the Python/browser side only. Do not re-propose the sync
+  unless Rezi ships an export tool.

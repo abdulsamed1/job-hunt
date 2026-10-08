@@ -171,6 +171,9 @@ gives you structural context (callers, dependents, test coverage) that file sear
   `d1 execute --remote --file schema.sql` (**`--remote` is required**),
   queues + R2 create, `secret put` (`PROFILE_JSON`, …), `deploy`.
   Regenerate the shard first: `python worker/scripts/gen_sources.py`.
+  Verify every deploy: `python scripts/verify_deploy.py --new-only`
+  (fails on unreachable endpoints, safety-flag drift, or transport errors;
+  quiet boards warn, they don't fail).
   Morning check: Telegram alert, or `GET /recent` → **`actionable`** (not
   `eligible`, which empties out once jobs are tailored); `GET /coverage` for
   honest source numbers.

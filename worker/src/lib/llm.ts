@@ -3,6 +3,17 @@ export interface LlmResult { text: string; provider: string; model: string; usag
 
 interface ProviderDef { name: string; url: string; key: string; model: string; }
 
+/** Monthly budget window. The old 'cur' window never rotated, so budgets
+ * could never be enforced — YYYY-MM rotates automatically. */
+export function currentWindow(d = new Date()): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function numEnv(env: any, name: string, fallback: number): number {
+  const v = parseFloat(env[name]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
 function providersFromEnv(env: any): ProviderDef[] {
   const out: ProviderDef[] = [];
   if (env.AI) out.push({ name: "workers-ai", url: "", key: "", model: env.WORKERS_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct" });
@@ -16,16 +27,42 @@ function providersFromEnv(env: any): ProviderDef[] {
   return out;
 }
 
-export async function providerDisabledUntil(db: any, provider: string): Promise<number> {
-  const row: any = await db.prepare(`SELECT disabled_until FROM llm_usage WHERE provider = ? AND window = 'cur'`).bind(provider).first().catch(() => null);
+export async function providerDisabledUntil(db: any, provider: string, window?: string): Promise<number> {
+  const w = window || currentWindow();
+  const row: any = await db.prepare(`SELECT disabled_until FROM llm_usage WHERE provider = ? AND window = ?`).bind(provider, w).first().catch(() => null);
   return row?.disabled_until ?? 0;
 }
 
+async function disableProvider(db: any, provider: string, ms: number, reason: string, errors: string[]): Promise<void> {
+  const w = currentWindow();
+  await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, ?, 0, 0, ?) ON CONFLICT(provider, window) DO UPDATE SET disabled_until=excluded.disabled_until`).bind(provider, w, Date.now() + ms).run().catch(() => {});
+  errors.push(`${provider}: ${reason}, disabled ${Math.round(ms / 60000)}m`);
+}
+
+/** Enforced monthly token budget. Throws (fail safe to deterministic scoring)
+ * when the current window is exhausted. Workers-AI usage records 0 tokens,
+ * so metered providers are what this guards. */
+export async function checkTokenBudget(db: any, env: any): Promise<void> {
+  const budget = numEnv(env, "LLM_MONTHLY_TOKEN_BUDGET", 1000000);
+  const row: any = await db.prepare(`SELECT COALESCE(SUM(tokens), 0) AS t FROM llm_usage WHERE window = ?`).bind(currentWindow()).first().catch(() => ({ t: 0 }));
+  const used = row?.t ?? 0;
+  if (used >= budget) throw new Error(`LLM monthly token budget exhausted (${used}/${budget})`);
+}
+
 export async function routeChatCompletion(env: any, db: any, req: LlmRequest): Promise<LlmResult> {
+  await checkTokenBudget(db, env);
+  const maxProviders = Math.max(1, Math.floor(numEnv(env, "LLM_MAX_PROVIDERS_PER_MESSAGE", 2)));
+  const timeoutMs = numEnv(env, "LLM_TIMEOUT_MS", 8000);
   const fetcher = env._fetch || fetch;
   const errors: string[] = [];
+  let tried = 0;
   for (const p of providersFromEnv(env)) {
+    if (tried >= maxProviders) {
+      errors.push(`stopped after ${maxProviders} providers (LLM_MAX_PROVIDERS_PER_MESSAGE)`);
+      break;
+    }
     if (Date.now() < await providerDisabledUntil(db, p.name)) continue;
+    tried++;
     try {
       let text: string; let usage = { prompt: 0, completion: 0 };
       if (p.name === "workers-ai") {
@@ -33,7 +70,7 @@ export async function routeChatCompletion(env: any, db: any, req: LlmRequest): P
         text = res?.response || "";
       } else {
         const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 25_000);
+        const t = setTimeout(() => ctl.abort(), timeoutMs);
         let res: Response;
         try {
           res = await fetcher(`${p.url.replace(/\/$/, "")}/chat/completions`, {
@@ -43,11 +80,13 @@ export async function routeChatCompletion(env: any, db: any, req: LlmRequest): P
           });
         } finally { clearTimeout(t); }
         if (res.status === 401 || res.status === 403) {
-          await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, 'cur', 0, 0, ?) ON CONFLICT(provider, window) DO UPDATE SET disabled_until=excluded.disabled_until`).bind(p.name, Date.now() + 3600_000).run().catch(() => {});
-          errors.push(`${p.name}: auth ${res.status}, disabled 1h`);
+          await disableProvider(db, p.name, 3600_000, `auth ${res.status}`, errors);
           continue;
         }
-        if (res.status === 429 || res.status >= 500) { errors.push(`${p.name}: ${res.status}`); continue; }
+        if (res.status === 429 || res.status >= 500) {
+          await disableProvider(db, p.name, 600_000, `${res.status}`, errors);
+          continue;
+        }
         if (!res.ok) { errors.push(`${p.name}: ${res.status}`); continue; }
         const data: any = await res.json();
         text = data?.choices?.[0]?.message?.content || "";
@@ -62,8 +101,9 @@ export async function routeChatCompletion(env: any, db: any, req: LlmRequest): P
   throw new Error(`all LLM providers failed: ${errors.join("; ").slice(0, 300)}`);
 }
 
-export async function recordUsage(db: any, provider: string, tokens: number): Promise<void> {
-  await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, 'cur', 1, ?, 0) ON CONFLICT(provider, window) DO UPDATE SET requests=requests+1, tokens=tokens+excluded.tokens`).bind(provider, tokens).run();
+export async function recordUsage(db: any, provider: string, tokens: number, window?: string): Promise<void> {
+  const w = window || currentWindow();
+  await db.prepare(`INSERT INTO llm_usage (provider, window, requests, tokens, disabled_until) VALUES (?, ?, 1, ?, 0) ON CONFLICT(provider, window) DO UPDATE SET requests=requests+1, tokens=tokens+excluded.tokens`).bind(provider, w, tokens).run();
 }
 
 const SENSITIVE_RX = /authoriz|visa|sponsor|citizen|current salary|salary histor|compensat|pay histor|disab|veteran|gender|race|religion|arrest|convict|background check|perjury|attest|certif|swear/i;

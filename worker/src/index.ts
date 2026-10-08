@@ -298,7 +298,9 @@ export default {
             await saveApplication(db, m.hash, "FAILED", "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)", null);
             continue;
           }
-          // Master-only until per-job Rezi sync lands (see follow-up): no D1 column or artifact sync exists yet
+          // Decided (2026-10-08): Worker is master-only BY DESIGN, not pending.
+          // Rezi's API has no download/export endpoint, so no sync could move
+          // bytes; per-job Rezi variants live on the Python/browser side only.
           const key = `cvs/master/${sha}.pdf`;
           const obj = await env.CV_BUCKET.get(key);
           if (!obj) {
