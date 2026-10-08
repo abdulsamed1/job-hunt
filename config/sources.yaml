@@ -6,9 +6,11 @@ sources:
   # Standing target (user's own search URLs): backend / fullstack / software,
   # f_TPR=r43200 (12h), geoId=92000000, distance=25.
   queries:
-  - backend
-  - fullstack
-  - software
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineer
   geo_id: 92000000
   distance: 25
   tpr_seconds: 43200
@@ -25,9 +27,11 @@ sources:
   name: bayt-egypt-tech
   url: https://www.bayt.com/en/egypt/jobs/
   queries:
-  - backend
-  - fullstack
-  - software
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineer
   locations:
   - Cairo, Egypt
   - Egypt
@@ -38,8 +42,11 @@ sources:
   name: naukri-india-remote
   url: https://www.naukri.com/
   queries:
-  - backend
-  - fullstack
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineerk
   locations:
   - Remote
   max_pages_per_query: 2
@@ -49,9 +56,11 @@ sources:
   name: indeed-egypt-tech
   url: https://eg.indeed.com/
   queries:
-  - backend
-  - fullstack
-  - software
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineer
   locations:
   - Cairo, Egypt
   - Egypt
@@ -63,9 +72,11 @@ sources:
   name: freehire-remote-tech
   url: https://freehire.me/api/v1/agent/jobs/search
   queries:
-  - backend
-  - fullstack
-  - software
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineer
   locations:
   - Remote
   max_pages_per_query: 2
@@ -75,12 +86,13 @@ sources:
   name: bdjobs-bangladesh-tech
   url: https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch
   queries:
-  - backend
-  - fullstack
-  - software
+  - Backend
+  - Full stack
+  - Software Engineer
+  - Forward Deployed Engineer
+  - Frontier Deployed Engineer
   locations:
-  - Dhaka, Bangladesh
-  - Bangladesh
+  - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
   hours_old: 72

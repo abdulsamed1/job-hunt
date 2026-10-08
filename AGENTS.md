@@ -1,4 +1,4 @@
-# AGENTS.md — job-hunt working contract
+# AGENTS.md
 
 Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 
