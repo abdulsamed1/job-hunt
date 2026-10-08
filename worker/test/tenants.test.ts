@@ -162,3 +162,95 @@ describe("tenant fetchers", () => {
     }
   });
 });
+
+describe("tenant host-suffix + scheme validation (evil hosts rejected)", () => {
+  it("teamtailor accepts only *.teamtailor.com over http/https", () => {
+    // Multi-level subdomains accepted.
+    expect(teamtailorFeedUrl("https://softwarefinder.na.teamtailor.com")).toBe(
+      "https://softwarefinder.na.teamtailor.com/jobs.rss",
+    );
+    expect(teamtailorFeedUrl("https://career.teamtailor.com/jobs.rss")).toBe(
+      "https://career.teamtailor.com/jobs.rss",
+    );
+    expect(teamtailorFeedUrl("https://teamtailor.com.evil.com")).toBe("");
+    expect(teamtailorFeedUrl("https://evil.com/jobs.rss")).toBe("");
+    expect(teamtailorFeedUrl("ftp://career.teamtailor.com")).toBe("");
+  });
+
+  it("recruitee accepts only *.recruitee.com over http/https", () => {
+    expect(recruiteeApiUrl("https://make.recruitee.com/api/offers/")).toBe(
+      "https://make.recruitee.com/api/offers/",
+    );
+    expect(recruiteeApiUrl("https://make.recruitee.com.evil.com/api/offers/")).toBe("");
+    expect(recruiteeApiUrl("https://evil.com/api/offers/")).toBe("");
+    expect(recruiteeApiUrl("ftp://make.recruitee.com")).toBe("");
+  });
+
+  it("personio accepts only *.jobs.personio.de over http/https", () => {
+    expect(personioFeedUrl("https://vivid.jobs.personio.de/xml")).toBe(
+      "https://vivid.jobs.personio.de/xml",
+    );
+    expect(personioFeedUrl("https://jobs.personio.de.evil.com/xml")).toBe("");
+    expect(personioFeedUrl("https://evil.com/xml")).toBe("");
+    expect(personioFeedUrl("https://vivid.personio.de")).toBe("");
+    expect(personioFeedUrl("ftp://vivid.jobs.personio.de/xml")).toBe("");
+  });
+});
+
+describe("tenant uniform description pipeline (stripped, 4000 cap)", () => {
+  it("fetchTeamtailor strips escaped HTML and caps at 4000", async () => {
+    const big = `&lt;p&gt;Build things. &lt;b&gt;Team.&lt;/b&gt; ${"detail. ".repeat(1500)}&lt;/p&gt;`;
+    const rss = `<rss><channel><item><title>Backend Engineer</title><link>https://career.teamtailor.com/jobs/1-x</link><guid>abc-guid-123</guid><description>${big}</description></item></channel></rss>`;
+    const restore = stubFetch(() => rss);
+    try {
+      const out = await fetchTeamtailor("https://career.teamtailor.com", "teamtailor-career");
+      expect(out).toHaveLength(1);
+      expect(out[0].desc).not.toContain("<");
+      expect(out[0].desc).toHaveLength(4000);
+      expect(out[0].external_id).toBe("abc-guid-123"); // guid, not URL
+    } finally {
+      restore();
+    }
+  });
+
+  it("fetchRecruitee and fetchPersonio strip HTML with the same cap", async () => {
+    const restore = stubFetch((url) => {
+      if (url.includes("recruitee")) {
+        return {
+          offers: [{
+            id: 9, title: "Dev", careers_url: "https://make.recruitee.com/o/dev",
+            description: "<p>Hello  <b>world</b></p>", requirements: "<ul><li>x</li></ul>",
+          }],
+        };
+      }
+      return `<workzag-jobs><position><id>5</id><name>Dev</name><office>Remote</office><createdAt>2026-10-01</createdAt><jobDescriptions><jobDescription><name>R</name><value><![CDATA[<p>Know <b>things.</b></p>]]></value></jobDescription></jobDescriptions></position></workzag-jobs>`;
+    });
+    try {
+      const rec = await fetchRecruitee("https://make.recruitee.com", "recruitee-make");
+      expect(rec[0].desc).toBe("Hello world x");
+      const per = await fetchPersonio("https://vivid.jobs.personio.de", "personio-vivid");
+      expect(per[0].desc).toBe("Know things.");
+      for (const j of [...rec, ...per]) {
+        expect(j.desc.length).toBeLessThanOrEqual(4000);
+        expect(j.desc).not.toMatch(/<[a-z][^>]*>/i);
+      }
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("queue guard covers the three tenant kinds", () => {
+  it("rejects evil tenant URLs, allows configured boards", async () => {
+    const { queueGuardAllows } = await import("../src/index.js");
+    expect(queueGuardAllows({ kind: "teamtailor", name: "t", url: "https://career.teamtailor.com", cadence: "6h" })).toBe(true);
+    expect(queueGuardAllows({ kind: "teamtailor", name: "t", url: "https://evil.com/jobs.rss", cadence: "6h" })).toBe(false);
+    expect(queueGuardAllows({ kind: "recruitee", name: "r", url: "https://make.recruitee.com", cadence: "6h" })).toBe(true);
+    expect(queueGuardAllows({ kind: "recruitee", name: "r", url: "https://evil.com/api/offers/", cadence: "6h" })).toBe(false);
+    expect(queueGuardAllows({ kind: "personio", name: "p", url: "https://vivid.jobs.personio.de", cadence: "6h" })).toBe(true);
+    expect(queueGuardAllows({ kind: "personio", name: "p", url: "https://evil.com/xml", cadence: "6h" })).toBe(false);
+    // ATS guard unchanged: bad orgs still fail closed.
+    expect(queueGuardAllows({ kind: "greenhouse", name: "g", org: "evil org", cadence: "hourly" })).toBe(false);
+    expect(queueGuardAllows({ kind: "greenhouse", name: "g", org: "stripe", cadence: "hourly" })).toBe(true);
+  });
+});

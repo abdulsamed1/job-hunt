@@ -4,6 +4,7 @@
 // no browser — Worker-runnable; the tenant host is derived from the source URL.
 
 import { fetchJson, fetchText, tagText, type RawJob } from "./http.js";
+import { htmlToText } from "./ats.js";
 
 function hostOf(url: string): string {
   try {
@@ -21,17 +22,37 @@ function schemeOf(url: string): string {
   }
 }
 
-function stripTags(html: string): string {
-  return html
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function validScheme(url: string): boolean {
+  const scheme = schemeOf(url);
+  return scheme === "http:" || scheme === "https:";
+}
+
+function isTeamtailorHost(host: string): boolean {
+  return !!host && (host === "teamtailor.com" || host.endsWith(".teamtailor.com"));
+}
+
+function isRecruiteeHost(host: string): boolean {
+  return !!host && (host === "recruitee.com" || host.endsWith(".recruitee.com"));
+}
+
+function isPersonioHost(host: string): boolean {
+  return !!host && (host === "jobs.personio.de" || host.endsWith(".jobs.personio.de"));
+}
+
+/** Uniform description pipeline (mirrors Python clean_description): unescape,
+ * strip HTML tags, collapse whitespace, truncate to 4000 chars. Hash/store
+ * the result of this. */
+function cleanDesc(raw: string, fallback: string): string {
+  return htmlToText(raw || "", 4000) || fallback;
 }
 
 /** Teamtailor tenant feed: <host>/jobs.rss with <item> blocks (mirrors Python _feed_url). */
 export function teamtailorFeedUrl(sourceUrl: string): string {
-  if (!sourceUrl) return "";
+  if (!sourceUrl || !validScheme(sourceUrl)) return "";
+  // Host-suffix validation first: only *.teamtailor.com (multi-level allowed).
+  // The .rss passthrough is validated too — an evil host with a /jobs.rss
+  // path must never become a fetch URL.
+  if (!isTeamtailorHost(hostOf(sourceUrl))) return "";
   if (sourceUrl.toLowerCase().endsWith(".rss")) return sourceUrl;
   const host = hostOf(sourceUrl);
   if (!host) return "";
@@ -63,7 +84,7 @@ export async function fetchTeamtailor(sourceUrl: string, name: string, limit = 4
       url,
       source: name,
       posted_at: tagText(chunk, "pubDate"),
-      desc: (tagText(chunk, "description") || title).slice(0, 2000),
+      desc: cleanDesc(tagText(chunk, "description"), title),
       external_id: tagText(chunk, "guid") || null,
     });
   }
@@ -72,9 +93,10 @@ export async function fetchTeamtailor(sourceUrl: string, name: string, limit = 4
 
 /** Recruitee tenant API: <slug>.recruitee.com/api/offers/ -> {"offers": [...]} (mirrors Python _api_url). */
 export function recruiteeApiUrl(sourceUrl: string): string {
-  if (!sourceUrl) return "";
-  if (sourceUrl.includes("/api/offers")) return sourceUrl;
+  if (!sourceUrl || !validScheme(sourceUrl)) return "";
   const host = hostOf(sourceUrl);
+  if (!isRecruiteeHost(host)) return "";
+  if (sourceUrl.includes("/api/offers")) return sourceUrl;
   const suffix = ".recruitee.com";
   if (!host.endsWith(suffix)) return "";
   const slug = host.slice(0, -suffix.length).split(".")[0];
@@ -105,7 +127,10 @@ export async function fetchRecruitee(sourceUrl: string, name: string, limit = 40
       parts.push(String(o.locations[0].name).trim());
     }
     if (parts.length === 0 && o.location) parts.push(String(o.location).trim());
-    const descParts = [o.description, o.requirements].filter(Boolean).map((d) => stripTags(String(d)));
+    const desc = cleanDesc(
+      [o.description, o.requirements].filter(Boolean).map((d) => String(d)).join("\n"),
+      title,
+    );
     out.push({
       title,
       company: String(o.company_name || name),
@@ -113,7 +138,7 @@ export async function fetchRecruitee(sourceUrl: string, name: string, limit = 40
       url,
       source: name,
       posted_at: String(o.published_at || ""),
-      desc: (descParts.join("\n") || title).slice(0, 2000),
+      desc,
       external_id: o.id != null ? String(o.id) : null,
     });
   }
@@ -122,7 +147,10 @@ export async function fetchRecruitee(sourceUrl: string, name: string, limit = 40
 
 /** Personio tenant feed: <tenant>.jobs.personio.de/xml with <position> blocks (mirrors Python adapter). */
 export function personioFeedUrl(sourceUrl: string): string {
-  if (!sourceUrl) return "";
+  if (!sourceUrl || !validScheme(sourceUrl)) return "";
+  // Host-suffix validation: only *.jobs.personio.de (the /xml passthrough
+  // is validated too — an evil host must never qualify).
+  if (!isPersonioHost(hostOf(sourceUrl))) return "";
   if (sourceUrl.toLowerCase().replace(/\/$/, "").endsWith("/xml")) return sourceUrl;
   const host = hostOf(sourceUrl);
   if (!host) return "";
@@ -148,7 +176,7 @@ export async function fetchPersonio(sourceUrl: string, name: string, limit = 40)
     if (!id || !title) continue;
     const values: string[] = [];
     for (const m of block.match(/<value>([\s\S]*?)<\/value>/gi) || []) {
-      const t = stripTags(m);
+      const t = htmlToText(m, 4000);
       if (t) values.push(t);
     }
     const office = tagText(cleaned, "office");
@@ -161,7 +189,10 @@ export async function fetchPersonio(sourceUrl: string, name: string, limit = 40)
       url: `https://${host}/job/${id}`,
       source: name,
       posted_at: tagText(cleaned, "createdAt"),
-      desc: (values.join("\n") || `${title} — ${department} (${office})`.replace(/^[ —()]+|[ —()]+$/g, "")).slice(0, 2000),
+      desc: cleanDesc(
+        values.join("\n"),
+        `${title} — ${department} (${office})`.replace(/^[ —()]+|[ —()]+$/g, "") || title,
+      ),
       external_id: id,
     });
   }

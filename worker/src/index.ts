@@ -12,7 +12,7 @@
 
 import { fetchRssFeed } from "./adapters/rss.js";
 import { fetchArbeitnow, fetchBdJobs, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
-import { fetchPersonio, fetchRecruitee, fetchTeamtailor } from "./adapters/tenants.js";
+import { fetchPersonio, fetchRecruitee, fetchTeamtailor, personioFeedUrl, recruiteeApiUrl, teamtailorFeedUrl } from "./adapters/tenants.js";
 import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
@@ -56,6 +56,35 @@ export function linkedinEnabled(env: Env): boolean {
 
 export function activeSources(env: Env): SourceDef[] {
   return linkedinEnabled(env) ? SOURCES : SOURCES.filter((s) => s.kind !== "linkedin");
+}
+
+/**
+ * Queue guard: fail closed on spoofed ATS hosts AND smuggled orgs/URLs. ATS
+ * board URLs are rebuilt from def.org exactly as discoverSource() builds them;
+ * per-tenant fetch URLs are rebuilt by the tenant builders (host-suffix +
+ * scheme checks inside). A hostile org or URL in a queue message never
+ * reaches fetch. Exported for tests.
+ */
+export function queueGuardAllows(def: SourceDef): boolean {
+  if (
+    def.kind === "greenhouse" || def.kind === "lever" ||
+    def.kind === "ashby" || def.kind === "smartrecruiters"
+  ) {
+    const boardUrl = boardUrlForDef(def);
+    return !!boardUrl && classifyHost(boardUrl) !== "unverified";
+  }
+  if (
+    def.kind === "teamtailor" || def.kind === "recruitee" ||
+    def.kind === "personio"
+  ) {
+    const builders = {
+      teamtailor: teamtailorFeedUrl,
+      recruitee: recruiteeApiUrl,
+      personio: personioFeedUrl,
+    } as const;
+    return builders[def.kind](def.url || "") !== "";
+  }
+  return true;
 }
 
 function profileFromEnv(env: Env): Profile & { fullName: string; email: string; phone: string; summary?: string } {
@@ -181,20 +210,13 @@ export default {
         const m = msg.body as any;
         if (m.stage === "discover" && m.def) {
           const def = m.def as SourceDef;
-          // Fail closed on spoofed ATS hosts AND smuggled orgs: the board URL
-          // is rebuilt from def.org exactly as discoverSource() builds it, so
-          // a queue message carrying a hostile org or URL never reaches fetch.
+          // Fail closed on spoofed ATS hosts AND smuggled orgs/URLs
+          // (see queueGuardAllows).
           // (No workday/workable/bamboohr board kinds exist on the Worker —
           // see sources.ts — so the kind list is intentionally unchanged.)
-          if (
-            def.kind === "greenhouse" || def.kind === "lever" ||
-            def.kind === "ashby" || def.kind === "smartrecruiters"
-          ) {
-            const boardUrl = boardUrlForDef(def);
-            if (!boardUrl || classifyHost(boardUrl) === "unverified") {
-              console.log(`skipping source with unverified board URL: ${def.name}`);
-              continue;
-            }
+          if (!queueGuardAllows(def)) {
+            console.log(`skipping source with unverified board URL: ${def.name}`);
+            continue;
           }
           let jobs: RawJob[] = [];
           let healthRecorded = false;
