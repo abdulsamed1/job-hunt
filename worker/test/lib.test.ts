@@ -145,7 +145,7 @@ describe("ashby index fan-out", () => {
 describe("generated source shard", () => {
   it("ships the full source set with hourly shard under the batch cap", async () => {
     const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
-    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBe(325);
+    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBe(372);
     expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(200);
     const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");
     expect(hourly.length).toBeGreaterThan(0);

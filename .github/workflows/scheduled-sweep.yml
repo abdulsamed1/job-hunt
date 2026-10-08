@@ -11,7 +11,7 @@ on:
         type: boolean
         default: false
       full:
-        description: "Full 325-source sweep (LinkedIn sources are disabled)"
+        description: "Full 372-source sweep (LinkedIn sources are disabled)"
         type: boolean
         default: false
 

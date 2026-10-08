@@ -3,8 +3,6 @@ sources:
 - adapter: linkedin
   name: linkedin_geo_recent
   url: https://www.linkedin.com/jobs/
-  # Standing target (user's own search URLs): backend / fullstack / software,
-  # f_TPR=r43200 (12h), geoId=92000000, distance=25.
   queries:
   - Backend
   - Full stack
@@ -17,11 +15,6 @@ sources:
   remote_only: false
   max_pages_per_query: 2
   target_jobs_count: 60
-  # Safety posture (ai-job-search best practices): LinkedIn guest endpoints are
-  # personal-use only per LinkedIn ToS — keep volume low, dry-run by default,
-  # and never auto-submit without explicit human approval.
-  # Bot must verify target job + modal company before any submit
-  # (wrong-job guard in automation/browser.py).
   linkedin_require_approval: true
 - adapter: bayt
   name: bayt-egypt-tech
@@ -987,7 +980,6 @@ sources:
 - adapter: web
   name: Remotive
   url: https://remotive.com/
-# --- Board expansion (verified 2026-10-01): RSS feeds, ATS boards, aggregators ---
 - adapter: feed
   name: cryptojobslist-feed
   url: https://api.cryptojobslist.com/jobs.rss
@@ -1037,9 +1029,6 @@ sources:
 - adapter: web
   name: web3-career-jsonld
   url: https://web3.career/
-# --- Slice 5 world coverage (proven tenants only; explicit adapter keys required:
-# only personio hosts sit outside the ATS_APEXES allowlist — teamtailor.com and
-# recruitee.com are apex-listed, *.jobs.personio.de is not) ---
 - adapter: teamtailor
   name: teamtailor-career
   url: https://career.teamtailor.com
@@ -1094,3 +1083,567 @@ sources:
   - software
   locations:
   - Remote
+- adapter: greenhouse
+  name: acquia
+  url: https://boards.greenhouse.io/acquia
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: alphasights
+  url: https://boards.greenhouse.io/alphasights
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: andela
+  url: https://jobs.ashbyhq.com/andela
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: ark
+  url: https://boards.greenhouse.io/ark
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: articulate
+  url: https://jobs.lever.co/articulate
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: britecore
+  url: https://jobs.lever.co/britecore
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: buffer
+  url: https://jobs.ashbyhq.com/buffer
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: calibre
+  url: https://jobs.ashbyhq.com/calibre
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: capchase
+  url: https://jobs.ashbyhq.com/capchase
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: caremessage
+  url: https://jobs.ashbyhq.com/caremessage
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: close
+  url: https://jobs.ashbyhq.com/close
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: coalition
+  url: https://boards.greenhouse.io/coalition
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: collabora
+  url: https://jobs.lever.co/collabora
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: customerio
+  url: https://boards.greenhouse.io/customerio
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: dashlane
+  url: https://boards.greenhouse.io/dashlane
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: datacamp
+  url: https://boards.greenhouse.io/datacamp
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: fastly
+  url: https://boards.greenhouse.io/fastly
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: godaddy
+  url: https://boards.greenhouse.io/godaddy
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: gohiring
+  url: https://boards.greenhouse.io/gohiring
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: intercom
+  url: https://boards.greenhouse.io/intercom
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: kinsta
+  url: https://jobs.lever.co/kinsta
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: labelbox
+  url: https://boards.greenhouse.io/labelbox
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: lightspeed
+  url: https://jobs.ashbyhq.com/lightspeed
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: litmus
+  url: https://jobs.ashbyhq.com/litmus
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: liveperson
+  url: https://boards.greenhouse.io/liveperson
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: testgorilla
+  url: https://jobs.ashbyhq.com/testgorilla
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: zapier
+  url: https://jobs.ashbyhq.com/zapier
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: platformsh
+  url: https://boards.greenhouse.io/platformsh
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: securityscorecard
+  url: https://boards.greenhouse.io/securityscorecard
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: metalab
+  url: https://boards.greenhouse.io/metalab
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: okta
+  url: https://boards.greenhouse.io/okta
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: renofi
+  url: https://jobs.lever.co/renofi
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: scandit
+  url: https://boards.greenhouse.io/scandit
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: streamnative
+  url: https://boards.greenhouse.io/streamnative
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: turing
+  url: https://boards.greenhouse.io/turing
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: quora
+  url: https://jobs.ashbyhq.com/quora
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: rocketchat
+  url: https://boards.greenhouse.io/rocketchat
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: twilio
+  url: https://boards.greenhouse.io/twilio
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: mindful
+  url: https://jobs.lever.co/mindful
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: mux
+  url: https://jobs.ashbyhq.com/mux
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: percona
+  url: https://jobs.ashbyhq.com/percona
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: primer
+  url: https://jobs.ashbyhq.com/primer
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: recharge
+  url: https://jobs.ashbyhq.com/recharge
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: udacity
+  url: https://boards.greenhouse.io/udacity
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: wizeline
+  url: https://boards.greenhouse.io/wizeline
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: mixmax
+  url: https://boards.greenhouse.io/mixmax
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: greenhouse
+  name: openzeppelin
+  url: https://boards.greenhouse.io/openzeppelin
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
