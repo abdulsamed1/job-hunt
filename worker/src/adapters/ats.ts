@@ -165,6 +165,7 @@ export async function fetchIndeed(q: IndeedQuery, limit = 40): Promise<RawJob[]>
 /** Strip HTML (including double-escaped entities) down to plain text. */
 export function htmlToText(raw: string, max = 4000): string {
   return raw
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ")
     .replace(/<[^>]+>/g, " ")

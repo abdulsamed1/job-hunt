@@ -12,7 +12,10 @@ export type SourceKind =
   | "linkedin"
   | "indeed"
   | "freehire"
-  | "bdjobs";
+  | "bdjobs"
+  | "teamtailor"
+  | "recruitee"
+  | "personio";
 
 export type Cadence = "hourly" | "6h";
 

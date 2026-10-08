@@ -4,7 +4,7 @@
 
 import type { SourceDef } from "./sources.js";
 
-// yaml_total=319 worker_supported=235 python_only=84 hourly=18
+// yaml_total=325 worker_supported=241 python_only=84 hourly=18
 
 export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "url": "https://www.linkedin.com/jobs/", "queries": ["backend", "fullstack", "software"], "locations": ["Remote"], "tprSeconds": 43200},
@@ -242,6 +242,12 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "greenhouse", "name": "consensys-board", "cadence": "hourly", "org": "consensys"},
   {"kind": "ashby", "name": "stellar-board", "cadence": "hourly", "org": "stellar"},
   {"kind": "ashby-index", "name": "solana-ecosystem-index", "cadence": "6h", "url": "https://jobs.solana.com/", "maxOrgs": 8},
+  {"kind": "teamtailor", "name": "teamtailor-career", "cadence": "6h", "url": "https://career.teamtailor.com"},
+  {"kind": "teamtailor", "name": "teamtailor-softwarefinder-na", "cadence": "6h", "url": "https://softwarefinder.na.teamtailor.com"},
+  {"kind": "recruitee", "name": "recruitee-make", "cadence": "6h", "url": "https://make.recruitee.com"},
+  {"kind": "recruitee", "name": "recruitee-happeo", "cadence": "6h", "url": "https://happeo.recruitee.com"},
+  {"kind": "recruitee", "name": "recruitee-radix", "cadence": "6h", "url": "https://radix.recruitee.com"},
+  {"kind": "personio", "name": "personio-vivid", "cadence": "6h", "url": "https://vivid.jobs.personio.de"},
 ];
 
 export interface PythonOnlySource {

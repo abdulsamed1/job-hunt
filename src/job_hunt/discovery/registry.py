@@ -24,7 +24,10 @@ from job_hunt.discovery.adapters.indeed import IndeedAdapter
 from job_hunt.discovery.adapters.lever import LeverAdapter
 from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
 from job_hunt.discovery.adapters.naukri import NaukriAdapter
+from job_hunt.discovery.adapters.personio import PersonioAdapter
+from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
 from job_hunt.discovery.adapters.smartrecruiters import SmartRecruitersAdapter
+from job_hunt.discovery.adapters.teamtailor import TeamtailorAdapter
 from job_hunt.discovery.adapters.workable import WorkableAdapter
 from job_hunt.discovery.adapters.workday import WorkdayAdapter
 from job_hunt.discovery.adapters.ziprecruiter import ZipRecruiterAdapter
@@ -47,6 +50,7 @@ class SourceRegistry:
             AshbyAdapter(),
             AshbyIndexAdapter(),
             SmartRecruitersAdapter(),
+            TeamtailorAdapter(),
             WorkdayAdapter(),
             WorkableAdapter(),
             BambooHRAdapter(),
@@ -54,6 +58,8 @@ class SourceRegistry:
             LinkedInAdapter(),
             BaytAdapter(),
             NaukriAdapter(),
+            PersonioAdapter(),
+            RecruiteeAdapter(),
             IndeedAdapter(),
             FreehireAdapter(),
             BdJobsAdapter(),
@@ -135,13 +141,16 @@ class SourceRegistry:
             return []
 
         url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
-        if url:
-            verdict = await self._robots_verdict(url, client)
+        # Gate the ADAPTER's actual fetch/feed URL (tenant adapters derive
+        # jobs.rss / /api/offers/ /xml from the entry), not the entry bare host.
+        gate_url = adapter.gate_url(entry) or url
+        if gate_url:
+            verdict = await self._robots_verdict(gate_url, client)
             if verdict is False:
-                logger.warning("Robots disallowed source, skipping: %s (%s)", name, url)
+                logger.warning("Robots disallowed source, skipping: %s (%s)", name, gate_url)
                 return []
             if verdict is None:
-                logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, url)
+                logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, gate_url)
 
         async with semaphore:
             try:

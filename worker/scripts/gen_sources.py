@@ -90,6 +90,11 @@ def build() -> tuple[list[dict], list[dict], dict]:
         elif adapter in {"freehire", "bdjobs"}:
             kind, org = adapter, ""
             cadence = "6h"
+        elif adapter in {"teamtailor", "recruitee", "personio"}:
+            # Per-tenant boards (Slice 5): plain RSS/XML/JSON GETs, no TLS
+            # impersonation or RSA — Worker-runnable; tenant derived from url.
+            kind, org = adapter, ""
+            cadence = "6h"
         elif adapter in PYTHON_ONLY_ADAPTERS:
             python_only.append({"name": name, "adapter": adapter, "url": base["url"]})
             continue
@@ -100,7 +105,8 @@ def build() -> tuple[list[dict], list[dict], dict]:
         record = {"kind": kind, "name": name, "cadence": cadence}
         if org:
             record["org"] = org
-        if base["url"] and kind in {"rss", "linkedin", "indeed", "ashby-index", "freehire", "bdjobs"}:
+        if base["url"] and kind in {"rss", "linkedin", "indeed", "ashby-index", "freehire", "bdjobs",
+                                   "teamtailor", "recruitee", "personio"}:
             record["url"] = base["url"]
         if kind in {"freehire", "bdjobs"}:
             record["queries"] = entry.get("queries") or ["backend", "fullstack", "software"]

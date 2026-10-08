@@ -1025,3 +1025,60 @@ sources:
 - adapter: web
   name: web3-career-jsonld
   url: https://web3.career/
+# --- Slice 5 world coverage (proven tenants only; explicit adapter keys required:
+# only personio hosts sit outside the ATS_APEXES allowlist — teamtailor.com and
+# recruitee.com are apex-listed, *.jobs.personio.de is not) ---
+- adapter: teamtailor
+  name: teamtailor-career
+  url: https://career.teamtailor.com
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+- adapter: teamtailor
+  name: teamtailor-softwarefinder-na
+  url: https://softwarefinder.na.teamtailor.com
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+- adapter: recruitee
+  name: recruitee-make
+  url: https://make.recruitee.com
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+- adapter: recruitee
+  name: recruitee-happeo
+  url: https://happeo.recruitee.com
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+- adapter: recruitee
+  name: recruitee-radix
+  url: https://radix.recruitee.com
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+- adapter: personio
+  name: personio-vivid
+  url: https://vivid.jobs.personio.de
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote

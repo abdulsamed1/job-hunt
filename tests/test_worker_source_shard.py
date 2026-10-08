@@ -58,8 +58,32 @@ def test_ats_and_feed_sources_are_all_worker_runnable():
     data = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
     worker_names = {s["name"] for s in _load_generator().build()[0]}
     for entry in data["sources"]:
-        if entry["adapter"] in {"greenhouse", "lever", "ashby", "feed", "smartrecruiters", "ashby-index"}:
+        if entry["adapter"] in {"greenhouse", "lever", "ashby", "feed", "smartrecruiters", "ashby-index",
+                                "teamtailor", "recruitee", "personio"}:
             assert entry["name"] in worker_names, f"{entry['name']} ({entry['adapter']}) missing from Worker"
+
+
+def test_slice5_tenant_boards_registered_with_explicit_adapters():
+    """Slice 5 proven tenants: one entry each, explicit adapter keys (their
+    hosts are not in the ATS_APEXES allowlist), all Worker-runnable."""
+    expected = {
+        "teamtailor-career": "teamtailor",
+        "teamtailor-softwarefinder-na": "teamtailor",
+        "recruitee-make": "recruitee",
+        "recruitee-happeo": "recruitee",
+        "recruitee-radix": "recruitee",
+        "personio-vivid": "personio",
+    }
+    data = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
+    by_name = {e["name"]: e for e in data["sources"]}
+    worker, python_only, _stats = _load_generator().build()
+    worker_names = {s["name"] for s in worker}
+    python_only_names = {s["name"] for s in python_only}
+    for name, adapter in expected.items():
+        assert name in by_name, f"{name} missing from sources.yaml"
+        assert by_name[name]["adapter"] == adapter, f"{name} lacks explicit adapter key"
+        assert name in worker_names, f"{name} not Worker-runnable"
+        assert name not in python_only_names, f"{name} wrongly python-only"
 
 
 def test_python_only_sources_are_benign():

@@ -2,7 +2,7 @@ name: scheduled-sweep
 
 on:
   schedule:
-    # Daily full 319-source 24h-remote sweep (02:00 UTC)
+    # Daily full 325-source 24h-remote sweep (02:00 UTC)
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
@@ -11,7 +11,7 @@ on:
         type: boolean
         default: false
       full:
-        description: "Full 319-source sweep (LinkedIn sources are disabled)"
+        description: "Full 325-source sweep (LinkedIn sources are disabled)"
         type: boolean
         default: false
 

@@ -20,9 +20,9 @@ python worker/scripts/gen_sources.py --check  # fail on drift (used by tests)
 
 | Split | Count | Why |
 |---|---|---|
-| Worker-runnable | **235** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin (disabled), indeed, ashby-index, freehire, bdjobs |
+| Worker-runnable | **241** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin (disabled), indeed, ashby-index, freehire, bdjobs, teamtailor 2, recruitee 3, personio 1 |
 | Python-only | **84** | Bayt (TLS impersonation), Naukri (RSA handshake), HTML scraping (`web`) |
-| Total in `sources.yaml` | **319** | every source accounted for, none silently dropped |
+| Total in `sources.yaml` | **325** | every source accounted for, none silently dropped |
 
 ### Measured yield (live probe, 2026-10-02)
 
@@ -53,7 +53,8 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 ## Layout
 
 - `src/adapters/` — RSS, JSON boards (RemoteOK/Remotive/Arbeitnow/Jobicy),
-  Greenhouse/Lever/Ashby/SmartRecruiters APIs, LinkedIn guest shard (disabled via `LINKEDIN_ENABLED`)
+  Greenhouse/Lever/Ashby/SmartRecruiters APIs, per-tenant boards (`tenants.ts`: Teamtailor/Recruitee/Personio),
+  LinkedIn guest shard (disabled via `LINKEDIN_ENABLED`)
 - `src/lib/` — hash, freshness, gates, deterministic scoring, honest Q&A mapping
 - `src/stages/pipeline.ts` — evaluate, tailor (pdf-lib PDF → R2), ATS apply
 - `src/state.ts` — D1 state machine (mirrors the SQLite lifecycle)
