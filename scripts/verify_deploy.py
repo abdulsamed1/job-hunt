@@ -47,8 +47,12 @@ def req(method: str, path: str, payload=None, timeout: int = 60):
 
 def new_sources_since_main() -> list:
     try:
+        root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
         out = subprocess.run(
-            ["git", "diff", "origin/main...HEAD", "--", "config/sources.yaml"],
+            ["git", "-C", root, "diff", "origin/main...HEAD", "--", "config/sources.yaml"],
             capture_output=True, text=True, check=True,
         ).stdout
     except Exception:
