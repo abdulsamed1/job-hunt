@@ -12,7 +12,7 @@
 
 import { fetchRssFeed } from "./adapters/rss.js";
 import { fetchArbeitnow, fetchBdJobs, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "./adapters/boards.js";
-import { fetchPersonio, fetchRecruitee, fetchTeamtailor, personioFeedUrl, recruiteeApiUrl, teamtailorFeedUrl } from "./adapters/tenants.js";
+import { bamboohrListUrl, fetchBamboohr, fetchPersonio, fetchRecruitee, fetchTeamtailor, fetchWorkable, personioFeedUrl, recruiteeApiUrl, teamtailorFeedUrl, workableApiUrl } from "./adapters/tenants.js";
 import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "./adapters/ats.js";
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
@@ -75,12 +75,15 @@ export function queueGuardAllows(def: SourceDef): boolean {
   }
   if (
     def.kind === "teamtailor" || def.kind === "recruitee" ||
-    def.kind === "personio"
+    def.kind === "personio" || def.kind === "bamboohr" ||
+    def.kind === "workable"
   ) {
     const builders = {
       teamtailor: teamtailorFeedUrl,
       recruitee: recruiteeApiUrl,
       personio: personioFeedUrl,
+      bamboohr: bamboohrListUrl,
+      workable: workableApiUrl,
     } as const;
     return builders[def.kind](def.url || "") !== "";
   }
@@ -171,6 +174,8 @@ async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
     case "teamtailor": return fetchTeamtailor(def.url || "", def.name);
     case "recruitee": return fetchRecruitee(def.url || "", def.name);
     case "personio": return fetchPersonio(def.url || "", def.name);
+    case "bamboohr": return fetchBamboohr(def.url || "", def.name);
+    case "workable": return fetchWorkable(def.url || "", def.name);
     case "linkedin": {
       if (!linkedinEnabled(env)) return [];
       const out: RawJob[] = [];
