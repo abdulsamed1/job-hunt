@@ -120,14 +120,7 @@ function profileFromEnv(env: Env): Profile & { fullName: string; email: string; 
   }
 }
 
-async function alert(env: Env, text: string): Promise<void> {
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: text.slice(0, 3000) }),
-  });
-}
+import { notifyJobOnce, type JobOutcome } from "./lib/notify.js";
 
 async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
   switch (def.kind) {
@@ -289,13 +282,15 @@ export default {
           }
         } else if (m.stage === "tailor-apply" && m.hash) {
           const row: any = await db.prepare(
-            `SELECT canonical_hash, title, company, location, url, source, description FROM jobs WHERE canonical_hash = ?`,
+            `SELECT canonical_hash, title, company, location, url, source, description, score FROM jobs WHERE canonical_hash = ?`,
           ).bind(m.hash).first();
           if (!row || !row.url) continue;
           await setJobState(db, m.hash, "TAILORED", "worker tailor");
           const sha = (env.MASTER_RESUME_SHA || "").trim();
+          const failDetailSha = "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)";
           if (!sha) {
-            await saveApplication(db, m.hash, "FAILED", "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)", null);
+            await saveApplication(db, m.hash, "FAILED", failDetailSha, null);
+            await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetailSha);
             continue;
           }
           // Decided (2026-10-08): Worker is master-only BY DESIGN, not pending.
@@ -304,7 +299,9 @@ export default {
           const key = `cvs/master/${sha}.pdf`;
           const obj = await env.CV_BUCKET.get(key);
           if (!obj) {
-            await saveApplication(db, m.hash, "FAILED", `resume bytes missing: ${key}`, null);
+            const failDetail = `resume bytes missing: ${key}`;
+            await saveApplication(db, m.hash, "FAILED", failDetail, null);
+            await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetail);
             continue;
           }
           const resumeBytes = new Uint8Array(await obj.arrayBuffer());
@@ -323,7 +320,9 @@ export default {
             (board?.kind === "greenhouse" && env.APPROVE_GREENHOUSE === "true") ||
             (board?.kind === "lever" && env.APPROVE_LEVER === "true");
           if (!board) {
-            await saveApplication(db, m.hash, "APPLICATION_STARTED", "non-ATS board: queued for human review", key);
+            const queuedDetail = "non-ATS board: queued for human review";
+            await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
+            await notifyJobOnce(db, env, m.hash, row, "APPLICATION_STARTED", queuedDetail);
             continue;
           }
           const names = profile.fullName.split(/\s+/);
@@ -336,10 +335,9 @@ export default {
             },
             { dryRun: !live, approved },
           );
-          await saveApplication(
-            db, m.hash, result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED",
-            result.detail, key,
-          );
+          const finalState: JobOutcome = result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
+          await saveApplication(db, m.hash, finalState, result.detail, key);
+          await notifyJobOnce(db, env, m.hash, row, finalState, result.detail);
         }
       } catch (e) {
         console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);
