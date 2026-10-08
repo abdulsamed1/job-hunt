@@ -269,3 +269,307 @@ def test_resolver_unresolving_company_is_manual():
 
     assert mod.resolve_company("Nonexistent Corp", fetch=fake_fetch) is None
     assert mod.format_result("Nonexistent Corp", None) == "MANUAL: Nonexistent Corp"
+
+
+# --- Final fix wave: I1 host-suffix validation ---
+
+def test_teamtailor_feed_url_validates_host():
+    adapter = TeamtailorAdapter()
+    # Multi-level subdomains accepted.
+    assert adapter._feed_url({"url": "https://softwarefinder.na.teamtailor.com"}) == (
+        "https://softwarefinder.na.teamtailor.com/jobs.rss"
+    )
+    assert adapter._feed_url({"url": "https://career.teamtailor.com/jobs.rss"}) == (
+        "https://career.teamtailor.com/jobs.rss"
+    )
+    # Evil hosts rejected — including the .rss passthrough.
+    assert adapter._feed_url({"url": "https://teamtailor.com.evil.com"}) == ""
+    assert adapter._feed_url({"url": "https://evil-teamtailor.com/jobs.rss"}) == ""
+    assert adapter._feed_url({"url": "https://evil.com/jobs.rss"}) == ""
+    assert adapter._feed_url({"url": "not a url"}) == ""
+
+
+def test_personio_feed_url_validates_host():
+    adapter = PersonioAdapter()
+    assert adapter._feed_url({"url": "https://vivid.jobs.personio.de"}) == (
+        "https://vivid.jobs.personio.de/xml"
+    )
+    assert adapter._feed_url({"url": "https://vivid.jobs.personio.de/xml"}) == (
+        "https://vivid.jobs.personio.de/xml"
+    )
+    # Evil hosts rejected — including the /xml passthrough.
+    assert adapter._feed_url({"url": "https://jobs.personio.de.evil.com/xml"}) == ""
+    assert adapter._feed_url({"url": "https://evil.com/xml"}) == ""
+    assert adapter._feed_url({"url": "https://vivid.personio.de"}) == ""
+
+
+def test_recruitee_api_url_validates_host():
+    adapter = RecruiteeAdapter()
+    assert adapter._api_url({"url": "https://make.recruitee.com"}) == (
+        "https://make.recruitee.com/api/offers/"
+    )
+    # Evil hosts rejected — including the /api/offers passthrough.
+    assert adapter._api_url({"url": "https://make.recruitee.com.evil.com/api/offers/"}) == ""
+    assert adapter._api_url({"url": "https://evil.com/api/offers/"}) == ""
+    assert adapter._api_url({"url": "https://evil.com"}) == ""
+
+
+@pytest.mark.asyncio
+async def test_tenant_adapters_fetch_nothing_for_evil_hosts():
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text="x"))
+    ) as client:
+        assert await TeamtailorAdapter().fetch({"url": "https://evil.com/jobs.rss"}, client) == []
+        assert await PersonioAdapter().fetch({"url": "https://evil.com/xml"}, client) == []
+        assert await RecruiteeAdapter().fetch({"url": "https://evil.com/api/offers/"}, client) == []
+
+
+# --- Final fix wave: I3 personio salary types ---
+
+def _personio_xml_with_salary(salary_block: str) -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+<position>
+    <id>1</id>
+    <name>Engineer</name>
+    <office>Remote</office>
+    <jobDescriptions><jobDescription><name>Role</name><value><![CDATA[<p>Work.</p>]]></value></jobDescription></jobDescriptions>
+    <createdAt>2026-10-01T00:00:00Z</createdAt>
+    {salary_block}
+</position>
+</workzag-jobs>
+"""
+
+
+async def _fetch_personio_salary(xml: str):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=xml))
+    ) as client:
+        postings = await PersonioAdapter().fetch(
+            {"name": "V", "url": "https://vivid.jobs.personio.de/xml"}, client
+        )
+    assert len(postings) == 1
+    return postings[0]
+
+
+@pytest.mark.asyncio
+async def test_personio_salary_yearly_kept():
+    p = await _fetch_personio_salary(
+        _personio_xml_with_salary(
+            "<salaryInformation><min>30000</min><max>40000</max>"
+            "<currencyCode>EUR</currencyCode><type>yearly</type></salaryInformation>"
+        )
+    )
+    assert (p.salary_min, p.salary_max, p.salary_currency, p.salary_source) == (
+        30000.0, 40000.0, "EUR", "stated",
+    )
+
+
+@pytest.mark.asyncio
+async def test_personio_salary_monthly_annualized():
+    p = await _fetch_personio_salary(
+        _personio_xml_with_salary(
+            "<salaryInformation><min>3000</min><max>4000</max>"
+            "<currencyCode>EUR</currencyCode><type>monthly</type></salaryInformation>"
+        )
+    )
+    assert (p.salary_min, p.salary_max, p.salary_source) == (36000.0, 48000.0, "stated")
+
+
+@pytest.mark.asyncio
+async def test_personio_salary_hourly_annualized():
+    p = await _fetch_personio_salary(
+        _personio_xml_with_salary(
+            "<salaryInformation><min>50</min>"
+            "<currencyCode>USD</currencyCode><type>hourly</type></salaryInformation>"
+        )
+    )
+    assert (p.salary_min, p.salary_max, p.salary_source) == (104000.0, None, "stated")
+
+
+@pytest.mark.asyncio
+async def test_personio_salary_unknown_type_dropped():
+    p = await _fetch_personio_salary(
+        _personio_xml_with_salary(
+            "<salaryInformation><min>500</min><max>700</max>"
+            "<currencyCode>EUR</currencyCode><type>weekly</type></salaryInformation>"
+        )
+    )
+    assert (p.salary_min, p.salary_max, p.salary_source) == (None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_personio_salary_source_only_with_amounts():
+    p = await _fetch_personio_salary(_personio_xml_with_salary(""))
+    assert (p.salary_min, p.salary_max, p.salary_source) == (None, None, None)
+
+
+# --- Final fix wave: I4 uniform description pipeline ---
+
+TEAMTAILOR_LONG_RSS = (
+    """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><item>"""
+    """<title>Backend Engineer</title>"""
+    """<link>https://career.teamtailor.com/jobs/1-backend-engineer</link>"""
+    """<guid>4ff07fd5-3ac0-4333-8f4c-955380396321</guid>"""
+    """<description>&lt;p&gt;Build things with Python. &lt;b&gt;Great team.&lt;/b&gt; """
+    + "detail. " * 1500
+    + """&lt;/p&gt;</description></item></channel></rss>"""
+)
+
+
+@pytest.mark.asyncio
+async def test_description_pipeline_stripped_and_capped():
+    async def tt_handler(request):
+        return httpx.Response(200, text=TEAMTAILOR_LONG_RSS)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(tt_handler)) as client:
+        postings = await TeamtailorAdapter().fetch(
+            {"name": "Teamtailor", "url": "https://career.teamtailor.com/jobs.rss"}, client
+        )
+    assert len(postings) == 1
+    p = postings[0]
+    assert "<" not in p.description and ">" not in p.description
+    assert len(p.description) == 4000
+    assert p.external_id == "4ff07fd5-3ac0-4333-8f4c-955380396321"  # M3: guid, not URL
+    from job_hunt.dedup import content_hash
+
+    assert p.content_hash == content_hash(p.description)  # hash of stored text
+
+    async def rec_handler(request):
+        return httpx.Response(200, json={
+            "offers": [{
+                "id": 7, "title": "Dev", "careers_url": "https://make.recruitee.com/o/dev",
+                "description": "<p>Hello  <b>world</b></p>",
+                "requirements": "<ul><li>x</li></ul>",
+            }]
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(rec_handler)) as client:
+        postings = await RecruiteeAdapter().fetch(
+            {"name": "Make", "url": "https://make.recruitee.com/api/offers/"}, client
+        )
+    assert postings[0].description == "Hello world x"
+
+
+@pytest.mark.asyncio
+async def test_shared_ua_across_tenant_adapters():
+    from job_hunt.discovery.base import BROWSER_UA
+
+    seen = {}
+
+    def handler(name):
+        async def _h(request):
+            seen[name] = request.headers.get("user-agent")
+            if name == "recruitee":
+                return httpx.Response(200, json={"offers": []})
+            if name == "personio":
+                return httpx.Response(200, text="<workzag-jobs></workzag-jobs>")
+            return httpx.Response(200, text="<rss/>")
+
+        return _h
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler("teamtailor"))) as client:
+        await TeamtailorAdapter().fetch({"url": "https://career.teamtailor.com"}, client)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler("recruitee"))) as client:
+        await RecruiteeAdapter().fetch({"url": "https://make.recruitee.com"}, client)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler("personio"))) as client:
+        await PersonioAdapter().fetch({"url": "https://vivid.jobs.personio.de"}, client)
+    assert set(seen.values()) == {BROWSER_UA}
+
+
+# --- Final fix wave: M4 robots gate on the adapter fetch URL ---
+
+@pytest.mark.asyncio
+async def test_robots_gate_evaluates_adapter_feed_url():
+    from job_hunt.discovery.registry import SourceRegistry
+
+    async def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(
+                200, text="User-agent: *\nDisallow: /jobs.rss\n"
+            )
+        return httpx.Response(200, text="<rss/>")
+
+    import asyncio
+
+    reg = SourceRegistry()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        # Entry bare host "/" is allowed, but the adapter's feed URL
+        # /jobs.rss is disallowed → the source must be skipped.
+        out = await reg.scan_source(
+            {"name": "t", "adapter": "teamtailor", "url": "https://career.teamtailor.com"},
+            client,
+            asyncio.Semaphore(1),
+        )
+    assert out == []
+
+
+# --- Final fix wave: I6 hydrated SPA ---
+
+def test_stash_nested_braces_parse():
+    from job_hunt.discovery.adapters.web import extract_hydrated_jobs
+
+    html = (
+        '<html><script>var Stash = {"jobsearch": {"result_app": {"searchResponse": '
+        '{"results": [{"title": "Backend Engineer", "company": "Acme", '
+        '"url": "https://x/jobs/1", "meta": {"tags": ["a}b", "c"]}}]}}}};</script></html>'
+    )
+    jobs = extract_hydrated_jobs(html)
+    assert len(jobs) == 1 and jobs[0]["title"] == "Backend Engineer"
+
+
+def test_hydrated_posting_skips_urlless_and_unknown_location():
+    from job_hunt.discovery.adapters.web import UniversalWebAdapter
+
+    adapter = UniversalWebAdapter()
+    assert adapter._hydrated_dict_to_posting({"title": "No URL"}, "https://x/", "Portal") is None
+    p = adapter._hydrated_dict_to_posting(
+        {"title": "Dev", "company": "Acme", "url": "https://x/jobs/9"},
+        "https://x/",
+        "Portal",
+    )
+    assert p is not None
+    assert p.location == "Unknown"  # never defaulted to "Remote"
+    assert p.external_id == "https://x/jobs/9"
+    assert p.source == "web" and p.source_name == "web"  # fixed adapter id
+
+
+# --- Final fix wave: I8 resolver fallback + dead-board 200-clears ---
+
+def test_resolver_unstripped_slug_fallback():
+    mod = _load_resolver()
+    assert mod.slugify("Acme Inc.", strip_suffixes=False) == "acme-inc"
+
+    def fake_fetch(url):
+        if url.startswith("https://api.lever.co/v0/postings/acme-inc"):
+            return (200, [{"id": "abc123"}])
+        return (404, [])
+
+    assert mod.resolve_company("Acme Inc.", fetch=fake_fetch) == ("lever", "acme-inc", 1)
+
+
+def test_resolver_records_404s_for_both_variants_only_after_both_miss(tmp_path):
+    mod = _load_resolver()
+    mem = str(tmp_path / "dead.json")
+
+    def fake_fetch(url):
+        return (404, [])
+
+    assert mod.resolve_company("Acme Inc.", fetch=fake_fetch, mem_path=mem) is None
+    from job_hunt.discovery.dead_boards import _load
+
+    data = _load(mem)
+    assert data["greenhouse:acme"]["misses"] == 1
+    assert data["greenhouse:acme-inc"]["misses"] == 1
+
+
+def test_dead_boards_200_clears_misses(tmp_path):
+    from job_hunt.discovery.dead_boards import _load, record_result, should_skip
+
+    mem = tmp_path / "dead.json"
+    for _ in range(3):
+        record_result(str(mem), "greenhouse:acme", 404)
+    assert should_skip(str(mem), "greenhouse:acme")
+    record_result(str(mem), "greenhouse:acme", 200)
+    assert _load(str(mem)).get("greenhouse:acme") is None
+    assert not should_skip(str(mem), "greenhouse:acme")

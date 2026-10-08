@@ -1026,7 +1026,8 @@ sources:
   name: web3-career-jsonld
   url: https://web3.career/
 # --- Slice 5 world coverage (proven tenants only; explicit adapter keys required:
-# teamtailor/recruitee/personio hosts are not in the ATS_APEXES allowlist) ---
+# only personio hosts sit outside the ATS_APEXES allowlist — teamtailor.com and
+# recruitee.com are apex-listed, *.jobs.personio.de is not) ---
 - adapter: teamtailor
   name: teamtailor-career
   url: https://career.teamtailor.com

@@ -22,7 +22,7 @@ from job_hunt.dedup import (
     content_hash,
     normalize_url,
 )
-from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.base import DiscoveryAdapter, BROWSER_UA, clean_description
 from job_hunt.discovery.salary_parse import parse_salary_text
 from job_hunt.models import JobPosting
 
@@ -45,17 +45,24 @@ class TeamtailorAdapter(DiscoveryAdapter):
         url = (entry.get("url") or entry.get("careers_url") or "").strip()
         if not url:
             return ""
-        if url.lower().endswith(".rss"):
-            return url
         try:
             parts = urlsplit(url)
-            host = parts.hostname or ""
-            if not host:
+            host = (parts.hostname or "").lower()
+            # Host-suffix validation: only *.teamtailor.com (multi-level
+            # subdomains allowed, e.g. softwarefinder.na.teamtailor.com).
+            # The .rss passthrough is validated too — an evil host with a
+            # /jobs.rss path must never become a fetch URL.
+            if not host or not (host == "teamtailor.com" or host.endswith(".teamtailor.com")):
                 return ""
+            if url.lower().endswith(".rss"):
+                return url
             scheme = parts.scheme or "https"
             return f"{scheme}://{host}/jobs.rss"
         except Exception:
             return ""
+
+    def gate_url(self, entry: Dict[str, Any]) -> str:
+        return self._feed_url(entry) or super().gate_url(entry)
 
     @staticmethod
     def _location(item: ET.Element) -> str:
@@ -87,7 +94,7 @@ class TeamtailorAdapter(DiscoveryAdapter):
 
         company = entry.get("name") or ""
         headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": BROWSER_UA,
             "Accept": "application/rss+xml, application/xml, text/xml, */*",
         }
         resp = await client.get(feed_url, headers=headers, timeout=15.0, follow_redirects=True)
@@ -126,10 +133,10 @@ class TeamtailorAdapter(DiscoveryAdapter):
 
             canon_url = normalize_url(raw_url)
             location_str = self._location(item)
-            desc = description or title
+            desc = clean_description(description) or title
             parsed = parse_salary_text(desc)
             posting = JobPosting(
-                external_id=raw_url,
+                external_id=guid or raw_url,
                 source="teamtailor",
                 source_name=company or None,
                 title=title,

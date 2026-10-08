@@ -51,11 +51,16 @@ BOARDS = (
 DEFAULT_MEM = str(Path(__file__).resolve().parent.parent / "data" / "dead_boards.json")
 
 
-def slugify(company):
-    """Lowercase, strip corporate suffixes, spaces -> hyphens."""
+def slugify(company, strip_suffixes=True):
+    """Lowercase, strip corporate suffixes, spaces -> hyphens.
+
+    With ``strip_suffixes=False`` the suffix-stripping pass is skipped, giving
+    the unstripped variant (e.g. ``acme-inc``) used as a resolve fallback.
+    """
     tokens = re.sub(r"[.,]", "", company.lower()).split()
-    while tokens and tokens[-1] in SUFFIXES:
-        tokens.pop()
+    if strip_suffixes:
+        while tokens and tokens[-1] in SUFFIXES:
+            tokens.pop()
     slug = "-".join(tokens)
     slug = re.sub(r"[^a-z0-9-]", "", slug)
     return re.sub(r"-{2,}", "-", slug).strip("-")
@@ -92,21 +97,52 @@ def _board_for(url):
     return ""
 
 
+def _probe_slug(slug, fetch):
+    """Probe every board for one slug. Returns ((board, slug, count), attempts)
+    where attempts is a list of (board, board_slug, status) for the memory."""
+    attempts = []
+    for board, api_url, _ in BOARDS:
+        url = api_url.format(slug=slug)
+        status, jobs = fetch(url)
+        attempts.append((board, slug, status))
+        count = len(jobs) if isinstance(jobs, list) else jobs
+        if status == 200 and count >= 1:
+            return (board, slug, count), attempts
+        time.sleep(0 if fetch is not default_fetch else PAUSE)
+    return None, attempts
+
+
+def _remember(mem_path, attempts):
+    if mem_path is None:
+        return
+    for board, slug, status in attempts:
+        record_result(mem_path, f"{board}:{slug}", status)
+
+
 def resolve_company(company, fetch=None, mem_path=None):
-    """Return (board, slug, count) for the first board with >= 1 job, else None."""
+    """Return (board, slug, count) for the first board with >= 1 job, else None.
+
+    Tries the suffix-stripped slug first, then the unstripped variant as a
+    fallback (e.g. ``acme`` -> ``acme-inc``); 404s are recorded in the
+    dead-board memory only after both variants miss, so a company that
+    resolves under either spelling never pollutes the memory.
+    """
     fetch = fetch or default_fetch
     slug = slugify(company)
     if not slug:
         return None
-    for board, api_url, _ in BOARDS:
-        url = api_url.format(slug=slug)
-        status, jobs = fetch(url)
-        if mem_path is not None:
-            record_result(mem_path, f"{board}:{slug}", status)
-        count = len(jobs) if isinstance(jobs, list) else jobs
-        if status == 200 and count >= 1:
-            return (board, slug, count)
-        time.sleep(0 if fetch is not default_fetch else PAUSE)
+    hit, attempts = _probe_slug(slug, fetch)
+    if hit is not None:
+        _remember(mem_path, attempts)
+        return hit
+    raw = slugify(company, strip_suffixes=False)
+    if raw and raw != slug:
+        hit, attempts2 = _probe_slug(raw, fetch)
+        attempts.extend(attempts2)
+        if hit is not None:
+            _remember(mem_path, attempts)
+            return hit
+    _remember(mem_path, attempts)
     return None
 
 

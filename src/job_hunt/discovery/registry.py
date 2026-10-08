@@ -141,13 +141,16 @@ class SourceRegistry:
             return []
 
         url = entry.get("url") or entry.get("careers_url") or entry.get("api") or ""
-        if url:
-            verdict = await self._robots_verdict(url, client)
+        # Gate the ADAPTER's actual fetch/feed URL (tenant adapters derive
+        # jobs.rss / /api/offers/ /xml from the entry), not the entry bare host.
+        gate_url = adapter.gate_url(entry) or url
+        if gate_url:
+            verdict = await self._robots_verdict(gate_url, client)
             if verdict is False:
-                logger.warning("Robots disallowed source, skipping: %s (%s)", name, url)
+                logger.warning("Robots disallowed source, skipping: %s (%s)", name, gate_url)
                 return []
             if verdict is None:
-                logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, url)
+                logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, gate_url)
 
         async with semaphore:
             try:

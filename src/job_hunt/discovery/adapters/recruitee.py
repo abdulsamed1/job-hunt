@@ -19,7 +19,7 @@ from job_hunt.dedup import (
     content_hash,
     normalize_url,
 )
-from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.base import DiscoveryAdapter, BROWSER_UA, clean_description
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -39,8 +39,16 @@ class RecruiteeAdapter(DiscoveryAdapter):
 
     def _api_url(self, entry: Dict[str, Any]) -> str:
         url = (entry.get("url") or entry.get("careers_url") or "").strip()
+        # Host-suffix validation (also on the /api/offers passthrough): only
+        # *.recruitee.com may become a fetch URL.
         if "/api/offers" in url:
-            return url
+            try:
+                host = (urlsplit(url).hostname or "").lower()
+            except Exception:
+                return ""
+            if host == "recruitee.com" or host.endswith(".recruitee.com"):
+                return url
+            return ""
         slug = (entry.get("tenant") or entry.get("org") or "").strip()
         if not slug and url:
             try:
@@ -52,6 +60,9 @@ class RecruiteeAdapter(DiscoveryAdapter):
         if not slug:
             return ""
         return f"https://{slug}.recruitee.com/api/offers/"
+
+    def gate_url(self, entry: Dict[str, Any]) -> str:
+        return self._api_url(entry) or super().gate_url(entry)
 
     @staticmethod
     def _location(offer: Dict[str, Any]) -> str:
@@ -80,7 +91,7 @@ class RecruiteeAdapter(DiscoveryAdapter):
             return []
 
         headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": BROWSER_UA,
             "Accept": "application/json, */*",
         }
         resp = await client.get(api_url, headers=headers, timeout=15.0, follow_redirects=True)
@@ -115,7 +126,7 @@ class RecruiteeAdapter(DiscoveryAdapter):
             canon_url = normalize_url(raw_url)
             location_str = self._location(offer)
             desc_parts = [p for p in (offer.get("description"), offer.get("requirements")) if p]
-            desc = "\n".join(desc_parts) or title
+            desc = clean_description("\n".join(desc_parts)) or title
             posting = JobPosting(
                 external_id=str(offer.get("id")),
                 source="recruitee",

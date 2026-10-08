@@ -25,7 +25,7 @@ from job_hunt.dedup import (
     content_hash,
     normalize_url,
 )
-from job_hunt.discovery.base import DiscoveryAdapter
+from job_hunt.discovery.base import DiscoveryAdapter, BROWSER_UA, clean_description
 from job_hunt.models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -54,17 +54,24 @@ class PersonioAdapter(DiscoveryAdapter):
         url = (entry.get("url") or entry.get("careers_url") or "").strip()
         if not url:
             return ""
-        if url.lower().rstrip("/").endswith("/xml"):
-            return url
         try:
             parts = urlsplit(url)
-            host = parts.hostname or ""
-            if not host:
+            host = (parts.hostname or "").lower()
+            # Host-suffix validation: only *.jobs.personio.de (the /xml
+            # passthrough is validated too — an evil host must never qualify).
+            if not host or not (
+                host == "jobs.personio.de" or host.endswith(".jobs.personio.de")
+            ):
                 return ""
+            if url.lower().rstrip("/").endswith("/xml"):
+                return url
             scheme = parts.scheme or "https"
             return f"{scheme}://{host}/xml"
         except Exception:
             return ""
+
+    def gate_url(self, entry: Dict[str, Any]) -> str:
+        return self._feed_url(entry) or super().gate_url(entry)
 
     @staticmethod
     def _extract_description(raw_block: str) -> str:
@@ -76,7 +83,17 @@ class PersonioAdapter(DiscoveryAdapter):
             text = re.sub(r"\s+", " ", text).strip()
             if text:
                 chunks.append(text)
-        return "\n".join(chunks)[:8000]
+        return clean_description("\n".join(chunks))
+
+    @staticmethod
+    def _annualize(value: Optional[float], kind: str) -> Optional[float]:
+        if value is None:
+            return None
+        if kind == "monthly":
+            return value * 12
+        if kind == "hourly":
+            return value * 2080
+        return value  # yearly (or missing type: amounts kept as stated)
 
     @staticmethod
     def _parse_block(block: str) -> Optional[Dict[str, Any]]:
@@ -93,6 +110,7 @@ class PersonioAdapter(DiscoveryAdapter):
         salary_min: Optional[float] = None
         salary_max: Optional[float] = None
         salary_currency: Optional[str] = None
+        salary_type = ""
         sal = el.find("salaryInformation")
         if sal is not None:
             try:
@@ -106,6 +124,21 @@ class PersonioAdapter(DiscoveryAdapter):
             except (TypeError, ValueError):
                 salary_max = None
             salary_currency = (sal.findtext("currencyCode") or "").strip() or None
+            salary_type = (sal.findtext("type") or "").strip().lower()
+            if salary_type in ("yearly", ""):
+                pass  # amounts already annual (missing type: kept as stated)
+            elif salary_type in ("monthly", "hourly"):
+                salary_min = PersonioAdapter._annualize(salary_min, salary_type)
+                salary_max = PersonioAdapter._annualize(salary_max, salary_type)
+            else:
+                # Unknown/other pay basis (weekly, daily, …): amounts are not
+                # comparable, so drop them and report no stated salary.
+                salary_min = None
+                salary_max = None
+
+        salary_source = (
+            "stated" if (salary_min is not None or salary_max is not None) else None
+        )
 
         return {
             "id": text("id"),
@@ -119,6 +152,7 @@ class PersonioAdapter(DiscoveryAdapter):
             "salary_min": salary_min,
             "salary_max": salary_max,
             "salary_currency": salary_currency,
+            "salary_source": salary_source,
         }
 
     async def fetch(self, entry: Dict[str, Any], client: httpx.AsyncClient) -> List[JobPosting]:
@@ -132,7 +166,7 @@ class PersonioAdapter(DiscoveryAdapter):
             return []
 
         headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": BROWSER_UA,
             "Accept": "application/xml, text/xml, */*",
         }
         resp = await client.get(feed_url, headers=headers, timeout=15.0, follow_redirects=True)
@@ -177,7 +211,7 @@ class PersonioAdapter(DiscoveryAdapter):
                 salary_min=parsed["salary_min"],
                 salary_max=parsed["salary_max"],
                 salary_currency=parsed["salary_currency"],
-                salary_source="stated" if parsed["salary_currency"] else None,
+                salary_source=parsed["salary_source"],
                 posted_at=parsed["created_at"] or None,
                 metadata={
                     "department": parsed["department"],
