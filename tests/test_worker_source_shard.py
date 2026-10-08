@@ -103,7 +103,7 @@ def test_linkedin_standing_target_preserved():
     worker, _p, _s = _load_generator().build()
     li = [s for s in worker if s["kind"] == "linkedin"]
     assert len(li) == 1
-    assert set(li[0]["queries"]) == {"backend", "fullstack", "software"}
+    assert set(li[0]["queries"]) == {"Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"}
     assert li[0]["tprSeconds"] == 43200, "12-hour TPR window is the standing target"
 
 

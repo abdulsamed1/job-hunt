@@ -157,7 +157,7 @@ describe("generated source shard", () => {
     const li = GENERATED_SOURCES.filter((s) => s.kind === "linkedin");
     expect(li).toHaveLength(1);
     expect(li[0].tprSeconds).toBe(43200);
-    expect([...(li[0].queries || [])].sort()).toEqual(["backend", "fullstack", "software"]);
+    expect([...(li[0].queries || [])].sort()).toEqual(["Backend", "Forward Deployed Engineer", "Frontier Deployed Engineer", "Full stack", "Software Engineer"]);
   });
 
   it("gives every ATS source an org slug for board routing", async () => {

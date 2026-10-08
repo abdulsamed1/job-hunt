@@ -7,10 +7,10 @@ import type { SourceDef } from "./sources.js";
 // yaml_total=372 worker_supported=288 python_only=84 hourly=18
 
 export const GENERATED_SOURCES: SourceDef[] = [
-  {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "url": "https://www.linkedin.com/jobs/", "queries": ["backend", "fullstack", "software"], "locations": ["Remote"], "tprSeconds": 43200},
-  {"kind": "indeed", "name": "indeed-egypt-tech", "cadence": "6h", "url": "https://eg.indeed.com/", "queries": ["backend", "fullstack", "software"], "locations": ["Cairo, Egypt", "Egypt"], "country": "Egypt"},
-  {"kind": "freehire", "name": "freehire-remote-tech", "cadence": "6h", "url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["backend", "fullstack", "software"], "locations": ["Remote"]},
-  {"kind": "bdjobs", "name": "bdjobs-bangladesh-tech", "cadence": "6h", "url": "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch", "queries": ["backend", "fullstack", "software"], "locations": ["Dhaka, Bangladesh", "Bangladesh"]},
+  {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"], "tprSeconds": 43200},
+  {"kind": "indeed", "name": "indeed-egypt-tech", "cadence": "6h", "url": "https://eg.indeed.com/", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Cairo, Egypt", "Egypt"], "country": "Egypt"},
+  {"kind": "freehire", "name": "freehire-remote-tech", "cadence": "6h", "url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"]},
+  {"kind": "bdjobs", "name": "bdjobs-bangladesh-tech", "cadence": "6h", "url": "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"]},
   {"kind": "greenhouse", "name": "stripe", "cadence": "6h", "org": "stripe"},
   {"kind": "greenhouse", "name": "figma", "cadence": "6h", "org": "figma"},
   {"kind": "greenhouse", "name": "datadog", "cadence": "6h", "org": "datadog"},
