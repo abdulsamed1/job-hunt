@@ -1,6 +1,7 @@
 // Per-tenant board discovery (Slice 5): Teamtailor RSS, Recruitee offers API,
-// Personio XML feed. Mirrors the Python teamtailor/recruitee/personio adapters'
-// field mapping. Plain GET + small-parse fetches: no TLS impersonation, no RSA,
+// Personio XML feed, BambooHR careers list, Workable widget API. Mirrors the
+// Python teamtailor/recruitee/personio/bamboohr/workable adapters' field
+// mapping. Plain GET + small-parse fetches: no TLS impersonation, no RSA,
 // no browser — Worker-runnable; the tenant host is derived from the source URL.
 
 import { fetchJson, fetchText, tagText, type RawJob } from "./http.js";
@@ -194,6 +195,97 @@ export async function fetchPersonio(sourceUrl: string, name: string, limit = 40)
         `${title} — ${department} (${office})`.replace(/^[ —()]+|[ —()]+$/g, "") || title,
       ),
       external_id: id,
+    });
+  }
+  return out;
+}
+
+function isBamboohrHost(host: string): boolean {
+  return !!host && (host === "bamboohr.com" || host.endsWith(".bamboohr.com"));
+}
+
+function isWorkableHost(host: string): boolean {
+  return !!host && (host === "apply.workable.com" || host.endsWith(".workable.com"));
+}
+
+/** BambooHR tenant list: <tenant>.bamboohr.com/careers/list -> {result: [...]}. */
+export function bamboohrListUrl(sourceUrl: string): string {
+  if (!sourceUrl || !validScheme(sourceUrl)) return "";
+  const host = hostOf(sourceUrl);
+  if (!isBamboohrHost(host)) return "";
+  const tenant = host === "bamboohr.com" ? "" : host.slice(0, -".bamboohr.com".length).split(".").pop() || "";
+  if (!tenant) return "";
+  return `https://${tenant}.bamboohr.com/careers/list`;
+}
+
+export async function fetchBamboohr(sourceUrl: string, name: string, limit = 40): Promise<RawJob[]> {
+  const apiUrl = bamboohrListUrl(sourceUrl);
+  if (!apiUrl) return [];
+  const tenant = hostOf(apiUrl).split(".")[0];
+  const data: any = await fetchJson(apiUrl);
+  const items = (data && data.result) || [];
+  if (!Array.isArray(items)) return [];
+  const out: RawJob[] = [];
+  for (const j of items) {
+    if (out.length >= limit) break;
+    const title = String(j?.jobOpeningName || "").trim();
+    const jobId = String(j?.id ?? "");
+    if (!title || !jobId) continue;
+    const loc = j?.location || {};
+    const city = String(loc.city || "");
+    const state = String(loc.state || "");
+    let location = [city, state].filter(Boolean).join(", ");
+    if (j?.isRemote) location = location ? `${location} (Remote)` : "Remote";
+    out.push({
+      title,
+      company: name,
+      location,
+      url: `https://${tenant}.bamboohr.com/careers/${jobId}`,
+      source: name,
+      posted_at: "",
+      desc: cleanDesc(`${title} at ${name}. Location: ${location || "Remote"}.`, title),
+      external_id: jobId,
+    });
+  }
+  return out;
+}
+
+/** Workable tenant API: apply.workable.com/api/v1/widget/accounts/<slug>?details=true. */
+export function workableApiUrl(sourceUrl: string): string {
+  if (!sourceUrl || !validScheme(sourceUrl)) return "";
+  const host = hostOf(sourceUrl);
+  if (!isWorkableHost(host)) return "";
+  const m = sourceUrl.match(/apply\.workable\.com\/([A-Za-z0-9_-]+)/i);
+  const slug = (m && m[1]) || "";
+  if (!slug) return "";
+  return `https://apply.workable.com/api/v1/widget/accounts/${slug}?details=true`;
+}
+
+export async function fetchWorkable(sourceUrl: string, name: string, limit = 40): Promise<RawJob[]> {
+  const apiUrl = workableApiUrl(sourceUrl);
+  if (!apiUrl) return [];
+  const data: any = await fetchJson(apiUrl, { headers: { Origin: "https://apply.workable.com" } });
+  const company = data?.name || name;
+  const items = (data && data.jobs) || [];
+  if (!Array.isArray(items)) return [];
+  const out: RawJob[] = [];
+  for (const j of items) {
+    if (out.length >= limit) break;
+    const title = String(j?.title || "").trim();
+    const url = String(j?.url || j?.shortlink || "");
+    if (!title || !url) continue;
+    const locParts = [j?.city, j?.state, j?.country].filter(Boolean).map(String);
+    let location = locParts.join(", ");
+    if (j?.telecommuting) location = location ? `${location} (Remote)` : "Remote";
+    out.push({
+      title,
+      company,
+      location,
+      url,
+      source: name,
+      posted_at: String(j?.published_on || ""),
+      desc: cleanDesc(String(j?.description || ""), `${title} at ${company}`),
+      external_id: String(j?.shortcode || "") || null,
     });
   }
   return out;

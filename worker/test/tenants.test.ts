@@ -254,3 +254,46 @@ describe("queue guard covers the three tenant kinds", () => {
     expect(queueGuardAllows({ kind: "greenhouse", name: "g", org: "stripe", cadence: "hourly" })).toBe(true);
   });
 });
+
+describe("bamboohr + workable tenant boards", () => {
+  it("builders accept tenant hosts, reject evil hosts", async () => {
+    const { bamboohrListUrl, workableApiUrl } = await import("../src/adapters/tenants.js");
+    expect(bamboohrListUrl("https://prezi.bamboohr.com/jobs/")).toBe("https://prezi.bamboohr.com/careers/list");
+    expect(bamboohrListUrl("https://evil.com/careers/list")).toBe("");
+    expect(bamboohrListUrl("ftp://prezi.bamboohr.com/jobs/")).toBe("");
+    expect(workableApiUrl("https://apply.workable.com/netguru/")).toBe("https://apply.workable.com/api/v1/widget/accounts/netguru?details=true");
+    expect(workableApiUrl("https://evil.com/netguru/")).toBe("");
+  });
+
+  it("parses bamboohr list + workable widget shapes", async () => {
+    const { fetchBamboohr, fetchWorkable } = await import("../src/adapters/tenants.js");
+    const orig = globalThis.fetch;
+    (globalThis as any).fetch = async (url: string) => {
+      if (url.includes("bamboohr.com")) {
+        return { ok: true, json: async () => ({ result: [{ id: "106", jobOpeningName: "LATAM Market Manager", location: { city: null, state: null }, isRemote: false }] }) };
+      }
+      return { ok: true, json: async () => ({ name: "Netguru", jobs: [{ title: "Backend Engineer", url: "https://apply.workable.com/netguru/j/1", city: "", state: "", country: "Poland", telecommuting: true, description: "<p>Build things.</p>", published_on: "2026-10-01", shortcode: "ABC1", department: "Engineering" }] }) };
+    };
+    try {
+      const b = await fetchBamboohr("https://prezi.bamboohr.com/jobs/", "bamboohr-prezi");
+      expect(b).toHaveLength(1);
+      expect(b[0].external_id).toBe("106");
+      expect(b[0].url).toBe("https://prezi.bamboohr.com/careers/106");
+      const w = await fetchWorkable("https://apply.workable.com/netguru/", "workable-netguru");
+      expect(w).toHaveLength(1);
+      expect(w[0].location).toBe("Poland (Remote)");
+      expect(w[0].desc).toBe("Build things.");
+      expect(w[0].external_id).toBe("ABC1");
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("queue guard covers bamboohr + workable kinds", async () => {
+    const { queueGuardAllows } = await import("../src/index.js");
+    expect(queueGuardAllows({ kind: "bamboohr", name: "b", url: "https://prezi.bamboohr.com/jobs/", cadence: "6h" })).toBe(true);
+    expect(queueGuardAllows({ kind: "bamboohr", name: "b", url: "https://evil.com/jobs/", cadence: "6h" })).toBe(false);
+    expect(queueGuardAllows({ kind: "workable", name: "w", url: "https://apply.workable.com/netguru/", cadence: "6h" })).toBe(true);
+    expect(queueGuardAllows({ kind: "workable", name: "w", url: "https://evil.com/netguru/", cadence: "6h" })).toBe(false);
+  });
+});

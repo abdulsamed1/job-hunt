@@ -4,7 +4,7 @@
 
 import type { SourceDef } from "./sources.js";
 
-// yaml_total=372 worker_supported=288 python_only=84 hourly=18
+// yaml_total=382 worker_supported=298 python_only=84 hourly=18
 
 export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"], "tprSeconds": 43200},
@@ -295,6 +295,16 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "greenhouse", "name": "wizeline", "cadence": "6h", "org": "wizeline"},
   {"kind": "greenhouse", "name": "mixmax", "cadence": "6h", "org": "mixmax"},
   {"kind": "greenhouse", "name": "openzeppelin", "cadence": "6h", "org": "openzeppelin"},
+  {"kind": "greenhouse", "name": "jackson-river-togetherwork", "cadence": "6h", "org": "togetherwork"},
+  {"kind": "ashby", "name": "truelogic", "cadence": "6h", "org": "truelogic"},
+  {"kind": "ashby", "name": "alan", "cadence": "6h", "org": "alan"},
+  {"kind": "lever", "name": "envato", "cadence": "6h", "org": "envato-2"},
+  {"kind": "lever", "name": "contentsquare", "cadence": "6h", "org": "contentsquare"},
+  {"kind": "lever", "name": "prominentedge", "cadence": "6h", "org": "prominentedge"},
+  {"kind": "bamboohr", "name": "prezi", "cadence": "6h", "url": "https://prezi.bamboohr.com/jobs/"},
+  {"kind": "workable", "name": "netguru", "cadence": "6h", "url": "https://apply.workable.com/netguru/"},
+  {"kind": "recruitee", "name": "kodify", "cadence": "6h", "url": "https://kodify.recruitee.com/api/offers/"},
+  {"kind": "teamtailor", "name": "saasglobal", "cadence": "6h", "url": "https://saasglobal.teamtailor.com/jobs.rss"},
 ];
 
 export interface PythonOnlySource {

@@ -1647,3 +1647,123 @@ sources:
   max_pages_per_query: 2
   target_jobs_count: 40
   hours_old: 72
+- adapter: greenhouse
+  name: jackson-river-togetherwork
+  url: https://boards.greenhouse.io/togetherwork
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: truelogic
+  url: https://jobs.ashbyhq.com/truelogic
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: ashby
+  name: alan
+  url: https://jobs.ashbyhq.com/alan
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: envato
+  url: https://jobs.lever.co/envato-2
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: contentsquare
+  url: https://jobs.lever.co/contentsquare
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: lever
+  name: prominentedge
+  url: https://jobs.lever.co/prominentedge
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: bamboohr
+  name: prezi
+  url: https://prezi.bamboohr.com/jobs/
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: workable
+  name: netguru
+  url: https://apply.workable.com/netguru/
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: recruitee
+  name: kodify
+  url: https://kodify.recruitee.com/api/offers/
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72
+- adapter: teamtailor
+  name: saasglobal
+  url: https://saasglobal.teamtailor.com/jobs.rss
+  queries:
+  - backend
+  - fullstack
+  - software
+  locations:
+  - Remote
+  max_pages_per_query: 2
+  target_jobs_count: 40
+  hours_old: 72

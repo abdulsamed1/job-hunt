@@ -15,7 +15,9 @@ export type SourceKind =
   | "bdjobs"
   | "teamtailor"
   | "recruitee"
-  | "personio";
+  | "personio"
+  | "bamboohr"
+  | "workable";
 
 export type Cadence = "hourly" | "6h";
 
