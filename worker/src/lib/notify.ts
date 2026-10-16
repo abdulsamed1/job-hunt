@@ -117,7 +117,7 @@ export async function notifyEventOnce(
       .run();
   } catch (e) {
     // D1 raises on PRIMARY KEY conflict — that is the dedup signal.
-    if (/unique|constraint|primary|conflict|exists/i.test(String(e))) return "skipped";
+    if (/unique|primary key|constraint failed|already exists/i.test(String(e))) return "skipped";
     return "failed";
   }
   let outcome: "sent" | "failed" = "failed";
@@ -157,5 +157,9 @@ export async function notifyJobOnce(
     cur = null;
   }
   if (cur?.notified) return "skipped";
-  return notifyEventOnce(db, env, "worker", hash, state, row, detail);
+  const scoredDetail =
+    typeof row.score === "number"
+      ? `(score ${row.score})${detail ? ` ${detail}` : ""}`
+      : detail;
+  return notifyEventOnce(db, env, "worker", hash, state, row, scoredDetail);
 }

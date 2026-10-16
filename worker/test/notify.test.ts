@@ -225,6 +225,22 @@ describe("notifyEventOnce", () => {
       await expect(notifyEventOnce(db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("sent");
     } finally { s.restore(); }
   });
+
+  it("bad: bare 'exists' in another context resolves failed, not skipped", async () => {
+    const s = stubFetch(async () => okResp());
+    const db = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => null,
+          run: async () => { throw new Error("table jobs exists-but-broken"); },
+        }),
+      }),
+    };
+    try {
+      await expect(notifyEventOnce(db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("failed");
+      expect(s.calls).toHaveLength(0);
+    } finally { s.restore(); }
+  });
 });
 
 describe("notifyJobOnce", () => {
@@ -278,6 +294,16 @@ describe("notifyJobOnce", () => {
     };
     try {
       await expect(notifyJobOnce(db, ENV, "h", ROW, "SUBMITTED", "")).resolves.toBe("sent");
+    } finally { s.restore(); }
+  });
+
+  it("happy: score-bearing row keeps the score in the compat alert", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb(0);
+    try {
+      expect(await notifyJobOnce(m.db, ENV, "h", ROW, "SUBMITTED", "ok")).toBe("sent");
+      expect(s.calls).toHaveLength(1);
+      expect(JSON.parse(s.calls[0][1].body).text).toContain("95");
     } finally { s.restore(); }
   });
 });
