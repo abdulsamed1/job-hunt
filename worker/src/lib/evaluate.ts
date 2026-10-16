@@ -33,6 +33,29 @@ const KNOWN_LANGUAGES = [
   "mandarin", "japanese", "korean", "russian", "ukrainian", "turkish",
 ];
 
+const DISABILITY_TARGETING = [
+  /for (?:people|persons|individuals|candidates|applicants) with disabilit\w*/i,
+  /(?:people|persons) with disabilit\w*.{0,40}(?:program|hiring|initiative|track|internship)/i,
+  /(?:program|initiative|track).{0,60}for (?:people|persons) with disabilit\w*/i,
+  /disabilit\w*(?:-targeted| specific| only| hiring program)/i,
+  /exclusively for.{0,40}disabilit\w*/i,
+];
+
+const ACCOMMODATION_CONTEXT = /accommodat\w*|equal opportunity/i;
+
+export function checkDisabilityTargetingGate(title: string, description: string): GateVerdict {
+  const text = `${title || ""} ${description || ""}`;
+  for (const p of DISABILITY_TARGETING) {
+    const m = text.match(p);
+    if (m && m.index !== undefined) {
+      const context = text.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80);
+      if (ACCOMMODATION_CONTEXT.test(context)) continue;
+      return { verdict: "FAIL", quote: m[0].trim() };
+    }
+  }
+  return { verdict: "PASS" };
+}
+
 export function checkEligibilityGate(description: string): GateVerdict {
   const desc = description || "";
   for (const p of CITIZENSHIP_FAIL) {
@@ -84,6 +107,10 @@ const TECH_VOCAB = new Set([
 export function scoreJob(
   title: string, description: string, location: string, profile: Profile, threshold = 70,
 ): ScoreResult {
+  const gate0 = checkDisabilityTargetingGate(title, description);
+  if (gate0.verdict === "FAIL") {
+    return { score: 0, eligible: false, matched: [], missing: [], reasoning: `Disability-targeted posting: ${gate0.quote}`, gated: true };
+  }
   const gate1 = checkEligibilityGate(description);
   if (gate1.verdict === "FAIL") {
     return { score: 0, eligible: false, matched: [], missing: [], reasoning: `Eligibility gate FAIL: ${gate1.quote}`, gated: true };

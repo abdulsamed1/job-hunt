@@ -105,6 +105,32 @@ describe("scoreJob matched-skill requirement", () => {
   });
 });
 
+describe("scoreJob disability-targeting gate", () => {
+  it("rejects a disability-targeted program before scoring", () => {
+    const r = scoreJob(
+      "Technical Support Engineer Intern for People with Disabilities",
+      "Ignite Program. Python and customer support.",
+      "Cairo",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("allows generic accessibility language", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Equal opportunity employer; reasonable accommodation is available.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+});
+
 describe("matchAnswerToOption", () => {
   it("exact + whole-word, no substring traps", () => {
     expect(matchAnswerToOption("Yes", ["Yes", "No"])).toBe("Yes");
