@@ -120,6 +120,31 @@ class PipelineOrchestrator:
         logger.info("Graceful shutdown requested.")
         self._running = False
 
+    def _emit_event(
+        self, event: str, title: str, company: str, detail: str = "", url: str = ""
+    ) -> bool:
+        """Best-effort Telegram lifecycle event. Never raises; False when disabled."""
+        notifier = getattr(self, "notifier", None)
+        if notifier is None:
+            return False
+        try:
+            return bool(
+                notifier.emit(
+                    event,
+                    title or "",
+                    company or "",
+                    str(detail or "")[:1000],
+                    url or "",
+                )
+            )
+        except Exception as exc:
+            logger.warning("Telegram event %s failed: %s", event, type(exc).__name__)
+            return False
+
+    def _emit_job_event(self, event: str, job: JobPosting, detail: str = "") -> bool:
+        """Emit a lifecycle event with job URL/title/company context."""
+        return self._emit_event(event, job.title, job.company, detail, job.raw_url)
+
     async def run_discovery_stage(
         self, max_sources: Optional[int] = None, hours_old: int = 12, remote_only: bool = False,
         source_name: Optional[str] = None,
@@ -158,6 +183,7 @@ class PipelineOrchestrator:
             _, is_new = self.storage.add_job(p)
             if is_new:
                 new_jobs += 1
+                self._emit_job_event("SEEKING", p, f"New job from {p.source}")
 
         logger.info("Discovery complete. Discovered %d jobs (%d new)", len(postings), new_jobs)
         return new_jobs
@@ -175,10 +201,26 @@ class PipelineOrchestrator:
                 if not is_live:
                     logger.info("Job %s (%s - %s) filtered out by liveness: %s", job.id, job.company, job.title, liveness_reason)
                     self.storage.update_job_state(job.id, JobState.PRE_FILTERED_OUT, details=liveness_reason, force=True)
+                    self._emit_job_event("FILTERED", job, liveness_reason)
                     continue
 
                 eval_result = await self.eval_engine.evaluate_async(job, self.profile, threshold=threshold)
                 self.storage.save_evaluation(eval_result)
+                if eval_result.pre_filtered:
+                    self._emit_job_event(
+                        "FILTERED", job,
+                        eval_result.pre_filter_reason or eval_result.reasoning,
+                    )
+                elif eval_result.eligible:
+                    self._emit_job_event(
+                        "ELIGIBLE", job,
+                        f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
+                    )
+                else:
+                    self._emit_job_event(
+                        "FILTERED", job,
+                        f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
+                    )
                 evaluated_count += 1
 
         logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
@@ -193,6 +235,21 @@ class PipelineOrchestrator:
         for job in pending_jobs:
             eval_result = self.eval_engine.evaluate(job, self.profile, threshold=threshold)
             self.storage.save_evaluation(eval_result)
+            if eval_result.pre_filtered:
+                self._emit_job_event(
+                    "FILTERED", job,
+                    eval_result.pre_filter_reason or eval_result.reasoning,
+                )
+            elif eval_result.eligible:
+                self._emit_job_event(
+                    "ELIGIBLE", job,
+                    f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
+                )
+            else:
+                self._emit_job_event(
+                    "FILTERED", job,
+                    f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
+                )
             evaluated_count += 1
 
         logger.info("Evaluation complete. Evaluated %d jobs.", evaluated_count)
@@ -217,6 +274,9 @@ class PipelineOrchestrator:
                 job, self.profile, generate_pdf=generate_pdf
             )
             self.storage.save_tailored_cv(tailored_cv)
+            self._emit_job_event(
+                "TAILORED", job, f"Tailored CV saved: {tailored_cv.pdf_path or 'saved'}"
+            )
             tailored_count += 1
             if use_rezi and rezi_done < rezi_max_per_run:
                 rezi_done += self._mirror_to_rezi(job, rezi_client=rezi_client)
@@ -330,6 +390,9 @@ class PipelineOrchestrator:
             if is_spoof_like(job.raw_url):
                 logger.warning("Skipping job %s: spoof-like apply host %s", job.id, job.raw_url)
                 self.storage.update_job_state(job.id, JobState.FAILED, details=f"heuristic spoof-like host (needs human review): {job.raw_url}", force=True)
+                self._emit_job_event(
+                    "FAILED", job, f"heuristic spoof-like host (needs human review): {job.raw_url}"
+                )
                 continue
             # Check if an application has already been submitted for this company/role/URL
             is_dup, dup_reason = self.storage.has_already_applied(
@@ -346,6 +409,7 @@ class PipelineOrchestrator:
                     job.id, job.company, job.title, dup_reason
                 )
                 self.storage.update_job_state(job.id, JobState.DUPLICATE, details=dup_reason, force=True)
+                self._emit_job_event("FILTERED", job, dup_reason or "duplicate application")
                 continue
 
             # Resolve the resume artifact: verified Rezi variant, else immutable master.
@@ -358,6 +422,10 @@ class PipelineOrchestrator:
                     details=f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
                     force=True,
                 )
+                self._emit_job_event(
+                    "FAILED", job,
+                    f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
+                )
                 continue
 
             # Fast liveness check before launching browser session
@@ -365,6 +433,7 @@ class PipelineOrchestrator:
             if not is_live:
                 logger.warning("Job %s is no longer active: %s", job.id, liveness_reason)
                 self.storage.update_job_state(job.id, JobState.FAILED, details=f"Liveness check: {liveness_reason}", force=True)
+                self._emit_job_event("FAILED", job, f"Liveness check: {liveness_reason}")
                 continue
 
             self.storage.update_job_state(
@@ -372,14 +441,39 @@ class PipelineOrchestrator:
                 JobState.APPLICATION_STARTED,
                 details="Starting automated browser application session",
             )
-            record = await self.browser_engine.fill_and_submit(
-                job,
-                self.profile,
-                resume_file_path=resume_path,
-                dry_run=dry_run,
-                linkedin_approved=linkedin_approved,
+            self._emit_job_event(
+                "APPLICATION_STARTED", job, "Starting automated browser application session"
             )
+            try:
+                record = await self.browser_engine.fill_and_submit(
+                    job,
+                    self.profile,
+                    resume_file_path=resume_path,
+                    dry_run=dry_run,
+                    linkedin_approved=linkedin_approved,
+                )
+            except Exception as exc:
+                self._emit_job_event("FAILED", job, f"Application error: {type(exc).__name__}")
+                raise
             self.storage.record_application(record)
+            if record.state == JobState.SUBMITTED:
+                self._emit_job_event(
+                    "SUBMITTED", job, record.confirmation_text or "Application submitted"
+                )
+            elif record.state == JobState.RETRY_PENDING:
+                self._emit_job_event(
+                    "RETRY", job, record.error_message or "Application queued for retry"
+                )
+            elif record.state in (JobState.FAILED, JobState.BLOCKED_CAPTCHA):
+                self._emit_job_event(
+                    "FAILED", job,
+                    record.error_message or record.confirmation_text or "Application failed",
+                )
+            else:
+                self._emit_job_event(
+                    record.state.value, job,
+                    record.error_message or record.confirmation_text or "Application updated",
+                )
             # Audit the filled-form Q&A (answers + confirmation-needed).
             payload = record.submission_payload or {}
             if payload.get("answers") or payload.get("needs_confirmation"):
@@ -402,6 +496,10 @@ class PipelineOrchestrator:
         count = self.storage.recover_stuck_jobs(timeout_minutes=timeout_minutes)
         if count > 0:
             logger.warning("Recovered %d stuck jobs back to retry/failed state.", count)
+            self._emit_event(
+                "RECOVERY", f"{count} stuck job(s)", "pipeline",
+                f"Recovered {count} stuck jobs back to retry/failed state",
+            )
         return count
 
     async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 12, remote_only: bool = False) -> Dict[str, Any]:

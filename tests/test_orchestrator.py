@@ -2,9 +2,79 @@
 
 from datetime import datetime, timezone, timedelta
 import pytest
-from job_hunt.models import JobPosting, JobState
+from job_hunt.evaluation.engine import EvaluationEngine
+from job_hunt.models import CandidateProfile, JobPosting, JobState
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
+
+
+class FakeNotifier:
+    """In-memory notifier seam: records emit calls, never touches the network."""
+
+    def __init__(self):
+        self.calls = []
+
+    def emit(self, event, title, company, detail="", url=""):
+        self.calls.append(
+            {"event": event, "title": title, "company": company,
+             "detail": detail, "url": url}
+        )
+        return True
+
+    def events(self):
+        return [c["event"] for c in self.calls]
+
+
+def _lifecycle_profile():
+    return CandidateProfile(
+        full_name="Test User",
+        first_name="Test",
+        last_name="User",
+        email="test@example.com",
+        phone="+10000000000",
+        location="Cairo, Egypt",
+        open_to_remote=True,
+        years_of_experience=6,
+        verified_skills=["Python", "FastAPI", "PostgreSQL", "Docker"],
+    )
+
+
+def _lifecycle_job(source, title, company, slug, location="Remote", description=""):
+    return JobPosting(
+        source=source,
+        title=title,
+        company=company,
+        raw_url=f"https://example.com/{slug}",
+        canonical_url=f"https://example.com/{slug}",
+        canonical_url_hash=f"h-{slug}",
+        role_fingerprint=f"rf-{slug}",
+        content_hash=f"c-{slug}",
+        location=location,
+        description=description,
+    )
+
+
+def _lifecycle_orchestrator(tmp_path, fake, name="lc.db"):
+    db_file = tmp_path / name
+    storage = Storage(db_file)
+    return PipelineOrchestrator(
+        storage=storage,
+        db_path=str(db_file),
+        eval_engine=EvaluationEngine(use_llm=False),
+        use_llm=False,
+        profile=_lifecycle_profile(),
+        notifier=fake,
+    )
+
+
+GOOD_DESC = (
+    "We are seeking a Backend Software Engineer with Python, FastAPI, "
+    "PostgreSQL, and Docker. 3+ years experience building reliable backend "
+    "systems. Remote worldwide."
+)
+TARGETED_DESC = (
+    "Ignite Program for people with disabilities. Python and customer support."
+)
 
 
 @pytest.fixture
@@ -398,3 +468,140 @@ def test_web_action_request_accepts_windows():
     req = ActionRequest(hours_old=12, remote_only=True)
     assert req.hours_old == 12
     assert req.remote_only is True
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_events_discovery_and_evaluation(tmp_path, monkeypatch):
+    """Discovery emits SEEKING; evaluation emits FILTERED (with pre-filter
+    reason) and ELIGIBLE; no credentials leak into event payloads."""
+    from unittest.mock import AsyncMock
+
+    secret = "tok-secret-abc123"
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", secret)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", secret)
+    fake = FakeNotifier()
+    orch = _lifecycle_orchestrator(tmp_path, fake)
+
+    good = _lifecycle_job(
+        "test", "Backend Engineer", "Acme", "lc-good", description=GOOD_DESC,
+    )
+    targeted = _lifecycle_job(
+        "test",
+        "Technical Support Engineer Intern for People with Disabilities",
+        "BaytIgnite",
+        "lc-targeted",
+        description=TARGETED_DESC,
+    )
+
+    class StubRegistry:
+        def load_sources_file(self, path):
+            return [{"adapter": "test", "url": "https://example.com"}]
+
+        async def discover_all(self, sources=None, **kwargs):
+            return [good, targeted]
+
+    orch.registry = StubRegistry()
+    new_jobs = await orch.run_discovery_stage(hours_old=0)
+    assert new_jobs == 2
+    assert fake.events().count("SEEKING") == 2
+
+    orch.liveness.check_url_async = AsyncMock(return_value=(True, "ok"))
+    evaluated = await orch.run_evaluation_stage_async(threshold=70.0)
+    assert evaluated == 2  # both jobs evaluated; the gated one persists as PRE_FILTERED_OUT
+
+    names = set(fake.events())
+    assert "FILTERED" in names
+    assert "ELIGIBLE" in names
+    disab = [
+        c for c in fake.calls
+        if c["event"] == "FILTERED" and "disabilit" in (c["detail"] or "").lower()
+    ]
+    assert disab, "FILTERED detail must carry the disability pre-filter reason"
+    for c in fake.calls:
+        assert secret not in (c["detail"] or "")
+        assert secret not in (c["url"] or "")
+        assert secret not in (c["title"] or "")
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_events_tailor_apply_retry_recovery(tmp_path, monkeypatch):
+    """Tailoring emits TAILORED; applications emit APPLICATION_STARTED plus
+    SUBMITTED/FAILED/RETRY; stuck recovery emits RECOVERY."""
+    from unittest.mock import AsyncMock
+    from job_hunt.models import ApplicationRecord, TailoredCV
+
+    secret = "tok-secret-abc123"
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", secret)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", secret)
+    fake = FakeNotifier()
+    orch = _lifecycle_orchestrator(tmp_path, fake, name="lc2.db")
+
+    class StubTailor:
+        def generate_tailored_cv(self, job, profile, generate_pdf=True):
+            return TailoredCV(
+                job_id=job.id, content_markdown="# CV", verification_passed=True,
+            )
+
+    orch.cv_tailor = StubTailor()
+
+    ids = []
+    for slug, company in (("lc-a", "Acme"), ("lc-b", "Globex"), ("lc-c", "Initech")):
+        job = _lifecycle_job(
+            "test", "Backend Engineer", company, slug, description=GOOD_DESC,
+        )
+        saved, is_new = orch.storage.add_job(job)
+        assert is_new
+        orch.storage.update_job_state(saved.id, JobState.ELIGIBLE, details="Eligible")
+        ids.append(saved.id)
+
+    tailored = orch.run_cv_stage(generate_pdf=False)
+    assert tailored == 3
+    assert "TAILORED" in fake.events()
+
+    monkeypatch.setattr(
+        "job_hunt.cv.resume_store.resolve_resume_path",
+        lambda job_id, storage=None, **kwargs: "/tmp/fake-resume.pdf",
+    )
+    orch.liveness.check_url_async = AsyncMock(return_value=(True, "ok"))
+
+    plan = {ids[0]: JobState.SUBMITTED, ids[1]: JobState.FAILED, ids[2]: JobState.RETRY_PENDING}
+
+    async def _fab(job, *args, **kwargs):
+        state = plan[job.id]
+        if state == JobState.SUBMITTED:
+            return ApplicationRecord(
+                job_id=job.id, state=state, confirmation_text="Applied!",
+            )
+        return ApplicationRecord(
+            job_id=job.id, state=state, error_message=f"{state.value.lower()} happened",
+        )
+
+    orch.browser_engine.fill_and_submit = AsyncMock(side_effect=_fab)
+    processed = await orch.run_application_stage(limit=10, dry_run=True)
+    assert processed == 3
+
+    names = set(fake.events())
+    assert fake.events().count("APPLICATION_STARTED") == 3
+    assert "SUBMITTED" in names
+    assert "FAILED" in names
+    assert "RETRY" in names
+
+    stuck = _lifecycle_job(
+        "test", "Backend Engineer", "StuckCo", "lc-stuck", description=GOOD_DESC,
+    )
+    saved, _ = orch.storage.add_job(stuck)
+    orch.storage.update_job_state(saved.id, JobState.ELIGIBLE, details="Eligible")
+    orch.storage.update_job_state(saved.id, JobState.TAILORED, details="Tailored")
+    orch.storage.update_job_state(
+        saved.id, JobState.APPLICATION_STARTED, details="Started application",
+    )
+    old_time = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    with orch.storage._get_connection() as conn:
+        conn.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (old_time, saved.id))
+        conn.commit()
+    assert orch.recover_stuck_jobs(timeout_minutes=15) == 1
+    assert "RECOVERY" in fake.events()
+
+    for c in fake.calls:
+        for field in ("detail", "url", "title", "company"):
+            assert secret not in (c[field] or ""), f"credential leaked in {field}"
