@@ -259,3 +259,32 @@ def test_generic_accessibility_language_is_not_disability_targeting(engine, cand
     )
     result = engine.evaluate(job, candidate)
     assert result.pre_filtered is False
+
+
+def test_disability_encouragement_hiring_sentence_passes(engine, candidate):
+    job = _swe_job(
+        "We encourage people with disabilities to join our hiring program. "
+        "Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_distant_eeo_passes(engine, candidate):
+    gap = "Backend systems work. " * 20  # ~440 chars between mention and EEO
+    job = _swe_job(
+        "Engineering role for people with disabilities. " + gap +
+        "We are an equal opportunity employer."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_bare_program_fails(engine, candidate):
+    job = _swe_job(
+        "Our disability inclusion program supports engineers. Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert result.eligible is False
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()

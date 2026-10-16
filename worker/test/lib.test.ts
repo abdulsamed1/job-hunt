@@ -129,6 +129,42 @@ describe("scoreJob disability-targeting gate", () => {
     );
     expect(r.gated).toBe(false);
   });
+
+  it("passes an encouragement sentence even with hiring + program nearby", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "We encourage people with disabilities to join our hiring program. Python role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("passes a distant EEO statement (300-char gap)", () => {
+    const gap = "Backend systems work. ".repeat(20);
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      `Engineering role for people with disabilities. ${gap}We are an equal opportunity employer.`,
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("rejects a bare disability program without hiring language", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Our disability inclusion program supports engineers. Python backend role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
 });
 
 describe("matchAnswerToOption", () => {
