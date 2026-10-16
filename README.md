@@ -230,6 +230,17 @@ The backend provides a REST API powering the Mission Control UI:
 - **`POST /api/actions/apply`**: Trigger browser automation applications (dry-run or live).
 - **`POST /api/actions/cycle`**: Trigger a complete end-to-end pipeline cycle.
 
+## Operations: Telegram notifications & disability filter
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable safe, best-effort
+event notifications (pipeline lifecycle: discovered → eligible → tailored →
+applied/human-queued). Unset credentials mean no-op — nothing sends and
+nothing raises. Messages are tagged `[local]` or `[worker]` by runtime and
+deduplicated so retries never resend the same event. Disability-targeted
+programs are filtered at evaluation time (local and Worker), while generic
+accessibility/EEO text (equal-opportunity statements, reasonable-accommodation
+boilerplate) is allowed through.
+
 ---
 
 ## Running Automated Tests
