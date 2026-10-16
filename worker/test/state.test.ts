@@ -58,3 +58,58 @@ describe("recordSourceHealth degraded persistence", () => {
     expect(queries.filter((q) => q[0].startsWith("ALTER TABLE"))).toHaveLength(2);
   });
 });
+
+// Settings store for the master-resume pointer: D1 first, env as fallback.
+function settingsDb(seed: Record<string, string> = {}) {
+  const store = new Map(Object.entries(seed));
+  return {
+    store,
+    db: {
+      prepare(query: string) {
+        const norm = query.trimStart().slice(0, 40);
+        return {
+          bind: (...params: any[]) => ({
+            run: async () => {
+              if (norm.startsWith("INSERT INTO settings")) store.set(String(params[0]), String(params[1]));
+              return { meta: { changes: 1 } };
+            },
+            first: async () => {
+              if (norm.startsWith("SELECT value FROM settings")) {
+                const v = store.get(String(params[0]));
+                return v === undefined ? null : { value: v };
+              }
+              return null;
+            },
+          }),
+        };
+      },
+      batch: async () => [],
+    } as any,
+  };
+}
+
+describe("settings store", () => {
+  it("round-trips a value and upserts on rewrite", async () => {
+    const { db, store } = settingsDb();
+    const { getSetting, setSetting } = await import("../src/state.js");
+    expect(await getSetting(db, "master_resume_sha")).toBeNull();
+    await setSetting(db, "master_resume_sha", "a".repeat(64));
+    expect(await getSetting(db, "master_resume_sha")).toBe("a".repeat(64));
+    await setSetting(db, "master_resume_sha", "b".repeat(64));
+    expect(store.get("master_resume_sha")).toBe("b".repeat(64));
+  });
+
+  it("getSetting resolves null when the table is missing", async () => {
+    const db = { prepare: () => { throw new Error("no such table: settings"); } } as any;
+    const { getSetting } = await import("../src/state.js");
+    expect(await getSetting(db, "master_resume_sha")).toBeNull();
+  });
+
+  it("ensureSettings creates the table idempotently", async () => {
+    const seen: string[] = [];
+    const db = { prepare: (q: string) => ({ run: async () => { seen.push(q); return {}; } }) } as any;
+    const { ensureSettings } = await import("../src/state.js");
+    await ensureSettings(db);
+    expect(seen.some((q) => q.includes("CREATE TABLE IF NOT EXISTS settings"))).toBe(true);
+  });
+});

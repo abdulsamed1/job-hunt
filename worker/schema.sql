@@ -96,3 +96,9 @@ CREATE TABLE IF NOT EXISTS notification_events (
   sent_at TEXT NOT NULL,
   PRIMARY KEY (runtime, job_hash, event)
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

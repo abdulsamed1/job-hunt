@@ -109,6 +109,40 @@ export async function ensureNotificationEvents(db: Db): Promise<void> {
   } catch { /* raced with another invocation (or table exists) */ }
 }
 
+/** Create the settings table on databases that predate it (fresh databases
+ * already have it — see schema.sql). Safe to re-run. */
+export async function ensureSettings(db: Db): Promise<void> {
+  try {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS settings (
+         key TEXT PRIMARY KEY,
+         value TEXT NOT NULL,
+         updated_at TEXT NOT NULL
+       )`,
+    ).run();
+  } catch { /* raced with another invocation (or table exists) */ }
+}
+
+/** Read one settings value. Missing key or missing table resolves null so
+ * callers can fall back to env-based defaults. */
+export async function getSetting(db: Db, key: string): Promise<string | null> {
+  try {
+    const row: any = await db.prepare(`SELECT value FROM settings WHERE key = ? LIMIT 1`).bind(key).first();
+    const v = row?.value;
+    return typeof v === "string" && v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Upsert one settings value. */
+export async function setSetting(db: Db, key: string, value: string): Promise<void> {
+  await db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).bind(key, value, new Date().toISOString()).run();
+}
+
 /** Add the degraded-signal columns to pre-existing source_health tables.
  * Fresh databases already carry them (see schema.sql); this is the
  * migration path for tables created before the columns existed. Mirrors the
