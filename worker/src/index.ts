@@ -5,7 +5,9 @@
  * - ≤50 subrequests/invocation → one source / one job per queue message
  * - 10ms CPU/invocation → fetch (I/O is free) + small parses + few D1 ops only
  * - 5 cron triggers/account → exactly 2 used (hourly scout, daily deep sweep)
- * - D1 ≤50 queries/invocation → single statements, indexed lookups
+ * - D1 ≤50 queries/invocation → single statements, indexed lookups; the
+ *   notification ledger costs exactly one INSERT per event (no extra
+ *   per-job flag write), and migrates once per queue batch
  * - No browser anywhere: ATS applies are direct HTTP POSTs (greenhouse/lever);
  *   LinkedIn submits + CAPTCHA jobs stay human-queued.
  */
@@ -23,8 +25,8 @@ import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { completeJson } from "./lib/llm.js";
-import type { Profile } from "./lib/evaluate.js";
-import { ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
+import { ensureNotificationEvents, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 
 export interface Env {
   DB: D1Database;
@@ -120,7 +122,7 @@ function profileFromEnv(env: Env): Profile & { fullName: string; email: string; 
   }
 }
 
-import { notifyJobOnce, type JobOutcome } from "./lib/notify.js";
+import { notifyEventOnce, type WorkerEvent } from "./lib/notify.js";
 
 async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
   switch (def.kind) {
@@ -200,12 +202,16 @@ export default {
     const db = env.DB as unknown as Db;
     const profile = profileFromEnv(env);
     const threshold = parseFloat(env.THRESHOLD || "70");
-    // Migrated once per batch, not once per health write (recordSourceHealth
-    // no longer ensures columns itself).
+    // Migrated once per batch, not once per write (recordSourceHealth no
+    // longer ensures columns itself; the notification ledger is created on
+    // databases that predate it).
     await ensureSourceHealthColumns(db);
+    await ensureNotificationEvents(db);
     for (const msg of batch.messages) {
+      let body: any = null;
       try {
         const m = msg.body as any;
+        body = m;
         if (m.stage === "discover" && m.def) {
           const def = m.def as SourceDef;
           // Fail closed on spoofed ATS hosts AND smuggled orgs/URLs
@@ -250,6 +256,8 @@ export default {
             });
             if (isNew) {
               await env.EVALUATE_Q.send({ stage: "evaluate", hash: canonicalHash(canon) });
+              await notifyEventOnce(db, env, "worker", canonicalHash(canon), "SEEKING",
+                { title: j.title, company: j.company, url: j.url }, `New job from ${j.source}`);
             }
           }
         } else if (m.stage === "evaluate" && m.hash) {
@@ -261,36 +269,61 @@ export default {
             { title: row.title, description: row.description || "", location: row.location },
             profile, threshold,
           );
-          await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning);
-          if (env.LLM_RATIONALE === "true" && r.eligible) {
-            try {
-              const out = await completeJson(env, db, {
-                messages: [
-                  { role: "system", content: "Summarize in one sentence why this candidate fits. JSON only: {\"rationale\": \"...\"}. Never invent facts." },
-                  { role: "user", content: `${row.title} @ ${row.company}. Matched: ${(r.matched || []).join(", ")}` },
-                ],
-                maxTokens: 120, purpose: "rationale",
-              });
-              const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
-              if (rationale) {
-                await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
-              }
-            } catch { /* rationale is optional; deterministic score stands */ }
+          if (r.gated) {
+            // Disability/eligibility/language pre-filter: evaluated and
+            // recorded straight into PRE_FILTERED_OUT (one state write, one
+            // audit row), never queued for apply.
+            await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning, "PRE_FILTERED_OUT");
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, r.reasoning);
+            continue;
           }
+          await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning);
           if (r.eligible) {
+            await notifyEventOnce(db, env, "worker", m.hash, "ELIGIBLE", row, `Score ${r.score}: ${r.reasoning}`);
+            if (env.LLM_RATIONALE === "true") {
+              try {
+                const out = await completeJson(env, db, {
+                  messages: [
+                    { role: "system", content: "Summarize in one sentence why this candidate fits. JSON only: {\"rationale\": \"...\"}. Never invent facts." },
+                    { role: "user", content: `${row.title} @ ${row.company}. Matched: ${(r.matched || []).join(", ")}` },
+                  ],
+                  maxTokens: 120, purpose: "rationale",
+                });
+                const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
+                if (rationale) {
+                  await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
+                }
+              } catch { /* rationale is optional; deterministic score stands */ }
+            }
             await env.APPLY_Q.send({ stage: "tailor-apply", hash: m.hash });
+          } else {
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, `Score ${r.score}: ${r.reasoning}`);
           }
         } else if (m.stage === "tailor-apply" && m.hash) {
           const row: any = await db.prepare(
             `SELECT canonical_hash, title, company, location, url, source, description, score FROM jobs WHERE canonical_hash = ?`,
           ).bind(m.hash).first();
           if (!row || !row.url) continue;
+          // Application-time disability re-check: rows can predate the gate
+          // or gain richer descriptions after evaluation.
+          const regate = checkDisabilityTargetingGate(row.title || "", row.description || "");
+          if (regate.verdict === "FAIL") {
+            const regateDetail = `disability gate re-check: ${regate.quote || "targeting phrase"}`.slice(0, 200);
+            await setJobState(db, m.hash, "PRE_FILTERED_OUT", regateDetail);
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, regateDetail);
+            continue;
+          }
           await setJobState(db, m.hash, "TAILORED", "worker tailor");
+          await notifyEventOnce(db, env, "worker", m.hash, "TAILORED", row, "worker tailor");
+          // Event-level alerts carry the score in the detail (the compat
+          // wrapper's backfill lives here now that callers use notifyEventOnce).
+          const scored = (detail: string) =>
+            typeof row.score === "number" ? `(score ${row.score})${detail ? ` ${detail}` : ""}` : detail;
           const sha = (env.MASTER_RESUME_SHA || "").trim();
           const failDetailSha = "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)";
           if (!sha) {
             await saveApplication(db, m.hash, "FAILED", failDetailSha, null);
-            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetailSha) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "FAILED", row, scored(failDetailSha)) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           // Decided (2026-10-08): Worker is master-only BY DESIGN, not pending.
@@ -301,7 +334,7 @@ export default {
           if (!obj) {
             const failDetail = `resume bytes missing: ${key}`;
             await saveApplication(db, m.hash, "FAILED", failDetail, null);
-            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetail) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "FAILED", row, scored(failDetail)) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           const resumeBytes = new Uint8Array(await obj.arrayBuffer());
@@ -322,9 +355,10 @@ export default {
           if (!board) {
             const queuedDetail = "non-ATS board: queued for human review";
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
-            if (await notifyJobOnce(db, env, m.hash, row, "APPLICATION_STARTED", queuedDetail) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_STARTED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
             continue;
           }
+          await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored("application attempt started"));
           const names = profile.fullName.split(/\s+/);
           const result = await applyToAts(
             board,
@@ -335,13 +369,36 @@ export default {
             },
             { dryRun: !live, approved },
           );
-          const finalState: JobOutcome = result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
+          const submitted = result.ok && live && approved;
+          const finalState: JobState = submitted ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
+          // The terminal event is distinct from the attempt event so it is
+          // never deduped away, and dry runs report their real outcome.
+          const terminalEvent: WorkerEvent = submitted ? "SUBMITTED" : live ? "FAILED" : "DRY_RUN";
           await saveApplication(db, m.hash, finalState, result.detail, key);
-          const notified = await notifyJobOnce(db, env, m.hash, row, finalState, result.detail);
-          if (notified !== "sent") console.log(`telegram notify ${notified} for ${m.hash} (${finalState})`);
+          const notified = await notifyEventOnce(db, env, "worker", m.hash, terminalEvent, row, scored(result.detail));
+          if (notified !== "sent") console.log(`telegram notify ${notified} for ${m.hash} (${terminalEvent})`);
         }
       } catch (e) {
         console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);
+        if (body?.hash) {
+          // Fixed reason: raw errors may carry secrets or oversized text.
+          // Best-effort job context so the alert still names the role. The
+          // message is acknowledged (not retried), so the event is
+          // STAGE_FAILED rather than any kind of retry notice.
+          const STAGE_FAILED_DETAIL = "queued stage failed; see worker logs";
+          let retryRow: Record<string, string | null> = {};
+          let retryDetail = `${STAGE_FAILED_DETAIL} (job ${String(body.hash).slice(0, 8)})`;
+          try {
+            const found: any = await db.prepare(
+              `SELECT title, company, url FROM jobs WHERE canonical_hash = ?`,
+            ).bind(body.hash).first();
+            if (found && (found.title || found.company || found.url)) {
+              retryRow = { title: found.title ?? null, company: found.company ?? null, url: found.url ?? null };
+              retryDetail = STAGE_FAILED_DETAIL;
+            }
+          } catch { /* lookup is best-effort; fall back to hash-only detail */ }
+          await notifyEventOnce(db, env, "worker", body.hash, "STAGE_FAILED", retryRow, retryDetail);
+        }
       }
     }
   },
@@ -353,6 +410,13 @@ export default {
       const row: any = await db.prepare(`SELECT COUNT(*) AS n FROM jobs`).first();
       // Profile sanity: an empty verified_skills list silently rejects every job.
       const prof = profileFromEnv(env);
+      // Notification ledger probe: null means the deployed schema predates
+      // the ledger (verify_deploy flags it). 0 is a valid quiet state.
+      let notificationEvents: number | null = null;
+      try {
+        const n: any = await db.prepare(`SELECT COUNT(*) AS n FROM notification_events`).first();
+        notificationEvents = n?.n ?? 0;
+      } catch { /* table missing on pre-ledger deploys */ }
       return Response.json({
         ok: true,
         jobs: row?.n ?? 0,
@@ -361,6 +425,7 @@ export default {
         profile_has_name: !!prof.fullName,
         threshold: parseFloat(env.THRESHOLD || "70"),
         live_apply: env.LIVE_APPLY === "true",
+        notification_events: notificationEvents,
       });
     }
     if (url.pathname === "/recent") {

@@ -88,3 +88,11 @@ CREATE TABLE IF NOT EXISTS llm_usage (
   disabled_until INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (provider, window)
 );
+
+CREATE TABLE IF NOT EXISTS notification_events (
+  runtime TEXT NOT NULL,
+  job_hash TEXT NOT NULL,
+  event TEXT NOT NULL,
+  sent_at TEXT NOT NULL,
+  PRIMARY KEY (runtime, job_hash, event)
+);

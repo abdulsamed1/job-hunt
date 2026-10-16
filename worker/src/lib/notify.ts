@@ -1,12 +1,28 @@
-// Telegram outbound alerts: match-ready, submitted, and failure notices.
-// Outbound only — the bot takes no inbound commands. Sends are best-effort
-// with at-most-once semantics under sequential delivery (queue retries see
-// notified=1 and skip); concurrent duplicate delivery of the same job could
-// double-send since the read-then-set spans a network round-trip — duplicates
-// only, never state corruption. Alert failures must never break the pipeline
-// or retry-storm Telegram.
+// Telegram outbound lifecycle events: seeking, filter, evaluation, tailor,
+// application attempt, submission, dry-run result, failure, and stage-failure
+// notices. Outbound only — the bot takes no inbound commands. Sends are
+// best-effort with at-most-once semantics per (runtime, job_hash, event): the
+// event key is inserted into `notification_events` before sending, so queue
+// retries see the conflicting key and skip. With Telegram credentials unset
+// nothing is claimed or written, so events can still flow once the bot is
+// configured. Alert/network/DB errors must never break the pipeline or
+// retry-storm Telegram.
 
-export type JobOutcome = "SUBMITTED" | "APPLICATION_STARTED" | "FAILED";
+/** Lifecycle events either runtime may report for a job. Both runtimes share
+ * the evaluate vocabulary: FILTERED (gated or pre-filtered out) and ELIGIBLE
+ * (passed evaluation). Python-only events (RETRY, RECOVERY, BLOCKED_CAPTCHA)
+ * stay off this union; the Worker reports failed queue stages as
+ * STAGE_FAILED and acknowledges the message instead of retrying it. */
+export type WorkerEvent =
+  | "SEEKING"
+  | "FILTERED"
+  | "ELIGIBLE"
+  | "TAILORED"
+  | "APPLICATION_ATTEMPT"
+  | "SUBMITTED"
+  | "DRY_RUN"
+  | "FAILED"
+  | "STAGE_FAILED";
 
 export interface AlertEnv {
   TELEGRAM_BOT_TOKEN?: string;
@@ -19,6 +35,8 @@ export interface AlertJobRow {
   url?: string | null;
   score?: number | null;
 }
+
+const MAX_ALERT_LEN = 3000;
 
 /** Send one Telegram message. Returns true only on HTTP 200. Never throws. */
 export async function alert(env: AlertEnv, text: string): Promise<boolean> {
@@ -40,56 +58,67 @@ export async function alert(env: AlertEnv, text: string): Promise<boolean> {
   }
 }
 
-/** Render the per-outcome message. Pure function — fully unit-tested. */
+/**
+ * Render the source-tagged per-event message. Pure function — fully
+ * unit-tested. Shape mirrors the Python `format_event` contract:
+ * `[runtime] EVENT: title @ company` plus detail/url lines, bounded to
+ * 3000 chars. Never includes tokens or credentials (callers pass only job
+ * fields and state reasons).
+ */
 export function formatJobAlert(
+  runtime: string,
   row: AlertJobRow,
-  state: JobOutcome,
+  event: WorkerEvent,
   detail: string,
 ): string {
+  const tag = (runtime || "worker").slice(0, 40);
+  const name = (event || "UNKNOWN").slice(0, 40);
   const title = (row.title || "Untitled role").slice(0, 120);
   const company = (row.company || "Unknown company").slice(0, 80);
-  const score = row.score ?? "?";
-  const url = row.url || "";
-  if (state === "SUBMITTED") {
-    return `Applied: ${title} @ ${company} (score ${score})\n${url}`;
-  }
-  if (state === "FAILED") {
-    return `Needs attention: ${title} @ ${company}\n${(detail || "").slice(0, 200)}\n${url}`;
-  }
-  return `Ready for review: ${title} @ ${company} (score ${score})\n${(detail || "").slice(0, 200)}\n${url}`;
+  const lines = [`[${tag}] ${name}: ${title} @ ${company}`];
+  if (detail) lines.push(detail.slice(0, 2000));
+  if (row.url) lines.push(row.url.slice(0, 500));
+  return lines.join("\n").slice(0, MAX_ALERT_LEN);
 }
 
 /**
- * Alert at most once per job. Reads the `notified` flag, sends on 0,
- * then marks notified=1 whether sending succeeded or not (a Telegram
- * outage must not retry-storm; queue retries are already bounded).
+ * Alert at most once per (runtime, job_hash, event). Claims the event key in
+ * `notification_events` first: a conflicting key means this event already
+ * sent (or is being sent) and resolves "skipped" without a second send.
+ * Only a successful insert sends. Alert failures resolve "failed" but still
+ * record the claim, so a Telegram outage cannot retry-storm. Missing
+ * credentials resolve "skipped" without claiming anything. Non-conflict DB
+ * errors resolve "failed" without sending. Never throws.
  * Returns "sent" | "skipped" | "failed".
  */
-export async function notifyJobOnce(
+export async function notifyEventOnce(
   db: any,
   env: AlertEnv,
+  runtime: string,
   hash: string,
+  event: WorkerEvent,
   row: AlertJobRow,
-  state: JobOutcome,
   detail: string,
 ): Promise<"sent" | "skipped" | "failed"> {
-  let cur: any = null;
+  const rt = runtime || "worker";
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return "skipped";
   try {
-    cur = await db.prepare(`SELECT notified FROM jobs WHERE canonical_hash = ?`).bind(hash).first();
-  } catch {
-    cur = null;
+    await db
+      .prepare(
+        `INSERT INTO notification_events (runtime, job_hash, event, sent_at) VALUES (?, ?, ?, ?)`,
+      )
+      .bind(rt, hash, event, new Date().toISOString())
+      .run();
+  } catch (e) {
+    // D1 raises on PRIMARY KEY conflict — that is the dedup signal.
+    if (/unique|primary key|constraint failed|already exists/i.test(String(e))) return "skipped";
+    return "failed";
   }
-  if (cur?.notified) return "skipped";
   let outcome: "sent" | "failed" = "failed";
   try {
-    if (await alert(env, formatJobAlert(row, state, detail))) outcome = "sent";
+    if (await alert(env, formatJobAlert(rt, row, event, detail))) outcome = "sent";
   } catch {
     outcome = "failed";
-  }
-  try {
-    await db.prepare(`UPDATE jobs SET notified = 1 WHERE canonical_hash = ?`).bind(hash).run();
-  } catch {
-    // Notification bookkeeping must never break the pipeline either.
   }
   return outcome;
 }

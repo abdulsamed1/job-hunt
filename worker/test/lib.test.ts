@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { canonicalHash, fnv1a, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
 import { filterRemoteList, filterRecentList, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt } from "../src/lib/freshness.js";
-import { checkEligibilityGate, checkLanguageGate, classifyTier, scoreJob, type Profile } from "../src/lib/evaluate.js";
+import { checkDisabilityTargetingGate, checkEligibilityGate, checkLanguageGate, classifyTier, scoreJob, type Profile } from "../src/lib/evaluate.js";
 import { checkboxAction, matchAnswerToOption } from "../src/lib/match.js";
 
 const profile = (): Profile => ({
@@ -102,6 +105,137 @@ describe("scoreJob matched-skill requirement", () => {
   it("rejects empty-signal titles", () => {
     const r = scoreJob("Senior Accountant", "Finance role.", "Remote", profile());
     expect(r.eligible).toBe(false);
+  });
+});
+
+describe("scoreJob disability-targeting gate", () => {
+  it("rejects a disability-targeted program before scoring", () => {
+    const r = scoreJob(
+      "Technical Support Engineer Intern for People with Disabilities",
+      "Ignite Program. Python and customer support.",
+      "Cairo",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("allows generic accessibility language", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Equal opportunity employer; reasonable accommodation is available.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("rejects encouragement into a hiring program (noun beats suppression)", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "We encourage people with disabilities to join our hiring program. Python role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("passes an encouragement-only sentence without program nouns", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Individuals with disabilities are encouraged to apply. Python role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("passes a distant EEO statement (300-char gap)", () => {
+    const gap = "Backend systems work. ".repeat(20);
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      `Engineering role for people with disabilities. ${gap}We are an equal opportunity employer.`,
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("passes non-discrimination boilerplate that mentions hiring", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "We do not discriminate in hiring on the basis of disability. Python backend role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(false);
+  });
+
+  it("rejects a bare disability program without hiring language", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Our disability inclusion program supports engineers. Python backend role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("does not let a decimal point hide the program noun from the sentence", () => {
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      "Job pays 3.5x above market and we encourage adults with disabilities to apply for our internship program. Python backend role.",
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.eligible).toBe(false);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("keeps the matched phrase in the quote at late positions", () => {
+    const filler = "We build reliable systems for teams worldwide ".repeat(8);
+    const r = scoreJob(
+      "Senior Backend Engineer",
+      `${filler}We support engineers with disabilities through our certified program.`,
+      "Remote",
+      profile(),
+      70,
+    );
+    expect(r.gated).toBe(true);
+    expect(r.reasoning).toMatch(/disabilit/i);
+  });
+
+  it("matches the shared Python/Worker parity fixtures", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const fixture = join(here, "..", "..", "tests", "fixtures", "disability_gate_cases.json");
+    const cases = JSON.parse(readFileSync(fixture, "utf8")) as Array<{
+      name: string;
+      title: string;
+      description: string;
+      verdict: "PASS" | "FAIL";
+    }>;
+    expect(cases.length).toBeGreaterThan(0);
+    for (const c of cases) {
+      const r = checkDisabilityTargetingGate(c.title, c.description);
+      expect(r.verdict, c.name).toBe(c.verdict);
+      if (c.verdict === "FAIL") {
+        expect((r.quote || "").toLowerCase(), c.name).toMatch(/disabilit/);
+      }
+    }
   });
 });
 

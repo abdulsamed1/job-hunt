@@ -1,0 +1,98 @@
+[
+  {
+    "name": "title_mention_fails",
+    "title": "Software Engineer - Disability Hiring Program",
+    "description": "Build Python and FastAPI services.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "title_plain_mention_fails",
+    "title": "Disability Support Engineer",
+    "description": "Python backend role.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "program_noun_near_mention_fails",
+    "title": "Senior Backend Engineer",
+    "description": "Ignite Program, exclusively for people with disabilities. Python and FastAPI.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "encouragement_into_program_fails",
+    "title": "Senior Backend Engineer",
+    "description": "We encourage people with disabilities to join our hiring program. Python backend role.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "bare_inclusion_program_fails",
+    "title": "Senior Backend Engineer",
+    "description": "Our disability inclusion program supports engineers. Python backend role.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "disability_hiring_compound_fails",
+    "title": "Senior Backend Engineer",
+    "description": "Join our disability hiring initiative for backend engineers. Python.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "hiring_people_with_disabilities_fails",
+    "title": "Senior Backend Engineer",
+    "description": "We are hiring people with disabilities for backend roles. Python and Docker.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "decimal_no_false_split_fails",
+    "title": "Senior Backend Engineer",
+    "description": "Job pays 3.5x above market and we encourage adults with disabilities to apply for our internship program. Python backend role.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "newline_encouragement_with_noun_fails",
+    "title": "Senior Backend Engineer",
+    "description": "About us:\nOur disability fellowship welcomes engineers.\nPython backend role.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "late_mention_quote_keeps_phrase_fails",
+    "title": "Senior Backend Engineer",
+    "description": "We build reliable systems for teams worldwide We build reliable systems for teams worldwide We build reliable systems for teams worldwide We build reliable systems for teams worldwide We build reliable systems for teams worldwide We build reliable systems for teams worldwide We build reliable systems for teams worldwide We support engineers with disabilities through our certified program.",
+    "verdict": "FAIL"
+  },
+  {
+    "name": "distant_eeo_passes",
+    "title": "Senior Backend Engineer",
+    "description": "Engineering role for people with disabilities. Backend systems work. Backend systems work. Backend systems work. Backend systems work. We are an equal opportunity employer.",
+    "verdict": "PASS"
+  },
+  {
+    "name": "eeo_accommodation_passes",
+    "title": "Senior Backend Engineer",
+    "description": "Build Python services. We are an equal opportunity employer and provide reasonable accommodation for applicants with disabilities.",
+    "verdict": "PASS"
+  },
+  {
+    "name": "encouragement_only_passes",
+    "title": "Senior Backend Engineer",
+    "description": "Individuals with disabilities are encouraged to apply. Python and FastAPI backend role.",
+    "verdict": "PASS"
+  },
+  {
+    "name": "accommodation_only_passes",
+    "title": "Senior Backend Engineer",
+    "description": "Reasonable accommodations are available for employees with disabilities. Python backend role.",
+    "verdict": "PASS"
+  },
+  {
+    "name": "nondiscrimination_in_hiring_passes",
+    "title": "Senior Backend Engineer",
+    "description": "We do not discriminate in hiring on the basis of disability. Python backend role.",
+    "verdict": "PASS"
+  },
+  {
+    "name": "no_mention_passes",
+    "title": "Senior Backend Engineer",
+    "description": "Python and FastAPI backend role building APIs.",
+    "verdict": "PASS"
+  }
+]

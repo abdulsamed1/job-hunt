@@ -90,6 +90,32 @@ SPONSORSHIP_UNAVAILABLE_PATTERNS = [
     re.compile(r"sponsorship not available", re.IGNORECASE),
 ]
 
+# Disability-targeting gate: a FAIL requires (a) a `disabilit*` mention in the
+# title, (b) a program noun (incl. plurals) within ±80 chars of a description
+# mention, or (c) a direct disability hiring/employment phrase. Encouragement
+# sentences without program/hiring nouns are suppressed; bare mentions (EEO /
+# reasonable-accommodation boilerplate) still pass.
+DISABILITY_PHRASE_PAT = re.compile(r"disabilit\w*", re.IGNORECASE)
+PROGRAM_NOUN_PAT = re.compile(
+    r"\b(programs?|initiatives?|tracks?|internships?|fellowships?|cohorts?)\b",
+    re.IGNORECASE,
+)
+HIRING_NOUN_PAT = re.compile(
+    r"\b(hiring|recruiting|recruitment|employment)\b", re.IGNORECASE
+)
+ENCOURAGEMENT_PAT = re.compile(r"encourag\w*|welcom|invit", re.IGNORECASE)
+DISABILITY_HIRING_PHRASE_PAT = re.compile(
+    r"disabilit\w*[\s-]+(?:hiring|employment|recruit(?:ment|ing))"
+    r"|(?:hiring|recruit(?:ment|ing)|employment)\s+(?:(?:of|for)\s+)?"
+    r"(?:(?:people|persons|individuals|candidates|applicants|employees|talent)\s+)?"
+    r"with\s+disabilit\w*",
+    re.IGNORECASE,
+)
+
+# Sentence breaks need punctuation followed by whitespace (or end of text), so
+# abbreviations and decimals ("e.g.", "3.5") never split a sentence.
+SENTENCE_BREAK_PAT = re.compile(r"[.!?](?=\s|$)|\n")
+
 # Languages checked as explicit job-condition requirements (not programming languages).
 KNOWN_LANGUAGES = [
     "english", "danish", "norwegian", "swedish", "german", "french", "spanish",
@@ -148,6 +174,33 @@ def classify_tier(title: str, description: str = "") -> str:
     if years and int(years.group(1)) >= 5:
         return "senior" if re.search(r"\bsenior\b", (description or "").lower()) else "mid"
     return "mid"
+
+
+def _sentence_bounds(text: str, start: int, end: int) -> Tuple[int, int]:
+    """Bounds of the sentence containing [start, end).
+
+    Breaks on punctuation followed by whitespace (or end of text) and on
+    newlines, so abbreviations and decimals never split a sentence.
+    """
+    sent_start, sent_end = 0, len(text)
+    for m in SENTENCE_BREAK_PAT.finditer(text):
+        if m.end() <= start:
+            sent_start = m.end()
+        elif m.start() >= end:
+            sent_end = m.start()
+            break
+    return sent_start, sent_end
+
+
+def _sentence_around(text: str, start: int, end: int) -> str:
+    """Return the sentence containing [start, end) without its break characters."""
+    sent_start, sent_end = _sentence_bounds(text, start, end)
+    return text[sent_start:sent_end]
+
+
+def _clip(text: str, start: int, end: int, radius: int = 100) -> str:
+    """Slice `text` around [start, end) so the matched phrase is never cut away."""
+    return text[max(0, start - radius):min(len(text), end + radius)].strip()
 
 
 class EvaluationEngine:
@@ -237,6 +290,39 @@ class EvaluationEngine:
             pre_filter_reason=reason,
         )
 
+    def check_disability_targeting_gate(self, job: JobPosting) -> Tuple[str, Optional[str]]:
+        """Hard gate: posting targets a disability-specific hiring program.
+
+        Returns (verdict, quote). FAIL quotes the matched phrase with
+        surrounding context and must stop scoring. A FAIL requires a title
+        mention, a program noun (incl. plurals) within ±80 chars of a
+        description mention, or a direct disability hiring/employment phrase.
+        Encouragement sentences without program/hiring nouns are suppressed;
+        bare mentions and generic EEO / reasonable-accommodation boilerplate
+        pass.
+        """
+        title = job.title or ""
+        desc = job.description or ""
+        title_match = DISABILITY_PHRASE_PAT.search(title)
+        if title_match:
+            return "FAIL", _clip(title, title_match.start(), title_match.end())
+        for match in DISABILITY_PHRASE_PAT.finditer(desc):
+            sentence = _sentence_around(desc, match.start(), match.end())
+            # Pure encouragement boilerplate ("candidates with disabilities are
+            # encouraged to apply") is suppressed only while it carries no
+            # program/hiring noun of its own.
+            if ENCOURAGEMENT_PAT.search(sentence) and not (
+                PROGRAM_NOUN_PAT.search(sentence) or HIRING_NOUN_PAT.search(sentence)
+            ):
+                continue
+            window = desc[max(0, match.start() - 80):match.end() + 80]
+            if PROGRAM_NOUN_PAT.search(window):
+                return "FAIL", _clip(desc, match.start(), match.end())
+        phrase = DISABILITY_HIRING_PHRASE_PAT.search(desc)
+        if phrase:
+            return "FAIL", _clip(desc, phrase.start(), phrase.end())
+        return "PASS", None
+
     def check_sponsorship(
         self, job: JobPosting, profile: CandidateProfile
     ) -> Tuple[str, Optional[str]]:
@@ -317,6 +403,9 @@ class EvaluationEngine:
         """Synchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
         # 0. Hard gates run before scoring (no LLM tokens spent on gated-out roles)
+        verdict, quote = self.check_disability_targeting_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Disability-targeted", verdict, quote)
         verdict, quote = self.check_eligibility_gate(job)
         if verdict == "FAIL":
             return self._gate_rejection(job, "Eligibility", verdict, quote)
@@ -359,6 +448,9 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         """Asynchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
+        verdict, quote = self.check_disability_targeting_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Disability-targeted", verdict, quote)
         verdict, quote = self.check_eligibility_gate(job)
         if verdict == "FAIL":
             return self._gate_rejection(job, "Eligibility", verdict, quote)

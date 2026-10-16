@@ -180,3 +180,10 @@ gives you structural context (callers, dependents, test coverage) that file sear
   Off Workers, always: Playwright browser, LLM-heavy stages, Rezi mirroring,
   LinkedIn submits, CAPTCHA jobs (human-queued). On Workers: fetch/parse,
   deterministic eval, pdf-lib PDFs, direct ATS POSTs (approved per-board).
+- **Notifications**: both runtimes emit the same lifecycle events to Telegram
+  (`SEEKING/FILTERED/ELIGIBLE/TAILORED/APPLICATION_ATTEMPT/SUBMITTED/DRY_RUN/
+  FAILED`; `STAGE_FAILED` worker-only, `RETRY`/`RECOVERY` python-only).
+  Secrets: GitHub Actions via repo secrets, Worker via `wrangler secret`;
+  web-UI runs stay silent; `--no-notify` per CLI run. Worker claims the ledger
+  key pre-send (at-most-once); local retries a failed send on the next
+  emission. Disability gate re-runs at tailor/apply time in both runtimes.

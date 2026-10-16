@@ -203,11 +203,11 @@ per-board `APPROVE_*` flags.
 | `ui` | `--port 8000 --host 0.0.0.0` | Launch the Mission Control web dashboard |
 | `status` | `--db data/jobs.db` | Print current pipeline state counts and 24h metrics |
 | `llm-status` | `--llm-url http://127.0.0.1:4000/v1` | Check local LLM endpoint connectivity (optional; eval is deterministic by default) |
-| `scan` | `--limit 50 --sources config/sources.yaml` | Run discovery across configured ATS sources |
-| `evaluate` | `--limit 100 --threshold 70.0` | Run deterministic evaluation and scoring on discovered jobs |
-| `tailor` | `--limit 50 [--use-rezi]` | Generate fact-checked CVs for eligible jobs (optional Rezi mirroring) |
-| `apply` | `--limit 10 [--live]` | Launch browser automation (defaults to safe dry-run) |
-| `run` | `--interval 3600 [--live]` | Start 24/7 continuous autonomous loop |
+| `scan` | `--limit 50 --sources config/sources.yaml [--no-notify]` | Run discovery across configured ATS sources |
+| `evaluate` | `--limit 100 --threshold 70.0 [--no-notify]` | Run deterministic evaluation and scoring on discovered jobs |
+| `tailor` | `--limit 50 --job-id N [--no-notify]` | Generate fact-checked CVs for eligible jobs |
+| `apply` | `--limit 10 --job-id N [--live] [--no-notify]` | Launch browser automation (defaults to safe dry-run) |
+| `run` | `--interval 3600 [--live] [--no-notify]` | Start 24/7 continuous autonomous loop |
 | `doctor` | `--db data/jobs.db` | Cold-start diagnostics (DB, adapters, secrets, source config) |
 | `outcome` | `--job-id N --status applied\|interview\|offer\|rejected\|hired\|ghosted` | Record what actually happened to an application, for calibration |
 
@@ -230,6 +230,43 @@ The backend provides a REST API powering the Mission Control UI:
 - **`POST /api/actions/apply`**: Trigger browser automation applications (dry-run or live).
 - **`POST /api/actions/cycle`**: Trigger a complete end-to-end pipeline cycle.
 
+## Operations: Telegram notifications & disability filter
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable safe, best-effort
+event notifications (pipeline lifecycle, identical in both runtimes:
+discovered → eligible/filtered → tailored → application-attempt → submitted /
+dry-run / failed / stage-failed). Unset credentials mean no-op — nothing
+sends and nothing raises. `scan`, `evaluate`, `tailor`, `apply`, and `run`
+accept `--no-notify`, which skips notifier construction for that run even
+with credentials present. Web-UI runs never notify: the dashboard builds its
+orchestrator without a notifier, and that is intentional. Messages are tagged
+`[local]` or `[worker]` by runtime and deduplicated so retries never resend
+the same event. CI sweeps get the two secrets from GitHub Secrets.
+
+A job handled by both runtimes alerts twice (`[local]` + `[worker]`). Each
+runtime keeps its own event ledger, so the cross-runtime double-send is by
+design, not a dedup failure.
+
+A Telegram outage drops events, with per-runtime recovery semantics:
+
+- **Local**: a failed send is *not* remembered, so the next emission of the
+  same event tries again (the next CLI run retries it). Dedup memory is
+  process-lifetime, FIFO-bounded to 2000 events.
+- **Worker**: the ledger key is claimed *before* the send, so a failed send is
+  recorded as failed and never retried — queue retries and cron re-runs can
+  never storm Telegram.
+
+Either way the pipeline keeps running without notification backpressure.
+
+Disability-targeted programs are filtered at evaluation time and re-checked
+right before tailoring/applying (both runtimes): a `disabilit*` mention in the
+**title** fails outright; in the description it fails when a program or
+hiring phrase sits nearby (a program noun — program/initiative/track/
+internship/fellowship/cohort — within ±80 chars, or compound phrasing like
+"hiring people with disabilities"). Pure encouragement sentences pass, and
+generic EEO/accessibility boilerplate (nondiscrimination statements,
+reasonable-accommodation text) is allowed through.
+
 ---
 
 ## Running Automated Tests
@@ -243,8 +280,8 @@ cd worker && npm test && npm run typecheck
 ```
 
 ```text
-uv run pytest tests/ -q          # 209 passed, 1 skipped
-cd worker && npm test            # 32 passed (vitest) + tsc --noEmit clean
+uv run pytest tests/ -q          # 325 passed, 1 skipped
+cd worker && npm test            # 118 passed (vitest, 10 files) + tsc --noEmit clean
 ```
 
 ---

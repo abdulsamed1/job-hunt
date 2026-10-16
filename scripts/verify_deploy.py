@@ -85,6 +85,24 @@ def classify_probe(name: str, status: int, probe: dict):
     return ("ok", "")
 
 
+def check_health(health: dict) -> list:
+    """Safety/schema checks over /health. Pure function — unit-tested, no network.
+
+    `notification_events: null` means the deployed Worker could not read the
+    ledger table (pre-migration deploy). Hard failure: events would silently
+    go unrecorded, which breaks at-most-once semantics.
+    """
+    failures: list = []
+    if health.get("live_apply") is True:
+        failures.append("SAFETY: live_apply is true on production — investigate before any run")
+    if health.get("notification_events") is None:
+        failures.append(
+            "notification_events missing from /health — deployed schema predates the "
+            "ledger migration (redeploy with worker/src/state.ts ensureNotificationEvents)"
+        )
+    return failures
+
+
 def main() -> int:
     global BASE
     ap = argparse.ArgumentParser()
@@ -109,9 +127,11 @@ def main() -> int:
     if status != 200 or not health.get("ok"):
         failures.append(f"/health unreachable: {status} {health}")
     else:
-        print(f"health: jobs={health.get('jobs')} skills={health.get('profile_skills')} live_apply={health.get('live_apply')}")
-        if health.get("live_apply") is True:
-            failures.append("SAFETY: live_apply is true on production — investigate before any run")
+        print(
+            f"health: jobs={health.get('jobs')} skills={health.get('profile_skills')} "
+            f"live_apply={health.get('live_apply')} notification_events={health.get('notification_events')}"
+        )
+        failures.extend(check_health(health))
 
     status, sources = req("GET", "/sources")
     if status != 200:

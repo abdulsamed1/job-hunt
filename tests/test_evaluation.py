@@ -239,3 +239,116 @@ def test_blocked_company_and_keywords(engine, candidate):
     job3 = _swe_job2("Python backend role in Egypt, not a crypto casino.")
     res3 = engine.evaluate(job3, candidate)
     assert res3.pre_filtered is False
+
+
+def test_disability_targeted_program_is_pre_filtered(engine, candidate):
+    job = _swe_job(
+        "Technical support engineer intern for people with disabilities. "
+        "Ignite Program. Python and customer support."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert result.eligible is False
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+def test_generic_accessibility_language_is_not_disability_targeting(engine, candidate):
+    job = _swe_job(
+        "Build Python services. We are an equal opportunity employer and provide "
+        "reasonable accommodation for applicants with disabilities."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_encouragement_into_program_fails(engine, candidate):
+    job = _swe_job(
+        "We encourage people with disabilities to join our hiring program. "
+        "Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+def test_disability_encouragement_only_sentence_passes(engine, candidate):
+    job = _swe_job(
+        "Individuals with disabilities are encouraged to apply. "
+        "Python and FastAPI backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_title_mention_fails(engine, candidate):
+    job = _swe_job("Build Python services.", title="Disability Support Engineer")
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+def test_disability_nondiscrimination_in_hiring_passes(engine, candidate):
+    job = _swe_job(
+        "We do not discriminate in hiring on the basis of disability. "
+        "Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_decimal_does_not_split_sentence(engine, candidate):
+    # A bare "." splitter would break at "3.5", hide the program noun from the
+    # encouragement sentence and wrongly suppress the fail.
+    job = _swe_job(
+        "Job pays 3.5x above market and we encourage adults with disabilities "
+        "to apply for our internship program. Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+def test_disability_late_mention_quote_keeps_phrase(engine, candidate):
+    filler = "We build reliable systems for teams worldwide " * 8
+    job = _swe_job(
+        filler + "We support engineers with disabilities through our certified program."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    reason = (result.pre_filter_reason or result.reasoning).lower()
+    assert "disabilit" in reason
+
+
+def test_disability_gate_shared_fixtures(engine, candidate):
+    import json
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures" / "disability_gate_cases.json"
+    cases = json.loads(fixture.read_text())
+    assert cases, "shared disability gate fixtures must not be empty"
+    for case in cases:
+        job = _swe_job(case["description"], title=case["title"])
+        verdict, quote = engine.check_disability_targeting_gate(job)
+        assert verdict == case["verdict"], f"{case['name']}: expected {case['verdict']}, got {verdict}"
+        if case["verdict"] == "FAIL":
+            assert quote and "disabilit" in quote.lower(), f"{case['name']}: quote must carry the matched phrase"
+
+
+def test_disability_distant_eeo_passes(engine, candidate):
+    gap = "Backend systems work. " * 20  # ~440 chars between mention and EEO
+    job = _swe_job(
+        "Engineering role for people with disabilities. " + gap +
+        "We are an equal opportunity employer."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
+
+
+def test_disability_bare_program_fails(engine, candidate):
+    job = _swe_job(
+        "Our disability inclusion program supports engineers. Python backend role."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert result.eligible is False
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()

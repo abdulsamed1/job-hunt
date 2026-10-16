@@ -2,7 +2,7 @@ name: scheduled-sweep
 
 on:
   schedule:
-    # Daily full 325-source 24h-remote sweep (02:00 UTC)
+    # Daily full 382-source 24h-remote sweep (02:00 UTC)
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
@@ -25,6 +25,10 @@ jobs:
     timeout-minutes: 50
     env:
       REZI_MCP_TOKEN: ${{ secrets.REZI_MCP_TOKEN }}
+      # Lifecycle alerts from CI runs (web UI runs are intentionally silent;
+      # configure the secrets to receive sweep notifications).
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
       - uses: actions/checkout@v4
 
