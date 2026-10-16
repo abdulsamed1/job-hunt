@@ -120,7 +120,7 @@ function profileFromEnv(env: Env): Profile & { fullName: string; email: string; 
   }
 }
 
-import { notifyJobOnce, type JobOutcome } from "./lib/notify.js";
+import { notifyEventOnce, type JobOutcome } from "./lib/notify.js";
 
 async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]> {
   switch (def.kind) {
@@ -204,8 +204,10 @@ export default {
     // no longer ensures columns itself).
     await ensureSourceHealthColumns(db);
     for (const msg of batch.messages) {
+      let body: any = null;
       try {
         const m = msg.body as any;
+        body = m;
         if (m.stage === "discover" && m.def) {
           const def = m.def as SourceDef;
           // Fail closed on spoofed ATS hosts AND smuggled orgs/URLs
@@ -250,6 +252,8 @@ export default {
             });
             if (isNew) {
               await env.EVALUATE_Q.send({ stage: "evaluate", hash: canonicalHash(canon) });
+              await notifyEventOnce(db, env, "worker", canonicalHash(canon), "SEEKING",
+                { title: j.title, company: j.company, url: j.url }, `New job from ${j.source}`);
             }
           }
         } else if (m.stage === "evaluate" && m.hash) {
@@ -262,6 +266,14 @@ export default {
             profile, threshold,
           );
           await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning);
+          if (r.gated) {
+            // Disability/eligibility/language pre-filter: evaluated and
+            // recorded, but never reaches the apply queue.
+            await setJobState(db, m.hash, "PRE_FILTERED_OUT", r.reasoning.slice(0, 200));
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, r.reasoning);
+            continue;
+          }
+          await notifyEventOnce(db, env, "worker", m.hash, "EVALUATED", row, `Score ${r.score}: ${r.reasoning}`);
           if (env.LLM_RATIONALE === "true" && r.eligible) {
             try {
               const out = await completeJson(env, db, {
@@ -286,11 +298,16 @@ export default {
           ).bind(m.hash).first();
           if (!row || !row.url) continue;
           await setJobState(db, m.hash, "TAILORED", "worker tailor");
+          await notifyEventOnce(db, env, "worker", m.hash, "TAILORED", row, "worker tailor");
+          // Event-level alerts carry the score in the detail (the compat
+          // wrapper's backfill lives here now that callers use notifyEventOnce).
+          const scored = (detail: string) =>
+            typeof row.score === "number" ? `(score ${row.score})${detail ? ` ${detail}` : ""}` : detail;
           const sha = (env.MASTER_RESUME_SHA || "").trim();
           const failDetailSha = "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)";
           if (!sha) {
             await saveApplication(db, m.hash, "FAILED", failDetailSha, null);
-            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetailSha) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "FAILED", row, scored(failDetailSha)) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           // Decided (2026-10-08): Worker is master-only BY DESIGN, not pending.
@@ -301,7 +318,7 @@ export default {
           if (!obj) {
             const failDetail = `resume bytes missing: ${key}`;
             await saveApplication(db, m.hash, "FAILED", failDetail, null);
-            if (await notifyJobOnce(db, env, m.hash, row, "FAILED", failDetail) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "FAILED", row, scored(failDetail)) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
             continue;
           }
           const resumeBytes = new Uint8Array(await obj.arrayBuffer());
@@ -322,9 +339,10 @@ export default {
           if (!board) {
             const queuedDetail = "non-ATS board: queued for human review";
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
-            if (await notifyJobOnce(db, env, m.hash, row, "APPLICATION_STARTED", queuedDetail) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_STARTED)`);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_STARTED", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_STARTED)`);
             continue;
           }
+          await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_STARTED", row, scored("application attempt started"));
           const names = profile.fullName.split(/\s+/);
           const result = await applyToAts(
             board,
@@ -337,11 +355,14 @@ export default {
           );
           const finalState: JobOutcome = result.ok && live && approved ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
           await saveApplication(db, m.hash, finalState, result.detail, key);
-          const notified = await notifyJobOnce(db, env, m.hash, row, finalState, result.detail);
+          const notified = await notifyEventOnce(db, env, "worker", m.hash, finalState, row, scored(result.detail));
           if (notified !== "sent") console.log(`telegram notify ${notified} for ${m.hash} (${finalState})`);
         }
       } catch (e) {
         console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);
+        if (body?.hash) {
+          await notifyEventOnce(db, env, "worker", body.hash, "RETRY", {}, String(e).slice(0, 200));
+        }
       }
     }
   },
