@@ -9,12 +9,13 @@
 
 export type JobOutcome = "SUBMITTED" | "APPLICATION_STARTED" | "FAILED";
 
-/** Lifecycle events either runtime may report for a job. */
+/** Lifecycle events either runtime may report for a job. Both runtimes share
+ * the evaluate vocabulary: FILTERED (gated or pre-filtered out) and ELIGIBLE
+ * (passed evaluation). */
 export type WorkerEvent =
   | "SEEKING"
   | "FILTERED"
   | "ELIGIBLE"
-  | "EVALUATED"
   | "TAILORED"
   | "APPLICATION_STARTED"
   | "SUBMITTED"

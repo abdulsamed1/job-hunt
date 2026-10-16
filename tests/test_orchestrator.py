@@ -462,6 +462,27 @@ def test_cli_scan_accepts_source_and_windows():
     assert args.remote_only is True
 
 
+def test_cli_no_notify_skips_notifier_construction(monkeypatch):
+    from job_hunt import cli as cli_module
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+
+    def _boom():
+        raise AssertionError("build_notifier must not run with --no-notify")
+
+    monkeypatch.setattr(cli_module, "build_notifier", _boom)
+    for cmd in ("scan", "evaluate", "tailor", "apply", "run"):
+        args = cli_module.build_parser().parse_args([cmd, "--no-notify"])
+        assert args.no_notify is True
+        assert cli_module.build_notifier_or_none(args) is None
+
+    monkeypatch.setattr(cli_module, "build_notifier", lambda: object())
+    args = cli_module.build_parser().parse_args(["scan"])
+    assert args.no_notify is False
+    assert cli_module.build_notifier_or_none(args) is not None
+
+
 def test_web_action_request_accepts_windows():
     from job_hunt.web.app import ActionRequest
 

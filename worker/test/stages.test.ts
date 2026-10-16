@@ -284,9 +284,11 @@ describe("queue lifecycle events", () => {
       await worker.queue({ messages: [{ body: { stage: "evaluate", hash } }] } as any, env);
       expect(q.APPLY_Q.sent).toHaveLength(1);
       await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash } }] } as any, env);
-      for (const ev of ["SEEKING", "TAILORED", "APPLICATION_STARTED", "SUBMITTED"]) {
+      for (const ev of ["SEEKING", "ELIGIBLE", "TAILORED", "APPLICATION_STARTED", "SUBMITTED"]) {
         expect(texts.some((t) => t.includes(`[worker] ${ev}:`)), ev).toBe(true);
       }
+      // Shared evaluate vocabulary: no Worker-only EVALUATED event.
+      expect(texts.some((t) => t.includes("EVALUATED"))).toBe(false);
     } finally {
       restore();
     }
@@ -304,6 +306,44 @@ describe("queue lifecycle events", () => {
         queueEnv(db, q),
       );
       expect(texts.some((t) => t.includes("[worker] RETRY:"))).toBe(true);
+      // Fallback branch (job row unreadable): fixed reason + short hash, and
+      // the raw error never leaks into the alert.
+      expect(texts.some((t) => t.includes("queued stage failed; see worker logs"))).toBe(true);
+      expect(texts.some((t) => t.includes("h-retry"))).toBe(true);
+      expect(texts.some((t) => t.includes("d1 down"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("emits RETRY with job context when the row lookup succeeds", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, "");
+    try {
+      const { db } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-retry2",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://example.com/j/2",
+          description: "Python FastAPI backend role building reliable systems.",
+          source: "greenhouse:acme",
+          score: 100,
+        },
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef" });
+      env.CV_BUCKET = { get: async () => { throw new Error("r2 exploded"); } };
+      await worker.queue(
+        { messages: [{ body: { stage: "tailor-apply", hash: "h-retry2" } }] } as any,
+        env,
+      );
+      // Found branch: title/company name the role, fixed reason only.
+      expect(texts.some((t) => t.includes("[worker] RETRY: Backend Engineer @ Acme"))).toBe(true);
+      expect(texts.some((t) => t.includes("queued stage failed; see worker logs"))).toBe(true);
+      expect(texts.some((t) => t.includes("r2 exploded"))).toBe(false);
     } finally {
       restore();
     }

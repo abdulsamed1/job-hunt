@@ -233,13 +233,29 @@ The backend provides a REST API powering the Mission Control UI:
 ## Operations: Telegram notifications & disability filter
 
 Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable safe, best-effort
-event notifications (pipeline lifecycle: discovered → eligible → tailored →
-applied/human-queued). Unset credentials mean no-op — nothing sends and
-nothing raises. Messages are tagged `[local]` or `[worker]` by runtime and
-deduplicated so retries never resend the same event. Disability-targeted
-programs are filtered at evaluation time (local and Worker), while generic
-accessibility/EEO text (equal-opportunity statements, reasonable-accommodation
-boilerplate) is allowed through.
+event notifications (pipeline lifecycle, identical in both runtimes:
+discovered → eligible/filtered → tailored → applied/human-queued). Unset
+credentials mean no-op — nothing sends and nothing raises. `scan`,
+`evaluate`, `tailor`, `apply`, and `run` accept `--no-notify`, which skips
+notifier construction for that run even with credentials present. Web-UI runs
+never notify: the dashboard builds its orchestrator without a notifier, and
+that is intentional. Messages are tagged `[local]` or `[worker]` by runtime
+and deduplicated so retries never resend the same event.
+
+A job handled by both runtimes alerts twice (`[local]` + `[worker]`). Each
+runtime keeps its own event ledger, so the cross-runtime double-send is by
+design, not a dedup failure.
+
+A Telegram outage drops events. A failed send still claims its ledger key, so
+the event is recorded as failed and is never retried or delayed — the
+pipeline keeps running without notification backpressure.
+
+Disability-targeted programs are filtered at evaluation time (local and
+Worker): only a `disabilit*` mention with a program noun
+(program/initiative/track/internship/fellowship/cohort) within ±80 chars
+fails; encouragement sentences pass, and generic accessibility/EEO text
+(equal-opportunity statements, reasonable-accommodation boilerplate, even far
+from the mention) is allowed through.
 
 ---
 

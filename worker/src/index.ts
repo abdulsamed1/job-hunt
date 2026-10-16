@@ -273,24 +273,26 @@ export default {
             await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, r.reasoning);
             continue;
           }
-          await notifyEventOnce(db, env, "worker", m.hash, "EVALUATED", row, `Score ${r.score}: ${r.reasoning}`);
-          if (env.LLM_RATIONALE === "true" && r.eligible) {
-            try {
-              const out = await completeJson(env, db, {
-                messages: [
-                  { role: "system", content: "Summarize in one sentence why this candidate fits. JSON only: {\"rationale\": \"...\"}. Never invent facts." },
-                  { role: "user", content: `${row.title} @ ${row.company}. Matched: ${(r.matched || []).join(", ")}` },
-                ],
-                maxTokens: 120, purpose: "rationale",
-              });
-              const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
-              if (rationale) {
-                await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
-              }
-            } catch { /* rationale is optional; deterministic score stands */ }
-          }
           if (r.eligible) {
+            await notifyEventOnce(db, env, "worker", m.hash, "ELIGIBLE", row, `Score ${r.score}: ${r.reasoning}`);
+            if (env.LLM_RATIONALE === "true") {
+              try {
+                const out = await completeJson(env, db, {
+                  messages: [
+                    { role: "system", content: "Summarize in one sentence why this candidate fits. JSON only: {\"rationale\": \"...\"}. Never invent facts." },
+                    { role: "user", content: `${row.title} @ ${row.company}. Matched: ${(r.matched || []).join(", ")}` },
+                  ],
+                  maxTokens: 120, purpose: "rationale",
+                });
+                const rationale = ((out.obj.rationale || "") as string).slice(0, 200).trim();
+                if (rationale) {
+                  await db.prepare(`UPDATE evaluations SET reasoning = reasoning || ? WHERE job_hash = ?`).bind(` | llm: ${rationale}`, m.hash).run();
+                }
+              } catch { /* rationale is optional; deterministic score stands */ }
+            }
             await env.APPLY_Q.send({ stage: "tailor-apply", hash: m.hash });
+          } else {
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, `Score ${r.score}: ${r.reasoning}`);
           }
         } else if (m.stage === "tailor-apply" && m.hash) {
           const row: any = await db.prepare(
@@ -361,7 +363,21 @@ export default {
       } catch (e) {
         console.log(`pipeline message failed: ${String(e).slice(0, 200)}`);
         if (body?.hash) {
-          await notifyEventOnce(db, env, "worker", body.hash, "RETRY", {}, String(e).slice(0, 200));
+          // Fixed reason: raw errors may carry secrets or oversized text.
+          // Best-effort job context so the alert still names the role.
+          const RETRY_DETAIL = "queued stage failed; see worker logs";
+          let retryRow: Record<string, string | null> = {};
+          let retryDetail = `${RETRY_DETAIL} (job ${String(body.hash).slice(0, 8)})`;
+          try {
+            const found: any = await db.prepare(
+              `SELECT title, company, url FROM jobs WHERE canonical_hash = ?`,
+            ).bind(body.hash).first();
+            if (found && (found.title || found.company || found.url)) {
+              retryRow = { title: found.title ?? null, company: found.company ?? null, url: found.url ?? null };
+              retryDetail = RETRY_DETAIL;
+            }
+          } catch { /* lookup is best-effort; fall back to hash-only detail */ }
+          await notifyEventOnce(db, env, "worker", body.hash, "RETRY", retryRow, retryDetail);
         }
       }
     }

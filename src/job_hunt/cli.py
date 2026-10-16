@@ -38,6 +38,14 @@ def build_notifier() -> TelegramNotifier:
     )
 
 
+def build_notifier_or_none(args: argparse.Namespace) -> TelegramNotifier | None:
+    """Return None when --no-notify is set (no notifier is constructed even
+    with credentials present); otherwise build the process-wide notifier."""
+    if getattr(args, "no_notify", False):
+        return None
+    return build_notifier()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="job-hunt",
@@ -61,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan.add_argument("--remote-only", action="store_true", help="Keep remote-signalled postings only")
     p_scan.add_argument("--source", default=None, help="Run a single named source only (e.g. linkedin_geo_recent)")
     p_scan.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_scan.add_argument("--no-notify", action="store_true", help="Disable Telegram notifications for this run")
 
     # evaluate
     p_eval = subparsers.add_parser("evaluate", help="Pre-filter and evaluate discovered jobs")
@@ -69,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
     p_eval.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic scoring only")
     p_eval.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_eval.add_argument("--no-notify", action="store_true", help="Disable Telegram notifications for this run")
 
     # tailor
     p_tailor = subparsers.add_parser("tailor", help="Generate fact-verified tailored CVs for eligible jobs")
@@ -77,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_tailor.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
     p_tailor.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic tailoring only")
     p_tailor.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_tailor.add_argument("--no-notify", action="store_true", help="Disable Telegram notifications for this run")
 
     # apply
     p_apply = subparsers.add_parser("apply", help="Execute browser automation form filling")
@@ -85,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_apply.add_argument("--live", action="store_true", help="Execute live submission (default is dry-run)")
     p_apply.add_argument("--linkedin-approved", action="store_true", help="Explicit human approval for live LinkedIn submits (required with --live on LinkedIn jobs)")
     p_apply.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_apply.add_argument("--no-notify", action="store_true", help="Disable Telegram notifications for this run")
 
     # run
     p_run = subparsers.add_parser("run", help="Run 24/7 continuous autonomous loop")
@@ -98,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--llm-url", default="http://127.0.0.1:4000/v1", help="FreeLLMAPI base URL")
     p_run.add_argument("--no-llm", action="store_true", help="Disable LLM and use deterministic evaluation only")
     p_run.add_argument("--db", default="data/jobs.db", help="Path to SQLite database")
+    p_run.add_argument("--no-notify", action="store_true", help="Disable Telegram notifications for this run")
 
     # ui / dashboard
     p_ui = subparsers.add_parser("ui", help="Launch Mission Control web dashboard UI")
@@ -165,7 +178,7 @@ def cmd_llm_status(args: argparse.Namespace) -> None:
 
 
 def cmd_scan(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources, notifier=build_notifier())
+    orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources, notifier=build_notifier_or_none(args))
     new_jobs = asyncio.run(orch.run_discovery_stage(
         max_sources=args.limit, hours_old=args.hours_old, remote_only=args.remote_only,
         source_name=args.source,
@@ -179,7 +192,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
-        notifier=build_notifier(),
+        notifier=build_notifier_or_none(args),
     )
     orch.eval_engine.min_score_threshold = args.threshold
     count = asyncio.run(orch.run_evaluation_stage_async(limit=args.limit))
@@ -192,7 +205,7 @@ def cmd_tailor(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
-        notifier=build_notifier(),
+        notifier=build_notifier_or_none(args),
     )
     if args.job_id is not None:
         job = orch.storage.get_job(args.job_id)
@@ -209,7 +222,7 @@ def cmd_tailor(args: argparse.Namespace) -> None:
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db, notifier=build_notifier())
+    orch = PipelineOrchestrator(db_path=args.db, notifier=build_notifier_or_none(args))
     mode = "LIVE" if args.live else "DRY-RUN"
     if args.job_id is not None:
         job = orch.storage.get_job(args.job_id)
@@ -254,7 +267,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
-        notifier=build_notifier(),
+        notifier=build_notifier_or_none(args),
     )
 
     if args.once:
