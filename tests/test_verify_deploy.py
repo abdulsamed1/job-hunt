@@ -45,3 +45,23 @@ def test_classify_probe_yielding_is_ok():
     mod = _load()
     kind, msg = mod.classify_probe("x", 200, {"raw": 10, "fresh_12h": 5, "remote_fresh": 3})
     assert (kind, msg) == ("ok", "")
+
+
+def test_check_health_accepts_ledger_present_and_live_off():
+    mod = _load()
+    assert mod.check_health({"live_apply": False, "notification_events": 0}) == []
+    assert mod.check_health({"live_apply": False, "notification_events": 42}) == []
+
+
+def test_check_health_flags_live_apply():
+    mod = _load()
+    failures = mod.check_health({"live_apply": True, "notification_events": 0})
+    assert len(failures) == 1 and "live_apply" in failures[0]
+
+
+def test_check_health_flags_missing_ledger():
+    mod = _load()
+    failures = mod.check_health({"live_apply": False, "notification_events": None})
+    assert len(failures) == 1 and "notification_events" in failures[0]
+    # An old deploy without the field at all is equally a failure.
+    assert mod.check_health({"live_apply": False}) != []

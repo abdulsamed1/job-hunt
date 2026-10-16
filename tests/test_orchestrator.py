@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import pytest
 from job_hunt.evaluation.engine import EvaluationEngine
 from job_hunt.models import CandidateProfile, JobPosting, JobState
+from job_hunt.notifications import TelegramNotifier
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
@@ -20,6 +21,35 @@ class FakeNotifier:
              "detail": detail, "url": url}
         )
         return True
+
+    def events(self):
+        return [c["event"] for c in self.calls]
+
+
+class RecordingNotifier(TelegramNotifier):
+    """Real notifier (format caps + dedup) with an in-memory transport.
+
+    The leak tests must exercise the actual formatting path, not a seam that
+    echoes fields back: only this way can a formatting bug that injects
+    credentials into the wire payload be caught. Records both the structured
+    emit arguments and the exact texts the transport would have sent.
+    """
+
+    def __init__(self, bot_token="tok-secret-abc123", chat_id="123"):
+        self.texts = []
+        self.calls = []
+        super().__init__(bot_token, chat_id, runtime="local", sender=self._record)
+
+    def _record(self, text):
+        self.texts.append(text)
+        return True
+
+    def emit(self, event, title, company, detail="", url=""):
+        self.calls.append(
+            {"event": event, "title": title, "company": company,
+             "detail": detail, "url": url}
+        )
+        return super().emit(event, title, company, detail, url)
 
     def events(self):
         return [c["event"] for c in self.calls]
@@ -500,7 +530,7 @@ async def test_lifecycle_events_discovery_and_evaluation(tmp_path, monkeypatch):
     secret = "tok-secret-abc123"
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", secret)
     monkeypatch.setenv("TELEGRAM_CHAT_ID", secret)
-    fake = FakeNotifier()
+    fake = RecordingNotifier()
     orch = _lifecycle_orchestrator(tmp_path, fake)
 
     good = _lifecycle_job(
@@ -539,22 +569,29 @@ async def test_lifecycle_events_discovery_and_evaluation(tmp_path, monkeypatch):
     ]
     assert disab, "FILTERED detail must carry the disability pre-filter reason"
     for c in fake.calls:
-        assert secret not in (c["detail"] or "")
-        assert secret not in (c["url"] or "")
-        assert secret not in (c["title"] or "")
+        for field in ("detail", "url", "title", "company"):
+            assert secret not in (c[field] or ""), f"credential leaked in {field}"
+    # The wire text is the real notifier's formatted output: it must never
+    # carry credentials either, however fields are combined.
+    assert fake.texts, "the stubbed transport must have seen the real payloads"
+    for text in fake.texts:
+        assert secret not in text
+        assert len(text) <= 3000
 
 
 @pytest.mark.asyncio
 async def test_lifecycle_events_tailor_apply_retry_recovery(tmp_path, monkeypatch):
-    """Tailoring emits TAILORED; applications emit APPLICATION_STARTED plus
-    SUBMITTED/FAILED/RETRY; stuck recovery emits RECOVERY."""
+    """Tailoring emits TAILORED; each application attempt emits
+    APPLICATION_ATTEMPT plus a truthful terminal event (dry-run SUBMITTED
+    reports DRY_RUN, live reports SUBMITTED, failures FAILED, retries RETRY);
+    stuck recovery emits RECOVERY."""
     from unittest.mock import AsyncMock
     from job_hunt.models import ApplicationRecord, TailoredCV
 
     secret = "tok-secret-abc123"
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", secret)
     monkeypatch.setenv("TELEGRAM_CHAT_ID", secret)
-    fake = FakeNotifier()
+    fake = RecordingNotifier()
     orch = _lifecycle_orchestrator(tmp_path, fake, name="lc2.db")
 
     class StubTailor:
@@ -601,11 +638,28 @@ async def test_lifecycle_events_tailor_apply_retry_recovery(tmp_path, monkeypatc
     processed = await orch.run_application_stage(limit=10, dry_run=True)
     assert processed == 3
 
-    names = set(fake.events())
-    assert fake.events().count("APPLICATION_STARTED") == 3
-    assert "SUBMITTED" in names
+    names = fake.events()
+    assert names.count("APPLICATION_ATTEMPT") == 3
+    assert "DRY_RUN" in names  # dry-run submit reports its real outcome
+    assert "SUBMITTED" not in names
     assert "FAILED" in names
     assert "RETRY" in names
+
+    # A live run reports SUBMITTED; same attempt/terminal split.
+    live_job = _lifecycle_job(
+        "test", "Backend Engineer", "Umbrella", "lc-live", description=GOOD_DESC,
+    )
+    saved_live, _ = orch.storage.add_job(live_job)
+    orch.storage.update_job_state(saved_live.id, JobState.ELIGIBLE, details="Eligible")
+    assert orch.run_cv_stage(generate_pdf=False) == 1
+    plan[saved_live.id] = JobState.SUBMITTED
+    # The still-RETRY_PENDING job is re-queued alongside; only the live job
+    # actually reports SUBMITTED, the retry reports RETRY again.
+    processed = await orch.run_application_stage(limit=10, dry_run=False)
+    assert processed == 2
+    names = fake.events()
+    assert names.count("APPLICATION_ATTEMPT") == 5
+    assert "SUBMITTED" in names
 
     stuck = _lifecycle_job(
         "test", "Backend Engineer", "StuckCo", "lc-stuck", description=GOOD_DESC,
@@ -626,3 +680,7 @@ async def test_lifecycle_events_tailor_apply_retry_recovery(tmp_path, monkeypatc
     for c in fake.calls:
         for field in ("detail", "url", "title", "company"):
             assert secret not in (c[field] or ""), f"credential leaked in {field}"
+    assert fake.texts, "the stubbed transport must have seen the real payloads"
+    for text in fake.texts:
+        assert secret not in text
+        assert len(text) <= 3000

@@ -212,8 +212,14 @@ def cmd_tailor(args: argparse.Namespace) -> None:
         if not job:
             print(f"Error: Job ID {args.job_id} not found.")
             return
+        if not orch._disability_gate_passes(job):
+            print(f"Job #{job.id} is disability-targeted; pre-filtered, no CV generated.")
+            return
         tailored_cv = orch.cv_tailor.generate_tailored_cv(job, orch.profile)
         orch.storage.save_tailored_cv(tailored_cv)
+        orch._emit_job_event(
+            "TAILORED", job, f"Tailored CV saved: {tailored_cv.pdf_path or 'saved'}",
+        )
         print(f"CV tailoring completed for Job #{job.id} ({job.title} at {job.company}): {tailored_cv.pdf_path}")
         return
 
@@ -229,6 +235,9 @@ def cmd_apply(args: argparse.Namespace) -> None:
         if not job:
             print(f"Error: Job ID {args.job_id} not found.")
             return
+        if not orch._disability_gate_passes(job):
+            print(f"Job #{job.id} is disability-targeted; pre-filtered, no application attempted.")
+            return
         from job_hunt.cv.resume_store import resolve_resume_path
         resume_path = resolve_resume_path(job.id, orch.storage)
         if resume_path is None:
@@ -238,6 +247,10 @@ def cmd_apply(args: argparse.Namespace) -> None:
                 details=f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
                 force=True,
             )
+            orch._emit_job_event(
+                "FAILED", job,
+                f"resume bytes missing: no verified artifact and master resume not found for job {job.id}",
+            )
             print(f"Error: no resolvable resume bytes for Job ID {args.job_id}; marked FAILED.")
             return
 
@@ -245,6 +258,10 @@ def cmd_apply(args: argparse.Namespace) -> None:
             job.id,
             JobState.APPLICATION_STARTED,
             details=f"Starting automated browser application session ({mode})",
+        )
+        orch._emit_job_event(
+            "APPLICATION_ATTEMPT", job,
+            f"Starting automated browser application session ({mode})",
         )
         record = asyncio.run(orch.browser_engine.fill_and_submit(
             job,
@@ -254,6 +271,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
             linkedin_approved=args.linkedin_approved,
         ))
         orch.storage.record_application(record)
+        orch._emit_application_outcome(job, record, dry_run=not args.live)
         print(f"Application stage completed for Job #{job.id} ({job.title}): {record.state} ({mode} mode).")
         return
 

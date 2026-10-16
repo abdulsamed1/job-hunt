@@ -33,56 +33,65 @@ const KNOWN_LANGUAGES = [
   "mandarin", "japanese", "korean", "russian", "ukrainian", "turkish",
 ];
 
-// Disability-targeting gate: a FAIL requires a program noun (program /
-// initiative / track / internship / fellowship / cohort) within ±80 chars of
-// a `disabilit*` mention. Bare mentions (EEO / reasonable-accommodation
-// boilerplate, encouragement to apply) never fail on their own.
+// Disability-targeting gate: a FAIL requires (a) a `disabilit*` mention in the
+// title, (b) a program noun (incl. plurals) within ±80 chars of a description
+// mention, or (c) a direct disability hiring/employment phrase. Encouragement
+// sentences without program/hiring nouns are suppressed; bare mentions (EEO /
+// reasonable-accommodation boilerplate) still pass.
 const DISABILITY_PHRASE = /disabilit\w*/gi;
-const PROGRAM_NOUN = /\b(program|initiative|track|internship|fellowship|cohort)\b/i;
+const PROGRAM_NOUN = /\b(programs?|initiatives?|tracks?|internships?|fellowships?|cohorts?)\b/i;
+const HIRING_NOUN = /\b(hiring|recruiting|recruitment|employment)\b/i;
 const ENCOURAGEMENT = /encourag\w*|welcom|invit/i;
+const DISABILITY_HIRING_PHRASE =
+  /disabilit\w*[\s-]+(?:hiring|employment|recruit(?:ment|ing))|(?:hiring|recruit(?:ment|ing)|employment)\s+(?:(?:of|for)\s+)?(?:(?:people|persons|individuals|candidates|applicants|employees|talent)\s+)?with\s+disabilit\w*/i;
 
-const ACCOMMODATION_CONTEXT = /accommodat\w*|equal opportunity/i;
+// Sentence breaks need punctuation followed by whitespace (or end of text), so
+// abbreviations and decimals ("e.g.", "3.5") never split a sentence.
+const SENTENCE_BREAK = /[.!?](?=\s|$)|\n/g;
 
-/** Sentence (split on `.` `!` `?` newlines) containing [start, end). */
-function sentenceAround(text: string, start: number, end: number): string {
-  const bounds: number[] = [];
-  const re = /[.!?\n]/g;
-  let b: RegExpExecArray | null;
-  while ((b = re.exec(text)) !== null) bounds.push(b.index);
+/** Bounds of the sentence containing [start, end). */
+function sentenceBounds(text: string, start: number, end: number): [number, number] {
   let sentStart = 0;
-  for (const i of bounds) {
-    if (i < start) sentStart = i + 1;
-    else break;
-  }
   let sentEnd = text.length;
-  for (const i of bounds) {
-    if (i >= end) { sentEnd = i; break; }
+  // Fresh regex per call: /g matching is stateful (lastIndex).
+  const re = new RegExp(SENTENCE_BREAK.source, "g");
+  let b: RegExpExecArray | null;
+  while ((b = re.exec(text)) !== null) {
+    if (b.index + b[0].length <= start) sentStart = b.index + b[0].length;
+    else if (b.index >= end) { sentEnd = b.index; break; }
   }
-  return text.slice(sentStart, sentEnd);
+  return [sentStart, sentEnd];
+}
+
+/** Slice `text` around [start, end) so the matched phrase is never cut away. */
+function clip(text: string, start: number, end: number, radius = 100): string {
+  return text.slice(Math.max(0, start - radius), Math.min(text.length, end + radius)).trim();
 }
 
 export function checkDisabilityTargetingGate(title: string, description: string): GateVerdict {
-  const text = `${title || ""} ${description || ""}`;
-  const anchored: string[] = [];
-  // Fresh regex per call: /g matching is stateful (lastIndex).
+  const t = title || "";
+  const d = description || "";
+  const titleMatch = new RegExp(DISABILITY_PHRASE.source, "i").exec(t);
+  if (titleMatch) {
+    return { verdict: "FAIL", quote: clip(t, titleMatch.index, titleMatch.index + titleMatch[0].length) };
+  }
   const phrase = new RegExp(DISABILITY_PHRASE.source, DISABILITY_PHRASE.flags);
   let m: RegExpExecArray | null;
-  while ((m = phrase.exec(text)) !== null) {
-    // (a) A FAIL requires a program noun within ±80 chars of the disability
-    // phrase; bare `disabilit* + hiring` does not fail.
-    const window = text.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80);
-    if (!PROGRAM_NOUN.test(window)) continue;
-    // (b) Encouragement verbs in the same sentence suppress the match.
-    const sentence = sentenceAround(text, m.index, m.index + m[0].length);
-    if (ENCOURAGEMENT.test(sentence)) continue;
-    anchored.push(sentence.trim().slice(0, 200) || m[0].trim());
+  while ((m = phrase.exec(d)) !== null) {
+    const [s, e] = sentenceBounds(d, m.index, m.index + m[0].length);
+    const sentence = d.slice(s, e);
+    // Pure encouragement boilerplate is suppressed only while it carries no
+    // program/hiring noun of its own.
+    if (ENCOURAGEMENT.test(sentence) && !PROGRAM_NOUN.test(sentence) && !HIRING_NOUN.test(sentence)) continue;
+    const window = d.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80);
+    if (PROGRAM_NOUN.test(window)) {
+      return { verdict: "FAIL", quote: clip(d, m.index, m.index + m[0].length) };
+    }
   }
-  if (anchored.length > 0) return { verdict: "FAIL", quote: anchored[0] };
-  // (c) Widened EEO escape: EEO / accommodation boilerplate
-  // (ACCOMMODATION_CONTEXT) anywhere in the posting plus no
-  // program-noun-anchored match is a PASS ...
-  if (ACCOMMODATION_CONTEXT.test(text)) return { verdict: "PASS" };
-  // ... and so is any other non-anchored disability mention.
+  const hiringPhrase = DISABILITY_HIRING_PHRASE.exec(d);
+  if (hiringPhrase) {
+    return { verdict: "FAIL", quote: clip(d, hiringPhrase.index, hiringPhrase.index + hiringPhrase[0].length) };
+  }
   return { verdict: "PASS" };
 }
 

@@ -145,6 +145,29 @@ class PipelineOrchestrator:
         """Emit a lifecycle event with job URL/title/company context."""
         return self._emit_event(event, job.title, job.company, detail, job.raw_url)
 
+    async def _emit_event_async(
+        self, event: str, title: str, company: str, detail: str = "", url: str = ""
+    ) -> bool:
+        """Async emit that never blocks the event loop on the Telegram POST."""
+        notifier = getattr(self, "notifier", None)
+        if notifier is None:
+            return False
+        try:
+            if hasattr(notifier, "emit_async"):
+                return bool(await notifier.emit_async(
+                    event, title or "", company or "", str(detail or "")[:1000], url or "",
+                ))
+            return bool(await asyncio.to_thread(
+                notifier.emit, event, title or "", company or "", str(detail or "")[:1000], url or "",
+            ))
+        except Exception as exc:
+            logger.warning("Telegram event %s failed: %s", event, type(exc).__name__)
+            return False
+
+    async def _emit_job_event_async(self, event: str, job: JobPosting, detail: str = "") -> bool:
+        """Async counterpart of ``_emit_job_event``."""
+        return await self._emit_event_async(event, job.title, job.company, detail, job.raw_url)
+
     async def run_discovery_stage(
         self, max_sources: Optional[int] = None, hours_old: int = 12, remote_only: bool = False,
         source_name: Optional[str] = None,
@@ -183,7 +206,7 @@ class PipelineOrchestrator:
             _, is_new = self.storage.add_job(p)
             if is_new:
                 new_jobs += 1
-                self._emit_job_event("SEEKING", p, f"New job from {p.source}")
+                await self._emit_job_event_async("SEEKING", p, f"New job from {p.source}")
 
         logger.info("Discovery complete. Discovered %d jobs (%d new)", len(postings), new_jobs)
         return new_jobs
@@ -201,23 +224,23 @@ class PipelineOrchestrator:
                 if not is_live:
                     logger.info("Job %s (%s - %s) filtered out by liveness: %s", job.id, job.company, job.title, liveness_reason)
                     self.storage.update_job_state(job.id, JobState.PRE_FILTERED_OUT, details=liveness_reason, force=True)
-                    self._emit_job_event("FILTERED", job, liveness_reason)
+                    await self._emit_job_event_async("FILTERED", job, liveness_reason)
                     continue
 
                 eval_result = await self.eval_engine.evaluate_async(job, self.profile, threshold=threshold)
                 self.storage.save_evaluation(eval_result)
                 if eval_result.pre_filtered:
-                    self._emit_job_event(
+                    await self._emit_job_event_async(
                         "FILTERED", job,
                         eval_result.pre_filter_reason or eval_result.reasoning,
                     )
                 elif eval_result.eligible:
-                    self._emit_job_event(
+                    await self._emit_job_event_async(
                         "ELIGIBLE", job,
                         f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
                     )
                 else:
-                    self._emit_job_event(
+                    await self._emit_job_event_async(
                         "FILTERED", job,
                         f"Score {eval_result.score:.1f}%: {eval_result.reasoning}",
                     )
@@ -377,6 +400,55 @@ class PipelineOrchestrator:
         """Alias for run_cv_stage."""
         return self.run_cv_stage(limit=limit, use_rezi=use_rezi)
 
+    def _disability_gate_passes(self, job: JobPosting) -> bool:
+        """Re-run the disability gate at application/tailor time.
+
+        The evaluation stage already runs it, but jobs can reach TAILORED
+        before the gate existed or after a description backfill, so the apply
+        and tailor paths re-check before spending work. A FAIL parks the job
+        in PRE_FILTERED_OUT and emits FILTERED. Returns True when it may
+        proceed.
+        """
+        verdict, quote = self.eval_engine.check_disability_targeting_gate(job)
+        if verdict != "FAIL":
+            return True
+        reason = f"Disability-targeted gate FAIL: '{quote}'" if quote else "Disability-targeted gate FAIL"
+        logger.warning("Job %s re-gated at application time: %s", job.id, reason)
+        if job.id is not None:
+            self.storage.update_job_state(
+                job.id, JobState.PRE_FILTERED_OUT, details=reason, force=True,
+            )
+        self._emit_job_event("FILTERED", job, reason)
+        return False
+
+    def _emit_application_outcome(self, job: JobPosting, record: Any, dry_run: bool) -> None:
+        """Emit the truthful terminal event for one application attempt."""
+        payload = record.submission_payload or {}
+        was_dry_run = bool(payload.get("dry_run", dry_run))
+        if record.state == JobState.SUBMITTED:
+            if was_dry_run:
+                self._emit_job_event(
+                    "DRY_RUN", job, record.confirmation_text or "Dry-run application completed",
+                )
+            else:
+                self._emit_job_event(
+                    "SUBMITTED", job, record.confirmation_text or "Application submitted",
+                )
+        elif record.state == JobState.RETRY_PENDING:
+            self._emit_job_event(
+                "RETRY", job, record.error_message or "Application queued for retry",
+            )
+        elif record.state in (JobState.FAILED, JobState.BLOCKED_CAPTCHA):
+            self._emit_job_event(
+                "FAILED", job,
+                record.error_message or record.confirmation_text or "Application failed",
+            )
+        else:
+            self._emit_job_event(
+                record.state.value, job,
+                record.error_message or record.confirmation_text or "Application updated",
+            )
+
     async def run_application_stage(self, limit: int = 10, dry_run: bool = True, linkedin_approved: bool = False) -> int:
         """Stage 8 & 9: Launch browser automation to fill and submit applications."""
         tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
@@ -387,6 +459,8 @@ class PipelineOrchestrator:
 
         processed = 0
         for job in queue:
+            if not self._disability_gate_passes(job):
+                continue
             if is_spoof_like(job.raw_url):
                 logger.warning("Skipping job %s: spoof-like apply host %s", job.id, job.raw_url)
                 self.storage.update_job_state(job.id, JobState.FAILED, details=f"heuristic spoof-like host (needs human review): {job.raw_url}", force=True)
@@ -442,7 +516,7 @@ class PipelineOrchestrator:
                 details="Starting automated browser application session",
             )
             self._emit_job_event(
-                "APPLICATION_STARTED", job, "Starting automated browser application session"
+                "APPLICATION_ATTEMPT", job, "Starting automated browser application session"
             )
             try:
                 record = await self.browser_engine.fill_and_submit(
@@ -456,24 +530,7 @@ class PipelineOrchestrator:
                 self._emit_job_event("FAILED", job, f"Application error: {type(exc).__name__}")
                 raise
             self.storage.record_application(record)
-            if record.state == JobState.SUBMITTED:
-                self._emit_job_event(
-                    "SUBMITTED", job, record.confirmation_text or "Application submitted"
-                )
-            elif record.state == JobState.RETRY_PENDING:
-                self._emit_job_event(
-                    "RETRY", job, record.error_message or "Application queued for retry"
-                )
-            elif record.state in (JobState.FAILED, JobState.BLOCKED_CAPTCHA):
-                self._emit_job_event(
-                    "FAILED", job,
-                    record.error_message or record.confirmation_text or "Application failed",
-                )
-            else:
-                self._emit_job_event(
-                    record.state.value, job,
-                    record.error_message or record.confirmation_text or "Application updated",
-                )
+            self._emit_application_outcome(job, record, dry_run)
             # Audit the filled-form Q&A (answers + confirmation-needed).
             payload = record.submission_payload or {}
             if payload.get("answers") or payload.get("needs_confirmation"):

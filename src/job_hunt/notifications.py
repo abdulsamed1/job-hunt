@@ -3,11 +3,16 @@
 Sends bounded, source-tagged lifecycle events to Telegram via the Bot HTTP
 API. Sending is always best-effort: missing credentials, network failures,
 and API errors are logged (without token values) and never raise. Events are
-deduplicated process-locally so retries do not resend the same event.
+deduplicated process-locally so retries do not resend the same event, keyed
+on runtime + event + job URL identity (mirroring the Worker's
+``(runtime, job_hash, event)`` ledger). Dedup memory is process-lifetime and
+FIFO-bounded to ``MAX_SEEN_EVENTS``: in a process that outlives the window a
+very old event could resend, which is acceptable for an observability channel.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import urllib.error
@@ -21,6 +26,13 @@ TELEGRAM_API_TIMEOUT_SEC = 10.0
 MAX_MESSAGE_LEN = 3000
 MAX_SEEN_EVENTS = 2000
 
+# Per-field caps keep the total under MAX_MESSAGE_LEN without truncating the
+# trailing URL away (mirrors the Worker formatJobAlert caps).
+MAX_TITLE_LEN = 200
+MAX_COMPANY_LEN = 120
+MAX_DETAIL_LEN = 1500
+MAX_URL_LEN = 500
+
 
 def format_event(
     runtime: str,
@@ -30,13 +42,24 @@ def format_event(
     detail: str,
     url: str,
 ) -> str:
-    """Format a compact source-tagged Telegram message, bounded to 3000 chars."""
-    lines = [f"[{runtime}] {event}: {title} @ {company}"]
+    """Format a compact source-tagged Telegram message, bounded to 3000 chars.
+
+    Each field is capped individually so no field can push a later one (the
+    URL in particular) past the Telegram limit.
+    """
+    lines = [
+        f"[{runtime[:40]}] {event[:60]}: "
+        f"{(title or 'Untitled role')[:MAX_TITLE_LEN]} @ "
+        f"{(company or 'Unknown company')[:MAX_COMPANY_LEN]}"
+    ]
     if detail:
-        lines.append(detail)
+        lines.append(detail[:MAX_DETAIL_LEN])
     if url:
-        lines.append(url)
-    return "\n".join(lines)[:MAX_MESSAGE_LEN]
+        lines.append(url[:MAX_URL_LEN])
+    text = "\n".join(lines)
+    if len(text) > MAX_MESSAGE_LEN:  # defensive: caps already guarantee the bound
+        text = text[:MAX_MESSAGE_LEN]
+    return text
 
 
 def _post_message(bot_token: str, chat_id: str, text: str) -> bool:
@@ -72,8 +95,13 @@ class TelegramNotifier:
         self._sender: Callable[[str], bool] = sender or (
             lambda text: _post_message(self._bot_token, self._chat_id, text)
         )
-        self._seen: Set[Tuple[str, str, str, str, str]] = set()
-        self._order: Deque[Tuple[str, str, str, str, str]] = deque()
+        self._seen: Set[Tuple[str, str, str]] = set()
+        self._order: Deque[Tuple[str, str, str]] = deque()
+
+    @staticmethod
+    def _job_key(title: str, company: str, url: str) -> str:
+        """Job identity for dedup: URL first, title/company only as fallback."""
+        return url or f"{(title or '').strip()}\x1f{(company or '').strip()}"
 
     def emit(
         self,
@@ -87,7 +115,7 @@ class TelegramNotifier:
         if not self._bot_token or not self._chat_id:
             logger.debug("Telegram event %s skipped: credentials not configured", event)
             return False
-        key = (self._runtime, event, title or "", company or "", url or "")
+        key = (self._runtime, event, self._job_key(title, company, url))
         if key in self._seen:
             return False
         text = format_event(self._runtime, event, title, company, detail, url)
@@ -102,7 +130,18 @@ class TelegramNotifier:
             logger.warning("Telegram event %s not acknowledged", event)
         return sent
 
-    def _remember(self, key: Tuple[str, str, str, str, str]) -> None:
+    async def emit_async(
+        self,
+        event: str,
+        title: str,
+        company: str,
+        detail: str = "",
+        url: str = "",
+    ) -> bool:
+        """``emit`` without blocking the event loop (the HTTP POST runs in a thread)."""
+        return await asyncio.to_thread(self.emit, event, title, company, detail, url)
+
+    def _remember(self, key: Tuple[str, str, str]) -> None:
         if len(self._seen) >= MAX_SEEN_EVENTS:
             oldest = self._order.popleft()
             self._seen.discard(oldest)

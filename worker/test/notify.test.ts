@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alert, eventKey, formatJobAlert, notifyEventOnce, notifyJobOnce } from "../src/lib/notify.js";
+import { alert, formatJobAlert, notifyEventOnce } from "../src/lib/notify.js";
 
 const ENV = { TELEGRAM_BOT_TOKEN: "tok", TELEGRAM_CHAT_ID: "123" };
 
@@ -15,10 +15,9 @@ function stubFetch(handler: (url: string, init: any) => any) {
 
 const okResp = () => ({ ok: true, status: 200 });
 
-// In-memory D1 double: `notified` answers the legacy jobs flag read,
-// `seen` holds (runtime, hash, event) ledger keys and throws a D1-style
-// UNIQUE error on duplicate inserts.
-function memDb(notified: number | null = 0, seeded: string[] = []) {
+// In-memory D1 double: `seen` holds (runtime, hash, event) ledger keys and
+// throws a D1-style UNIQUE error on duplicate inserts.
+function memDb(seeded: string[] = []) {
   const seen = new Set<string>(seeded);
   const writes: any[][] = [];
   return {
@@ -27,7 +26,6 @@ function memDb(notified: number | null = 0, seeded: string[] = []) {
     db: {
       prepare: (sql: string) => ({
         bind: (...a: any[]) => ({
-          first: async () => (sql.includes("notified") && !sql.startsWith("UPDATE") ? { notified } : null),
           run: async () => {
             writes.push([sql, a]);
             if (sql.includes("notification_events") && sql.startsWith("INSERT")) {
@@ -134,24 +132,20 @@ describe("formatJobAlert", () => {
   });
 });
 
-describe("eventKey", () => {
-  it("is stable for the same (runtime, hash, event)", () => {
-    expect(eventKey("worker", "h1", "SEEKING")).toBe(eventKey("worker", "h1", "SEEKING"));
-  });
-
-  it("is unique per runtime, hash, and event", () => {
-    const base = eventKey("worker", "h1", "SEEKING");
-    expect(eventKey("worker", "h1", "SUBMITTED")).not.toBe(base);
-    expect(eventKey("worker", "h1", "FAILED")).not.toBe(base);
-    expect(eventKey("worker", "h2", "SEEKING")).not.toBe(base);
-    expect(eventKey("local", "h1", "SEEKING")).not.toBe(base);
-  });
-});
-
 describe("notifyEventOnce", () => {
+  it("bad: credentials unset resolves skipped without claiming or sending", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    try {
+      await expect(notifyEventOnce(m.db, {}, "worker", "h", "SEEKING", ROW, "x")).resolves.toBe("skipped");
+      expect(s.calls).toHaveLength(0);
+      expect(m.writes).toHaveLength(0);
+    } finally { s.restore(); }
+  });
+
   it("happy: same (runtime, hash, event) sends once", async () => {
     const s = stubFetch(async () => okResp());
-    const m = memDb(0);
+    const m = memDb();
     try {
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("sent");
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
@@ -162,7 +156,7 @@ describe("notifyEventOnce", () => {
 
   it("happy: different events on the same job each send", async () => {
     const s = stubFetch(async () => okResp());
-    const m = memDb(0);
+    const m = memDb();
     try {
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("sent");
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "ok")).toBe("sent");
@@ -173,7 +167,7 @@ describe("notifyEventOnce", () => {
 
   it("happy: same hash+event under another runtime sends again", async () => {
     const s = stubFetch(async () => okResp());
-    const m = memDb(0);
+    const m = memDb();
     try {
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "x")).toBe("sent");
       expect(await notifyEventOnce(m.db, ENV, "local", "h", "SEEKING", ROW, "x")).toBe("sent");
@@ -183,7 +177,7 @@ describe("notifyEventOnce", () => {
 
   it("bad: telegram down resolves failed without throwing (no retry storm)", async () => {
     const s = stubFetch(async () => { throw new Error("down"); });
-    const m = memDb(0);
+    const m = memDb();
     try {
       await expect(notifyEventOnce(m.db, ENV, "worker", "h", "FAILED", ROW, "x")).resolves.toBe("failed");
       expect(s.calls).toHaveLength(1);
@@ -195,7 +189,7 @@ describe("notifyEventOnce", () => {
 
   it("bad: pre-seeded event key skips without sending", async () => {
     const s = stubFetch(async () => okResp());
-    const m = memDb(0, ["worker:h:SEEKING"]);
+    const m = memDb(["worker:h:SEEKING"]);
     try {
       await expect(notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "x")).resolves.toBe("skipped");
       expect(s.calls).toHaveLength(0);
@@ -211,18 +205,14 @@ describe("notifyEventOnce", () => {
     } finally { s.restore(); }
   });
 
-  it("bad: db write error after send never propagates", async () => {
+  it("happy: a sent event writes exactly one ledger claim and no legacy jobs flag", async () => {
     const s = stubFetch(async () => okResp());
-    const db = {
-      prepare: (sql: string) => ({
-        bind: () => ({
-          first: async () => null,
-          run: async () => { if (sql.startsWith("UPDATE")) throw new Error("d1"); return { success: true }; },
-        }),
-      }),
-    };
+    const m = memDb();
     try {
-      await expect(notifyEventOnce(db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("sent");
+      await expect(notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("sent");
+      expect(m.writes).toHaveLength(1);
+      expect(String(m.writes[0][0])).toContain("INSERT INTO notification_events");
+      expect(m.writes.some((w) => String(w[0]).includes("UPDATE jobs"))).toBe(false);
     } finally { s.restore(); }
   });
 
@@ -243,67 +233,15 @@ describe("notifyEventOnce", () => {
   });
 });
 
-describe("notifyJobOnce", () => {
-  it("happy: sends once and records the event", async () => {
-    const s = stubFetch(async () => okResp());
-    const m = memDb(0);
-    try {
-      expect(await notifyJobOnce(m.db, ENV, "h", ROW, "APPLICATION_STARTED", "queued")).toBe("sent");
-      expect(s.calls).toHaveLength(1);
-      expect(JSON.parse(s.calls[0][1].body).text).toContain("Backend Engineer");
-      expect(m.writes.some((w) => String(w[0]).includes("notification_events"))).toBe(true);
-    } finally { s.restore(); }
-  });
-
-  it("edge: already notified never sends", async () => {
-    const s = stubFetch(async () => okResp());
-    const m = memDb(1);
-    try {
-      expect(await notifyJobOnce(m.db, ENV, "h", ROW, "APPLICATION_STARTED", "q")).toBe("skipped");
-      expect(s.calls).toHaveLength(0);
-    } finally { s.restore(); }
-  });
-
-  it("bad: telegram down resolves failed, never throws (no retry storm)", async () => {
-    const s = stubFetch(async () => { throw new Error("down"); });
-    const m = memDb(0);
-    try {
-      await expect(notifyJobOnce(m.db, ENV, "h", ROW, "FAILED", "x")).resolves.toBe("failed");
-      expect(m.writes.some((w) => String(w[0]).includes("notification_events"))).toBe(true);
-    } finally { s.restore(); }
-  });
-
-  it("bad: db read error fails open to alerting, never throws", async () => {
-    const s = stubFetch(async () => okResp());
-    const db = { prepare: () => ({ bind: () => ({ first: async () => { throw new Error("d1"); }, run: async () => ({}) }) }) };
-    try {
-      await expect(notifyJobOnce(db, ENV, "h", ROW, "SUBMITTED", "")).resolves.toBe("sent");
-      expect(s.calls).toHaveLength(1);
-    } finally { s.restore(); }
-  });
-
-  it("bad: db write error never propagates", async () => {
-    const s = stubFetch(async () => okResp());
-    const db = {
-      prepare: (sql: string) => ({
-        bind: () => ({
-          first: async () => ({ notified: 0 }),
-          run: async () => { if (sql.startsWith("UPDATE")) throw new Error("d1"); return { success: true }; },
-        }),
-      }),
-    };
-    try {
-      await expect(notifyJobOnce(db, ENV, "h", ROW, "SUBMITTED", "")).resolves.toBe("sent");
-    } finally { s.restore(); }
-  });
-
-  it("happy: score-bearing row keeps the score in the compat alert", async () => {
-    const s = stubFetch(async () => okResp());
-    const m = memDb(0);
-    try {
-      expect(await notifyJobOnce(m.db, ENV, "h", ROW, "SUBMITTED", "ok")).toBe("sent");
-      expect(s.calls).toHaveLength(1);
-      expect(JSON.parse(s.calls[0][1].body).text).toContain("95");
-    } finally { s.restore(); }
+describe("formatJobAlert events", () => {
+  it("happy: every worker event renders its own source-tagged line", () => {
+    const events = [
+      "SEEKING", "FILTERED", "ELIGIBLE", "TAILORED", "APPLICATION_ATTEMPT",
+      "SUBMITTED", "DRY_RUN", "FAILED", "STAGE_FAILED",
+    ] as const;
+    for (const ev of events) {
+      const t = formatJobAlert("worker", ROW, ev, "why");
+      expect(t.startsWith(`[worker] ${ev}: Backend Engineer @ Acme`)).toBe(true);
+    }
   });
 });

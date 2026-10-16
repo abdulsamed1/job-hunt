@@ -68,7 +68,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Job count **+ profile sanity**: `profile_skills`, `profile_languages`, `threshold`, `live_apply`. An empty `verified_skills` silently rejects every job — check this first. |
+| `GET /health` | Job count **+ profile sanity**: `profile_skills`, `profile_languages`, `threshold`, `live_apply`, `notification_events` (ledger row count; `null` means the deployed schema predates the ledger — verify_deploy fails on it). An empty `verified_skills` silently rejects every job — check this first. |
 | `GET /recent` | `actionable` (tailored / submitted / human queue), `eligible`, `latest`. **Read `actionable`** — qualifying jobs leave the `ELIGIBLE` state once tailored, so `eligible` alone always looked empty. |
 | `GET /coverage` | Measured coverage from the `source_health` table, by kind. |
 | `GET /sources` | Configured shard: total, python-only, hourly subset, by kind. |
@@ -94,6 +94,13 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 - **Empty evidence is not eligibility.** Jobs with zero skill matches score 75
   from participation points but are held back by `matched.length >= 1`. That is
   the safety property; do not loosen it to inflate numbers.
+- **The notification ledger claims before it sends.** `notification_events`
+  (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
+  Telegram call, so a queue retry that re-runs the message sees the conflict
+  and skips — a Telegram outage records "failed" and never retry-storms. With
+  credentials unset nothing is claimed. The table is created at runtime
+  (`ensureNotificationEvents`, once per queue batch) for databases that
+  predate it; `/health` reports `null` when it is missing.
 
 ## Deploy
 
@@ -124,7 +131,11 @@ npx wrangler secret put APPROVE_GREENHOUSE # per-board approval
 npx wrangler secret put APPROVE_LEVER
 ```
 
-Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for match alerts.
+Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for lifecycle event
+notifications (`SEEKING` / `FILTERED` / `ELIGIBLE` / `TAILORED` /
+`APPLICATION_ATTEMPT` / `SUBMITTED` / `DRY_RUN` / `FAILED` / `STAGE_FAILED`),
+at most once per `(runtime, job_hash, event)` via the `notification_events`
+ledger. Unset credentials = silent no-op, nothing claimed.
 
 ## Boundaries (non-negotiable)
 

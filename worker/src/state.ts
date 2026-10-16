@@ -69,13 +69,16 @@ export async function getJobsByState(db: Db, state: JobState, limit: number): Pr
 
 export async function saveEvaluation(
   db: Db, canonicalHash: string, score: number, eligible: boolean, reasoning: string,
+  state?: JobState,
 ): Promise<void> {
   await db.prepare(
     `INSERT INTO evaluations (job_hash, score, eligible, reasoning, evaluated_at)
      VALUES (?, ?, ?, ?, ?) ON CONFLICT (job_hash) DO UPDATE SET score=excluded.score, eligible=excluded.eligible, reasoning=excluded.reasoning`,
   ).bind(canonicalHash, score, eligible ? 1 : 0, reasoning.slice(0, 1000), new Date().toISOString()).run();
   await db.prepare(`UPDATE jobs SET score = ? WHERE canonical_hash = ?`).bind(score, canonicalHash).run();
-  await setJobState(db, canonicalHash, eligible ? "ELIGIBLE" : "REJECTED", `score ${score}`);
+  // Callers may pin the final state (e.g. gated rows land directly in
+  // PRE_FILTERED_OUT) so a job never gets two audit rows in one evaluation.
+  await setJobState(db, canonicalHash, state ?? (eligible ? "ELIGIBLE" : "REJECTED"), `score ${score}`);
 }
 
 export async function saveApplication(
@@ -86,6 +89,24 @@ export async function saveApplication(
      VALUES (?, ?, ?, ?, ?) ON CONFLICT (job_hash) DO UPDATE SET state=excluded.state, detail=excluded.detail`,
   ).bind(jobHash, state, detail.slice(0, 500), screenshotR2Key, new Date().toISOString()).run();
   await setJobState(db, jobHash, state, detail.slice(0, 200));
+}
+
+/** Create the notification ledger on databases that predate it. Fresh
+ * databases already have it (see schema.sql); this is the runtime migration
+ * so the first alerted event never fails on a missing table. One statement:
+ * the caller invokes it once per queue batch. Safe to re-run. */
+export async function ensureNotificationEvents(db: Db): Promise<void> {
+  try {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS notification_events (
+         runtime TEXT NOT NULL,
+         job_hash TEXT NOT NULL,
+         event TEXT NOT NULL,
+         sent_at TEXT NOT NULL,
+         PRIMARY KEY (runtime, job_hash, event)
+       )`,
+    ).run();
+  } catch { /* raced with another invocation (or table exists) */ }
 }
 
 /** Add the degraded-signal columns to pre-existing source_health tables.

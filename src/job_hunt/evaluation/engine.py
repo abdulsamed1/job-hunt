@@ -90,18 +90,31 @@ SPONSORSHIP_UNAVAILABLE_PATTERNS = [
     re.compile(r"sponsorship not available", re.IGNORECASE),
 ]
 
-# Disability-targeting gate: a FAIL requires a program noun (program /
-# initiative / track / internship / fellowship / cohort) within ±80 chars of a
-# `disabilit*` mention. Bare mentions (EEO / reasonable-accommodation
-# boilerplate, encouragement to apply) never fail on their own.
+# Disability-targeting gate: a FAIL requires (a) a `disabilit*` mention in the
+# title, (b) a program noun (incl. plurals) within ±80 chars of a description
+# mention, or (c) a direct disability hiring/employment phrase. Encouragement
+# sentences without program/hiring nouns are suppressed; bare mentions (EEO /
+# reasonable-accommodation boilerplate) still pass.
 DISABILITY_PHRASE_PAT = re.compile(r"disabilit\w*", re.IGNORECASE)
 PROGRAM_NOUN_PAT = re.compile(
-    r"\b(program|initiative|track|internship|fellowship|cohort)\b", re.IGNORECASE
+    r"\b(programs?|initiatives?|tracks?|internships?|fellowships?|cohorts?)\b",
+    re.IGNORECASE,
+)
+HIRING_NOUN_PAT = re.compile(
+    r"\b(hiring|recruiting|recruitment|employment)\b", re.IGNORECASE
 )
 ENCOURAGEMENT_PAT = re.compile(r"encourag\w*|welcom|invit", re.IGNORECASE)
+DISABILITY_HIRING_PHRASE_PAT = re.compile(
+    r"disabilit\w*[\s-]+(?:hiring|employment|recruit(?:ment|ing))"
+    r"|(?:hiring|recruit(?:ment|ing)|employment)\s+(?:(?:of|for)\s+)?"
+    r"(?:(?:people|persons|individuals|candidates|applicants|employees|talent)\s+)?"
+    r"with\s+disabilit\w*",
+    re.IGNORECASE,
+)
 
-# Generic EEO / accommodation boilerplate is not program targeting.
-ACCOMMODATION_CONTEXT_PAT = re.compile(r"accommodat\w*|equal opportunity", re.IGNORECASE)
+# Sentence breaks need punctuation followed by whitespace (or end of text), so
+# abbreviations and decimals ("e.g.", "3.5") never split a sentence.
+SENTENCE_BREAK_PAT = re.compile(r"[.!?](?=\s|$)|\n")
 
 # Languages checked as explicit job-condition requirements (not programming languages).
 KNOWN_LANGUAGES = [
@@ -163,21 +176,31 @@ def classify_tier(title: str, description: str = "") -> str:
     return "mid"
 
 
+def _sentence_bounds(text: str, start: int, end: int) -> Tuple[int, int]:
+    """Bounds of the sentence containing [start, end).
+
+    Breaks on punctuation followed by whitespace (or end of text) and on
+    newlines, so abbreviations and decimals never split a sentence.
+    """
+    sent_start, sent_end = 0, len(text)
+    for m in SENTENCE_BREAK_PAT.finditer(text):
+        if m.end() <= start:
+            sent_start = m.end()
+        elif m.start() >= end:
+            sent_end = m.start()
+            break
+    return sent_start, sent_end
+
+
 def _sentence_around(text: str, start: int, end: int) -> str:
-    """Return the sentence (split on `.` `!` `?` newlines) containing [start, end)."""
-    bounds = [m.start() for m in re.finditer(r"[.!?\n]", text)]
-    sent_start = 0
-    for b in bounds:
-        if b < start:
-            sent_start = b + 1
-        else:
-            break
-    sent_end = len(text)
-    for b in bounds:
-        if b >= end:
-            sent_end = b
-            break
+    """Return the sentence containing [start, end) without its break characters."""
+    sent_start, sent_end = _sentence_bounds(text, start, end)
     return text[sent_start:sent_end]
+
+
+def _clip(text: str, start: int, end: int, radius: int = 100) -> str:
+    """Slice `text` around [start, end) so the matched phrase is never cut away."""
+    return text[max(0, start - radius):min(len(text), end + radius)].strip()
 
 
 class EvaluationEngine:
@@ -270,34 +293,34 @@ class EvaluationEngine:
     def check_disability_targeting_gate(self, job: JobPosting) -> Tuple[str, Optional[str]]:
         """Hard gate: posting targets a disability-specific hiring program.
 
-        Returns (verdict, quote). FAIL quotes the sentence carrying the
-        program-noun-anchored targeting phrase and must stop scoring; PASS
-        means no program targeting (generic EEO / reasonable-accommodation
-        boilerplate, encouragement to apply, and bare `disabilit* + hiring`
-        without a program noun all pass).
+        Returns (verdict, quote). FAIL quotes the matched phrase with
+        surrounding context and must stop scoring. A FAIL requires a title
+        mention, a program noun (incl. plurals) within ±80 chars of a
+        description mention, or a direct disability hiring/employment phrase.
+        Encouragement sentences without program/hiring nouns are suppressed;
+        bare mentions and generic EEO / reasonable-accommodation boilerplate
+        pass.
         """
-        text = f"{job.title or ''} {job.description or ''}"
-        anchored: List[str] = []
-        for match in DISABILITY_PHRASE_PAT.finditer(text):
-            # (a) A FAIL requires a program noun within ±80 chars of the
-            # disability phrase; bare `disabilit* + hiring` does not fail.
-            window = text[max(0, match.start() - 80):match.end() + 80]
-            if not PROGRAM_NOUN_PAT.search(window):
+        title = job.title or ""
+        desc = job.description or ""
+        title_match = DISABILITY_PHRASE_PAT.search(title)
+        if title_match:
+            return "FAIL", _clip(title, title_match.start(), title_match.end())
+        for match in DISABILITY_PHRASE_PAT.finditer(desc):
+            sentence = _sentence_around(desc, match.start(), match.end())
+            # Pure encouragement boilerplate ("candidates with disabilities are
+            # encouraged to apply") is suppressed only while it carries no
+            # program/hiring noun of its own.
+            if ENCOURAGEMENT_PAT.search(sentence) and not (
+                PROGRAM_NOUN_PAT.search(sentence) or HIRING_NOUN_PAT.search(sentence)
+            ):
                 continue
-            # (b) Encouragement verbs in the same sentence suppress the match.
-            sentence = _sentence_around(text, match.start(), match.end())
-            if ENCOURAGEMENT_PAT.search(sentence):
-                continue
-            quote = sentence.strip()[:200] or match.group(0).strip()
-            anchored.append(quote)
-        if anchored:
-            return "FAIL", anchored[0]
-        # (c) Widened EEO escape: EEO / accommodation boilerplate
-        # (ACCOMMODATION_CONTEXT_PAT) anywhere in the posting plus no
-        # program-noun-anchored match is a PASS ...
-        if ACCOMMODATION_CONTEXT_PAT.search(text):
-            return "PASS", None
-        # ... and so is any other non-anchored disability mention.
+            window = desc[max(0, match.start() - 80):match.end() + 80]
+            if PROGRAM_NOUN_PAT.search(window):
+                return "FAIL", _clip(desc, match.start(), match.end())
+        phrase = DISABILITY_HIRING_PHRASE_PAT.search(desc)
+        if phrase:
+            return "FAIL", _clip(desc, phrase.start(), phrase.end())
         return "PASS", None
 
     def check_sponsorship(

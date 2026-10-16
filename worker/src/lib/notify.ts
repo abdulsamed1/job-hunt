@@ -1,27 +1,28 @@
 // Telegram outbound lifecycle events: seeking, filter, evaluation, tailor,
-// application start, submission, failure, retry, and recovery notices.
-// Outbound only — the bot takes no inbound commands. Sends are best-effort
-// with at-most-once semantics per (runtime, job_hash, event): the event key
-// is inserted into `notification_events` before sending, so queue retries see
-// the conflicting key and skip. `jobs.notified` is still updated for
-// compatibility with older readers. Alert/network/DB errors must never break
-// the pipeline or retry-storm Telegram.
-
-export type JobOutcome = "SUBMITTED" | "APPLICATION_STARTED" | "FAILED";
+// application attempt, submission, dry-run result, failure, and stage-failure
+// notices. Outbound only — the bot takes no inbound commands. Sends are
+// best-effort with at-most-once semantics per (runtime, job_hash, event): the
+// event key is inserted into `notification_events` before sending, so queue
+// retries see the conflicting key and skip. With Telegram credentials unset
+// nothing is claimed or written, so events can still flow once the bot is
+// configured. Alert/network/DB errors must never break the pipeline or
+// retry-storm Telegram.
 
 /** Lifecycle events either runtime may report for a job. Both runtimes share
  * the evaluate vocabulary: FILTERED (gated or pre-filtered out) and ELIGIBLE
- * (passed evaluation). */
+ * (passed evaluation). Python-only events (RETRY, RECOVERY, BLOCKED_CAPTCHA)
+ * stay off this union; the Worker reports failed queue stages as
+ * STAGE_FAILED and acknowledges the message instead of retrying it. */
 export type WorkerEvent =
   | "SEEKING"
   | "FILTERED"
   | "ELIGIBLE"
   | "TAILORED"
-  | "APPLICATION_STARTED"
+  | "APPLICATION_ATTEMPT"
   | "SUBMITTED"
+  | "DRY_RUN"
   | "FAILED"
-  | "RETRY"
-  | "RECOVERY";
+  | "STAGE_FAILED";
 
 export interface AlertEnv {
   TELEGRAM_BOT_TOKEN?: string;
@@ -58,16 +59,6 @@ export async function alert(env: AlertEnv, text: string): Promise<boolean> {
 }
 
 /**
- * Unique dedup key for one lifecycle event. Pure function — the same
- * (runtime, job_hash, event) always maps to the same key, and any change in
- * one component maps to a different key so a job can report seeking, submit,
- * and failure independently.
- */
-export function eventKey(runtime: string, jobHash: string, event: WorkerEvent): string {
-  return `${runtime}:${jobHash}:${event}`;
-}
-
-/**
  * Render the source-tagged per-event message. Pure function — fully
  * unit-tested. Shape mirrors the Python `format_event` contract:
  * `[runtime] EVENT: title @ company` plus detail/url lines, bounded to
@@ -95,7 +86,8 @@ export function formatJobAlert(
  * `notification_events` first: a conflicting key means this event already
  * sent (or is being sent) and resolves "skipped" without a second send.
  * Only a successful insert sends. Alert failures resolve "failed" but still
- * record the claim, so a Telegram outage cannot retry-storm. Non-conflict DB
+ * record the claim, so a Telegram outage cannot retry-storm. Missing
+ * credentials resolve "skipped" without claiming anything. Non-conflict DB
  * errors resolve "failed" without sending. Never throws.
  * Returns "sent" | "skipped" | "failed".
  */
@@ -109,6 +101,7 @@ export async function notifyEventOnce(
   detail: string,
 ): Promise<"sent" | "skipped" | "failed"> {
   const rt = runtime || "worker";
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return "skipped";
   try {
     await db
       .prepare(
@@ -127,40 +120,5 @@ export async function notifyEventOnce(
   } catch {
     outcome = "failed";
   }
-  try {
-    // Compatibility: older readers still check the per-job flag.
-    await db.prepare(`UPDATE jobs SET notified = 1 WHERE canonical_hash = ?`).bind(hash).run();
-  } catch {
-    // Notification bookkeeping must never break the pipeline either.
-  }
   return outcome;
-}
-
-/**
- * Compatibility wrapper for the pre-event callers: one alert per job for the
- * three original terminal outcomes. Keeps the legacy `jobs.notified` read
- * (jobs notified under the old flag never resend) and delegates the send to
- * the event ledger under runtime "worker".
- * Returns "sent" | "skipped" | "failed". Never throws.
- */
-export async function notifyJobOnce(
-  db: any,
-  env: AlertEnv,
-  hash: string,
-  row: AlertJobRow,
-  state: JobOutcome,
-  detail: string,
-): Promise<"sent" | "skipped" | "failed"> {
-  let cur: any = null;
-  try {
-    cur = await db.prepare(`SELECT notified FROM jobs WHERE canonical_hash = ?`).bind(hash).first();
-  } catch {
-    cur = null;
-  }
-  if (cur?.notified) return "skipped";
-  const scoredDetail =
-    typeof row.score === "number"
-      ? `(score ${row.score})${detail ? ` ${detail}` : ""}`
-      : detail;
-  return notifyEventOnce(db, env, "worker", hash, state, row, scoredDetail);
 }

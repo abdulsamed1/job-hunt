@@ -70,3 +70,31 @@ instead of one notification flag per job.
 - Deduplication tests verify retries do not duplicate an event.
 - Failure tests verify Telegram HTTP/network errors never stop pipeline work.
 - Run the focused Python and Worker suites, then the full repository suite.
+
+### Review Findings
+
+Code review (BMAD bmad-code-review, 2026-10-16, branch sdd/slice9-disability-telegram @ a715355):
+0 decision-needed (4 resolved 2026-10-16), 22 patch, 0 defer, 2 dismissed as noise.
+
+- [x] [Review][Patch] Tighten the disability gate: FAIL on a title mention, a program/hiring noun (incl. plurals) within +/-80 chars, or disability-program phrasing; suppress only encouragement sentences without program/hiring nouns; keep generic EEO passing; regression tests both runtimes [src/job_hunt/evaluation/engine.py:281-301, worker/src/lib/evaluate.ts:64-87]
+- [x] [Review][Patch] Rename the Worker RETRY event to STAGE_FAILED and remove RECOVERY from WorkerEvent (ack-and-alert stays) [worker/src/index.ts:363-382, worker/src/lib/notify.ts:1-2,24]
+- [x] [Review][Patch] Emit APPLICATION_ATTEMPT at attempt start so the terminal event carries the dry-run outcome (both runtimes) [src/job_hunt/orchestrator.py:444,459-476, worker/src/index.ts:347,358-360]
+- [x] [Review][Patch] Wire TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID from GitHub Secrets in scheduled-sweep.yml (web UI stays silent) [.github/workflows/scheduled-sweep.yml]
+- [x] [Review][Patch] Add runtime CREATE TABLE IF NOT EXISTS plus a verify_deploy check for notification_events [worker/schema.sql:92, worker/src/state.ts:95, scripts/verify_deploy.py]
+- [x] [Review][Patch] Make README failed-send semantics per-runtime accurate (local retries failed sends on a later emission; worker claims pre-send) [README.md:249-252, src/job_hunt/notifications.py:99-103]
+- [x] [Review][Patch] Skip the ledger claim and legacy jobs.notified write when Telegram credentials are unset [worker/src/lib/notify.ts:112-135]
+- [x] [Review][Patch] Fix worker per-invocation budget accounting: drop the reader-less notified UPDATE (or terminal-only), update the <=50 docstring [worker/src/index.ts:4-8, worker/src/lib/notify.ts:130-135]
+- [x] [Review][Patch] Remove dead notifyJobOnce/eventKey or restrict the legacy notified flag to terminal events [worker/src/lib/notify.ts:66-68,146-166]
+- [x] [Review][Patch] Emit lifecycle events (and run the disability gate) on tailor --job-id and apply --job-id [src/job_hunt/cli.py:210-218,224-258]
+- [x] [Review][Patch] Re-run the disability gate at application time in both runtimes [src/job_hunt/orchestrator.py:380-492, worker/src/index.ts:297-361]
+- [x] [Review][Patch] Delete the no-op EEO escape branch and correct related comments/test names [src/job_hunt/evaluation/engine.py:295-301, worker/src/lib/evaluate.ts:81-86]
+- [x] [Review][Patch] Split sentences on ". " (whitespace or end) instead of a bare "." [src/job_hunt/evaluation/engine.py:166-180, worker/src/lib/evaluate.ts:47-62]
+- [x] [Review][Patch] Python dedup: key on URL identity; document the process-lifetime FIFO 2000 behavior [src/job_hunt/notifications.py:22,90,105-110]
+- [x] [Review][Patch] Offload the blocking Telegram send from async stages [src/job_hunt/notifications.py:42-52]
+- [x] [Review][Patch] Docs drift: --no-notify missing from CLI table, stale test counts, worker/README "match alerts" and ledger gotcha, AGENTS.md notifications [README.md:201-212,273-274, worker/README.md:127]
+- [x] [Review][Patch] Remove the unused RECOVERY member from WorkerEvent (or implement worker recovery) [worker/src/lib/notify.ts:1-2,24]
+- [x] [Review][Patch] Avoid the REJECTED-then-PRE_FILTERED_OUT double audit row for gated evaluations [worker/src/index.ts:268-272, worker/src/state.ts:70-79]
+- [x] [Review][Patch] Add shared cross-runtime gate parity fixtures [tests/test_evaluation.py, worker/test/lib.test.ts]
+- [x] [Review][Patch] Strengthen leak tests: real notifier with stubbed transport; include company in the leak-field loop [tests/test_orchestrator.py:500-544]
+- [x] [Review][Patch] Per-field caps in format_event so the URL cannot be truncated away [src/job_hunt/notifications.py:34-39]
+- [x] [Review][Patch] Truncate gate reason quotes around the matched phrase ([:200] can omit it) [src/job_hunt/evaluation/engine.py:291, worker/src/lib/evaluate.ts:78]

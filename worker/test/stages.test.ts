@@ -188,13 +188,14 @@ describe("queue lifecycle events", () => {
   // Telegram-capturing fetch stub: telegram URLs record message text and
   // resolve ok; every other URL resolves with the given body text (RSS feed
   // XML for discovery, "{}" for the ATS submit POST which only needs .text()).
-  function stubQueueFetch(texts: string[], bodyText: string) {
+  function stubQueueFetch(texts: string[], bodyText: string, urls: string[] = []) {
     const prev = globalThis.fetch;
     (globalThis as any).fetch = async (url: string, init: any) => {
       if (String(url).includes("api.telegram.org")) {
         texts.push(JSON.parse(init.body).text);
         return { ok: true, status: 200 };
       }
+      urls.push(String(url));
       return {
         ok: true,
         status: 200,
@@ -231,11 +232,13 @@ describe("queue lifecycle events", () => {
       expect(evalInserts).toHaveLength(1);
       expect(evalInserts[0].params[2]).toBe(0);
       expect(String(evalInserts[0].params[3])).toMatch(/disabilit/i);
-      // Job lands in the pre-filter state, never in the apply queue.
+      // Job lands in the pre-filter state via a single audit row (no
+      // ELIGIBLE/REJECTED round-trip), never in the apply queue.
       const states = statements
         .filter((s) => s.sql.includes("UPDATE jobs SET state"))
         .map((s) => s.params[0]);
       expect(states).toContain("PRE_FILTERED_OUT");
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO audit_log"))).toHaveLength(1);
       expect(q.APPLY_Q.sent).toHaveLength(0);
       expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
     } finally {
@@ -243,7 +246,7 @@ describe("queue lifecycle events", () => {
     }
   });
 
-  it("emits SEEKING, TAILORED, APPLICATION_STARTED and SUBMITTED across discover/evaluate/tailor-apply", async () => {
+  it("emits SEEKING, ELIGIBLE, TAILORED, APPLICATION_ATTEMPT and SUBMITTED across discover/evaluate/tailor-apply", async () => {
     const { default: worker } = await import("../src/index.js");
     const rss = [
       '<?xml version="1.0"?><rss><channel><item>',
@@ -284,9 +287,11 @@ describe("queue lifecycle events", () => {
       await worker.queue({ messages: [{ body: { stage: "evaluate", hash } }] } as any, env);
       expect(q.APPLY_Q.sent).toHaveLength(1);
       await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash } }] } as any, env);
-      for (const ev of ["SEEKING", "ELIGIBLE", "TAILORED", "APPLICATION_STARTED", "SUBMITTED"]) {
+      for (const ev of ["SEEKING", "ELIGIBLE", "TAILORED", "APPLICATION_ATTEMPT", "SUBMITTED"]) {
         expect(texts.some((t) => t.includes(`[worker] ${ev}:`)), ev).toBe(true);
       }
+      // The terminal event is distinct from the attempt so it never dedups away.
+      expect(texts.some((t) => t.includes("DRY_RUN"))).toBe(false);
       // Shared evaluate vocabulary: no Worker-only EVALUATED event.
       expect(texts.some((t) => t.includes("EVALUATED"))).toBe(false);
     } finally {
@@ -294,7 +299,89 @@ describe("queue lifecycle events", () => {
     }
   });
 
-  it("emits RETRY when a queued stage fails", async () => {
+  it("emits APPLICATION_ATTEMPT then DRY_RUN on a dry-run tailor-apply, never SUBMITTED", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const rss = [
+      '<?xml version="1.0"?><rss><channel><item>',
+      "<title>Backend Engineer</title>",
+      "<link>https://example.com/j/1</link>",
+      `<description>${"Python FastAPI backend role building reliable systems. ".repeat(20)}</description>`,
+      `<pubDate>${new Date().toUTCString()}</pubDate>`,
+      "</item></channel></rss>",
+    ].join("");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, rss);
+    try {
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: "Python FastAPI backend role building reliable systems.",
+          source: "greenhouse:acme",
+          score: 100,
+        },
+        upsertChanges: 1,
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef" }); // LIVE_APPLY unset
+      await worker.queue(
+        { messages: [{ body: { stage: "discover", def: { name: "test-rss", kind: "rss", url: "https://example.com/feed", cadence: "hourly" } } }] } as any,
+        env,
+      );
+      const hash = q.EVALUATE_Q.sent[0].hash;
+      await worker.queue({ messages: [{ body: { stage: "evaluate", hash } }] } as any, env);
+      await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash } }] } as any, env);
+      expect(texts.some((t) => t.includes("[worker] APPLICATION_ATTEMPT:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] DRY_RUN:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] SUBMITTED:"))).toBe(false);
+      const appInserts = statements.filter((s) => s.sql.includes("INSERT INTO applications"));
+      expect(appInserts[0].params[1]).toBe("APPLICATION_STARTED");
+    } finally {
+      restore();
+    }
+  });
+
+  it("re-runs the disability gate at apply time and never attempts the application", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const urls: string[] = [];
+    const restore = stubQueueFetch(texts, "", urls);
+    try {
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-regate",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: "Join our Ignite Program for people with disabilities. Python FastAPI backend role.",
+          source: "greenhouse:acme",
+          score: 100,
+        },
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef", LIVE_APPLY: "true", APPROVE_GREENHOUSE: "true" });
+      await worker.queue(
+        { messages: [{ body: { stage: "tailor-apply", hash: "h-regate" } }] } as any,
+        env,
+      );
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] TAILORED:"))).toBe(false);
+      expect(texts.some((t) => t.includes("[worker] APPLICATION_ATTEMPT:"))).toBe(false);
+      const states = statements
+        .filter((s) => s.sql.includes("UPDATE jobs SET state"))
+        .map((s) => s.params[0]);
+      expect(states).toContain("PRE_FILTERED_OUT");
+      expect(urls.some((u) => u.includes("boards-api.greenhouse.io"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("emits STAGE_FAILED when a queued stage fails", async () => {
     const { default: worker } = await import("../src/index.js");
     const texts: string[] = [];
     const restore = stubQueueFetch(texts, "");
@@ -305,7 +392,7 @@ describe("queue lifecycle events", () => {
         { messages: [{ body: { stage: "evaluate", hash: "h-retry" } }] } as any,
         queueEnv(db, q),
       );
-      expect(texts.some((t) => t.includes("[worker] RETRY:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] STAGE_FAILED:"))).toBe(true);
       // Fallback branch (job row unreadable): fixed reason + short hash, and
       // the raw error never leaks into the alert.
       expect(texts.some((t) => t.includes("queued stage failed; see worker logs"))).toBe(true);
@@ -316,7 +403,7 @@ describe("queue lifecycle events", () => {
     }
   });
 
-  it("emits RETRY with job context when the row lookup succeeds", async () => {
+  it("emits STAGE_FAILED with job context when the row lookup succeeds", async () => {
     const { default: worker } = await import("../src/index.js");
     const texts: string[] = [];
     const restore = stubQueueFetch(texts, "");
@@ -341,7 +428,7 @@ describe("queue lifecycle events", () => {
         env,
       );
       // Found branch: title/company name the role, fixed reason only.
-      expect(texts.some((t) => t.includes("[worker] RETRY: Backend Engineer @ Acme"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] STAGE_FAILED: Backend Engineer @ Acme"))).toBe(true);
       expect(texts.some((t) => t.includes("queued stage failed; see worker logs"))).toBe(true);
       expect(texts.some((t) => t.includes("r2 exploded"))).toBe(false);
     } finally {
