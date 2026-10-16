@@ -90,6 +90,19 @@ SPONSORSHIP_UNAVAILABLE_PATTERNS = [
     re.compile(r"sponsorship not available", re.IGNORECASE),
 ]
 
+# Disability-targeting gate: only explicit program targeting counts; a bare
+# `disability` mention (e.g. EEO / reasonable-accommodation boilerplate) passes.
+DISABILITY_TARGETING_PATTERNS = [
+    re.compile(r"for (?:people|persons|individuals|candidates|applicants) with disabilit\w*", re.IGNORECASE),
+    re.compile(r"(?:people|persons) with disabilit\w*.{0,40}(?:program|hiring|initiative|track|internship)", re.IGNORECASE),
+    re.compile(r"(?:program|initiative|track).{0,60}for (?:people|persons) with disabilit\w*", re.IGNORECASE),
+    re.compile(r"disabilit\w*(?:-targeted| specific| only| hiring program)", re.IGNORECASE),
+    re.compile(r"exclusively for.{0,40}disabilit\w*", re.IGNORECASE),
+]
+
+# Generic EEO / accommodation boilerplate is not program targeting.
+ACCOMMODATION_CONTEXT_PAT = re.compile(r"accommodat\w*|equal opportunity", re.IGNORECASE)
+
 # Languages checked as explicit job-condition requirements (not programming languages).
 KNOWN_LANGUAGES = [
     "english", "danish", "norwegian", "swedish", "german", "french", "spanish",
@@ -237,6 +250,24 @@ class EvaluationEngine:
             pre_filter_reason=reason,
         )
 
+    def check_disability_targeting_gate(self, job: JobPosting) -> Tuple[str, Optional[str]]:
+        """Hard gate: posting targets a disability-specific hiring program.
+
+        Returns (verdict, quote). FAIL quotes the exact targeting phrase and must
+        stop scoring; PASS means no program targeting (generic EEO /
+        reasonable-accommodation boilerplate passes).
+        """
+        text = f"{job.title or ''} {job.description or ''}"
+        for pat in DISABILITY_TARGETING_PATTERNS:
+            match = pat.search(text)
+            if match:
+                # Generic EEO / accommodation boilerplate is not targeting.
+                context = text[max(0, match.start() - 80):match.end() + 80]
+                if ACCOMMODATION_CONTEXT_PAT.search(context):
+                    continue
+                return "FAIL", match.group(0).strip()
+        return "PASS", None
+
     def check_sponsorship(
         self, job: JobPosting, profile: CandidateProfile
     ) -> Tuple[str, Optional[str]]:
@@ -317,6 +348,9 @@ class EvaluationEngine:
         """Synchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
         # 0. Hard gates run before scoring (no LLM tokens spent on gated-out roles)
+        verdict, quote = self.check_disability_targeting_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Disability-targeted", verdict, quote)
         verdict, quote = self.check_eligibility_gate(job)
         if verdict == "FAIL":
             return self._gate_rejection(job, "Eligibility", verdict, quote)
@@ -359,6 +393,9 @@ class EvaluationEngine:
     ) -> EvaluationResult:
         """Asynchronously evaluate job against candidate profile, using LLM if available with deterministic fallback."""
         thresh = threshold if threshold is not None else self.min_score_threshold
+        verdict, quote = self.check_disability_targeting_gate(job)
+        if verdict == "FAIL":
+            return self._gate_rejection(job, "Disability-targeted", verdict, quote)
         verdict, quote = self.check_eligibility_gate(job)
         if verdict == "FAIL":
             return self._gate_rejection(job, "Eligibility", verdict, quote)

@@ -239,3 +239,23 @@ def test_blocked_company_and_keywords(engine, candidate):
     job3 = _swe_job2("Python backend role in Egypt, not a crypto casino.")
     res3 = engine.evaluate(job3, candidate)
     assert res3.pre_filtered is False
+
+
+def test_disability_targeted_program_is_pre_filtered(engine, candidate):
+    job = _swe_job(
+        "Technical support engineer intern for people with disabilities. "
+        "Ignite Program. Python and customer support."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is True
+    assert result.eligible is False
+    assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+def test_generic_accessibility_language_is_not_disability_targeting(engine, candidate):
+    job = _swe_job(
+        "Build Python services. We are an equal opportunity employer and provide "
+        "reasonable accommodation for applicants with disabilities."
+    )
+    result = engine.evaluate(job, candidate)
+    assert result.pre_filtered is False
