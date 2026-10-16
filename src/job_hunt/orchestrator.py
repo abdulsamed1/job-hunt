@@ -7,7 +7,7 @@ import hashlib
 import logging
 import signal
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import httpx
 from job_hunt import settings
@@ -22,6 +22,9 @@ from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, JobPosting, JobState
 from job_hunt.reposts import RepostDetector
 from job_hunt.storage import Storage
+
+if TYPE_CHECKING:
+    from job_hunt.notifications import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +44,10 @@ class PipelineOrchestrator:
         use_llm: bool = True,
         db_path: str = "data/jobs.db",
         sources_path: str = "config/sources.yaml",
+        notifier: Optional["TelegramNotifier"] = None,
     ):
         self.storage = storage or Storage(db_path)
+        self.notifier = notifier
         self.registry = registry or SourceRegistry()
         self.sources_path = sources_path
         self._running = False

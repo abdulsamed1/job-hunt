@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import JobState
+from job_hunt.notifications import TelegramNotifier
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
@@ -26,6 +28,14 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("job-hunt-cli")
+
+
+def build_notifier() -> TelegramNotifier:
+    """Build the process-wide Telegram notifier (no-op when unconfigured)."""
+    return TelegramNotifier(
+        bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -155,7 +165,7 @@ def cmd_llm_status(args: argparse.Namespace) -> None:
 
 
 def cmd_scan(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources)
+    orch = PipelineOrchestrator(db_path=args.db, sources_path=args.sources, notifier=build_notifier())
     new_jobs = asyncio.run(orch.run_discovery_stage(
         max_sources=args.limit, hours_old=args.hours_old, remote_only=args.remote_only,
         source_name=args.source,
@@ -169,6 +179,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
+        notifier=build_notifier(),
     )
     orch.eval_engine.min_score_threshold = args.threshold
     count = asyncio.run(orch.run_evaluation_stage_async(limit=args.limit))
@@ -181,6 +192,7 @@ def cmd_tailor(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
+        notifier=build_notifier(),
     )
     if args.job_id is not None:
         job = orch.storage.get_job(args.job_id)
@@ -197,7 +209,7 @@ def cmd_tailor(args: argparse.Namespace) -> None:
 
 
 def cmd_apply(args: argparse.Namespace) -> None:
-    orch = PipelineOrchestrator(db_path=args.db)
+    orch = PipelineOrchestrator(db_path=args.db, notifier=build_notifier())
     mode = "LIVE" if args.live else "DRY-RUN"
     if args.job_id is not None:
         job = orch.storage.get_job(args.job_id)
@@ -242,6 +254,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         db_path=args.db,
         llm_client=llm_client,
         use_llm=not args.no_llm,
+        notifier=build_notifier(),
     )
 
     if args.once:
