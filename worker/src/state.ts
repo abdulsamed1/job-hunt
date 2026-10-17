@@ -74,14 +74,24 @@ export async function upsertJob(
   ).run();
   const changed = (res.meta.changes ?? 0) > 0;
   const outcome: UpsertOutcome = opts.outcome ?? { recorded: false };
+  // Reset before the block, not inside it: callers may reuse one outcome object
+  // across postings (one per discover batch), so a stale `true` must never leak
+  // into the next posting's counter or alert.
+  outcome.recorded = false;
   // A gate reject records why beside the row, in the same reasoning column the
-  // evaluate stage writes. `instr` makes the write happen once per distinct
-  // reason: a posting re-discovered on a later sweep reports changes = 1 (its
-  // dateless row counts as improved forever) but the reason is already stored,
-  // so this statement is a no-op and `recorded` stays false. Reasoning therefore
-  // cannot grow per sweep and callers get a first-time signal to gate counters
-  // and alerts on.
-  if (changed && opts.state === "PRE_FILTERED_OUT" && opts.detail) {
+  // evaluate stage writes, and exactly once per distinct reason: the `instr`
+  // guard turns a repeat sighting into a no-op, so reasoning cannot grow per
+  // sweep.
+  //
+  // Deliberately NOT gated on `changed`. A posting stored before this gate whose
+  // jobs upsert is a full no-op (non-empty location and posted_at, description
+  // no longer) would otherwise never be explained, counted or alerted
+  // FILTERED — the `instr` guard alone decides, because a row that has never
+  // been explained has no matching reason in its reasoning yet. The cost is one
+  // no-op statement per rejected posting per sweep, bounded by the reject rate
+  // and the intake cap; it buys "every rejected posting is explained exactly
+  // once", which is the property the counter and the alert count on.
+  if (opts.state === "PRE_FILTERED_OUT" && opts.detail) {
     const detail = await db.prepare(
       `INSERT INTO evaluations (job_hash, score, eligible, reasoning, evaluated_at)
        VALUES (?, ?, ?, ?, ?)

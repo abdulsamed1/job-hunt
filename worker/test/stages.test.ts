@@ -148,11 +148,15 @@ describe("queue lifecycle events", () => {
                 reasoning: String(params[3]), evaluated_at: String(params[4]),
               };
               const prev = evaluations.get(key);
-              // saveEvaluation overwrites; upsertJob's gate write appends only
-              // when that reason is not already recorded (the instr(...) guard).
-              if (prev && sql.includes("instr(") && prev.reasoning.includes(next.reasoning)) {
-                return { meta: { changes: 0 } };
+              // saveEvaluation replaces reasoning; upsertJob's gate write
+              // appends, but only when that reason is not already recorded
+              // (its instr(...) guard).
+              const gate = sql.includes("instr(");
+              if (!gate) {
+                evaluations.set(key, next);
+                return { meta: { changes: 1 } };
               }
+              if (prev && prev.reasoning.includes(next.reasoning)) return { meta: { changes: 0 } };
               evaluations.set(key, {
                 ...next,
                 reasoning: prev && prev.reasoning ? `${prev.reasoning} | ${next.reasoning}` : next.reasoning,
@@ -679,6 +683,31 @@ describe("queue lifecycle events", () => {
       expect(evaluations.get(hash)?.reasoning).toBe(reason);
       expect(texts.filter((t) => t.includes("[worker] FILTERED:"))).toHaveLength(alerts);
       expect(q.EVALUATE_Q.sent).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("explains a posting stored before the gate even when its jobs upsert is a no-op", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems.")));
+    try {
+      // upsertChanges 0: the row is already in the table with a full location,
+      // date and description, so nothing about it is "materially improved" — the
+      // shape of a posting stored before this gate existed.
+      const { db, statements, counters, evaluations } = memQueueDb({ upsertChanges: 0 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      const hash = canonicalHash(normalizeUrl("https://example.com/j/mgr"));
+      // Never explained before, so it is explained, counted and alerted now.
+      expect(evaluations.get(hash)?.reasoning).toBe("role gate: people-management:manager");
+      expect(counters.get("role_rejected")).toBe(1);
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+      // The jobs row was left alone: no queue message, no SEEKING.
+      expect(statements.filter((s) => s.sql.includes("UPDATE jobs SET state"))).toHaveLength(0);
+      expect(texts.some((t) => t.includes("[worker] SEEKING:"))).toBe(false);
     } finally {
       restore();
     }

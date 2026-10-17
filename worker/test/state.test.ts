@@ -201,6 +201,9 @@ function gateDb(changes = 1, seed?: Record<string, any>) {
                 reasoning: String(params[3]), evaluated_at: String(params[4]),
               };
               const prev = evaluations.get(key);
+              // Real saveEvaluation replaces reasoning; this double routes
+              // upsertJob's gate write, which appends only when the reason is
+              // not already recorded (its instr(...) guard).
               if (prev && prev.reasoning.includes(next.reasoning)) return { meta: { changes: 0 } };
               evaluations.set(key, {
                 ...next,
@@ -239,6 +242,33 @@ describe("upsertJob gate detail", () => {
     expect(evaluations.get("h-mgr").reasoning).toBe("role gate: people-management:manager");
     expect(evaluations.get("h-mgr").evaluated_at).toBeTruthy();
     expect(queries.filter((q) => q[0].startsWith("INSERT INTO evaluations"))).toHaveLength(2);
+  });
+
+  it("explains a rejected posting whose jobs upsert was a no-op", async () => {
+    const { db, evaluations } = gateDb(0);
+    const { upsertJob } = await import("../src/state.js");
+    const outcome = { recorded: false };
+    // Nothing about the row changed (pre-gate shape), yet the posting has still
+    // never been explained, so the reason is written and reported as first-time.
+    expect(await upsertJob(db, REJECTED, { state: "PRE_FILTERED_OUT", detail: "role gate: people-management:manager", outcome })).toBe(false);
+    expect(outcome.recorded).toBe(true);
+    expect(evaluations.get("h-mgr").reasoning).toBe("role gate: people-management:manager");
+  });
+
+  it("resets a reused outcome object instead of leaking a stale recorded", async () => {
+    const { db } = gateDb(1);
+    const { upsertJob } = await import("../src/state.js");
+    const outcome = { recorded: false };
+    const reject = { state: "PRE_FILTERED_OUT" as const, detail: "role gate: people-management:manager", outcome };
+    expect(await upsertJob(db, REJECTED, reject)).toBe(true);
+    expect(outcome.recorded).toBe(true);
+    // A posting that takes the plain path never records a reason, so a reused
+    // object must come back false rather than keep the previous posting's true.
+    expect(await upsertJob(db, { ...REJECTED, canonical_hash: "h-sw", title: "Backend Engineer" }, { outcome })).toBe(true);
+    expect(outcome.recorded).toBe(false);
+    // And the same rejected posting again: its reason is recorded already.
+    expect(await upsertJob(db, REJECTED, reject)).toBe(true);
+    expect(outcome.recorded).toBe(false);
   });
 
   it("explains a posting stored before the gate and refreshes evaluated_at", async () => {
