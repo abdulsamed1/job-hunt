@@ -289,8 +289,17 @@ git commit -m "feat(worker): gate manager, sales and CRM roles out of discovery 
 - Consumes: `bumpCounter` from Task 2.
 - Produces:
   - `normalizeLocation(raw: string): string` and the updated `roleFingerprint(company: string, title: string, location: string): string` in `worker/src/lib/hash.ts`. Normalization: lowercase; collapse punctuation/whitespace; map `remote`, `anywhere`, `worldwide`, `wfh`, `work from home`, `distributed`, `telecommute`, `united states`, `us`, `usa`, `global` to the token `remote`; map empty/unknown to `?`. Hash function stays `fnv1a` (the existing helper); only normalization rules are shared with Python — cross-runtime hash equality is not required because each runtime dedupes its own store.
+  - Counting discipline, carried from Task 2: anything that fires per posting (a counter bump, a detail
+    write, a notification) fires on a **genuine insert only**, never on a later re-discovery. Dateless
+    rows look "materially improved" forever, so gating on the jobs upsert's changed-flag over-counts.
   - `ensureRoleFingerprint(db: Db): Promise<void>` — `ALTER TABLE jobs ADD COLUMN role_fingerprint TEXT` when absent, plus `CREATE INDEX IF NOT EXISTS idx_jobs_role_fp ON jobs(role_fingerprint)`, mirroring `ensureSourceHealthColumns`.
-  - `findKnownFingerprints(db: Db, fingerprints: string[]): Promise<Set<string>>` — one `SELECT role_fingerprint FROM jobs WHERE role_fingerprint IN (...)` (chunked at 50 bindings).
+  - `findKnownJobs(db: Db, hashes: string[], fingerprints: string[]): Promise<Map<string, string>>` — one
+    query, `SELECT canonical_hash, role_fingerprint FROM jobs WHERE canonical_hash IN (...) OR
+    role_fingerprint IN (...)` (chunked at 50 bindings per list), returning a map from a key (either
+    identifier) to the pair stored. The caller needs both halves: a posting's **own** fingerprint is in
+    the database the moment it is first stored, so a set-membership test alone would mark every
+    re-discovery as a duplicate of itself. The stored `canonical_hash` for a matched fingerprint is what
+    separates "this is me again" from "another board carries my requisition".
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -343,13 +352,15 @@ Expected: FAIL — remote synonyms hash differently, no `role_fingerprint` colum
    `ensureNotificationEvents` / `ensureSourceHealthColumns` calls.
 3. `upsertJob` accepts `role_fingerprint: string` in its options object, includes it in the INSERT column
    list, and updates it on conflict.
-4. In the discover loop, after enrichment and before the per-job loop:
-   `const fps = enriched.map((j) => roleFingerprint(j.company, j.title, j.location));`
-   `const known = await findKnownFingerprints(db, fps);` then per job: if `known.has(fp)` and the
-   stored canonical hash differs, `upsertJob(...)` with `state: "DUPLICATE"` and
-   `detail: "duplicate of an existing posting"`, `bumpCounter(db, "duplicate_suppressed")`, no evaluate
-   message and no SEEKING; otherwise today's path, adding the fp to `known` so two copies inside one
-   batch also collapse.
+4. In the discover loop, after enrichment and before the per-job loop, make the single batched query and
+   derive two sets: `mine` (fingerprints whose stored `canonical_hash` equals the posting's own hash —
+   this posting has been seen before) and `elsewhere` (fingerprints owned by a different hash — another
+   board carries the same requisition). Per job: if `elsewhere.has(fp)`, store it with
+   `state: "DUPLICATE"`, no evaluate message and no SEEKING, and bump `duplicate_suppressed` **only when
+   the posting is itself newly stored** (`!mine.has(fp)`), so a sweep that re-discovers an
+   already-duplicate posting costs no counter. Otherwise take today's path and add the fp to both sets,
+   so two copies inside one batch collapse too. Two copies inside a batch: the first is stored normally
+   and seeds the sets; the second sees its fp in `elsewhere` and is marked duplicate.
 5. Strip `utm_*` and other tracking parameters in `normalizeUrl` (compare against the Python
    canonicalizer in `src/job_hunt/dedup.py` and match its behaviour) so aggregator mirrors collapse.
 
