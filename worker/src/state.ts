@@ -241,10 +241,11 @@ export async function ensureCounters(db: Db): Promise<void> {
  * observability, never a gate — callers must tolerate a failure here rather
  * than let it abandon the postings they are counting.
  *
- * The counters are all "postings kept out of the feed", counted once per
- * posting on the transition: role_rejected for the role gate,
- * duplicate_suppressed for postings the dedupe gate suppressed. A posting that
- * was already off the feed, or already applied, is not counted for either. */
+ * The gate counters (role_rejected, duplicate_suppressed) count postings their
+ * gate kept out while the posting's outcome was still open — `DISCOVERED` or
+ * `ELIGIBLE` at the time, see GATEABLE_STATES in index.ts. A posting the store
+ * has already decided (scored out, filtered, applied, suppressed) is left
+ * untouched by both gates and counted by neither. */
 export async function bumpCounter(db: Db, key: string, n = 1): Promise<void> {
   await db.prepare(
     `INSERT INTO counters (key, value) VALUES (?, ?)

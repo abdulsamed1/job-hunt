@@ -79,15 +79,16 @@ function noteFingerprint(index: Map<string, Set<string>>, fp: string, hash: stri
 const OWNER_STATES = new Set(["DISCOVERED", "ELIGIBLE", "TAILORED", "SUBMITTED"]);
 const OWNER_WINDOW_DAYS = 30;
 
-// The states the gate may still act on: a posting that is in the owner's feed
-// and could still become an application. Every other row is left exactly as it
-// is — one already off the feed (REJECTED, PRE_FILTERED_OUT, FAILED, ...)
-// gains nothing from being relabelled and would lose the verdict its state
-// records, and one already on its way to the employer (TAILORED, SUBMITTED,
-// APPLICATION_STARTED) carries the honest history of the application. Acting on
-// exactly these two states is what makes duplicate_suppressed mean "postings
-// this gate kept out of the feed", counted once per posting.
-const SUPPRESSIBLE_STATES = new Set(["DISCOVERED", "ELIGIBLE"]);
+// The states a gate may act on: a posting whose outcome is still open — stored
+// but not yet scored (DISCOVERED), or scored and still waiting to be tailored
+// (ELIGIBLE). Every other row is left exactly as it is. One already off the feed
+// (REJECTED, PRE_FILTERED_OUT, FAILED, DUPLICATE, ...) has no opening left to
+// protect and would lose the verdict its state records; one already on its way
+// to the employer (TAILORED, SUBMITTED, APPLICATION_STARTED) carries the honest
+// history of the application, which a gate marker and its score-0 rewrite would
+// destroy. This is what makes both gate counters mean "postings kept out while
+// their outcome was still open", counted once per posting.
+const GATEABLE_STATES = new Set(["DISCOVERED", "ELIGIBLE"]);
 
 export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
@@ -330,12 +331,21 @@ export default {
               discovered_at: now, score: 0, remote: isRemoteish(j.location, j.desc),
             };
             const alert = { title: j.title, company: j.company, url: j.url };
+            // Both gates act only on postings whose outcome is still open (see
+            // GATEABLE_STATES). A row the store has already decided is left
+            // exactly as it is: there is no opening left to protect, and its
+            // state is worth more than a gate marker — relabelling an applied
+            // posting would rewrite the history of what was applied and its
+            // evaluation to score 0, and counting it would report a posting the
+            // owner has no remedy for. Costs no write at all.
+            const gateable = !own || GATEABLE_STATES.has(own.state);
             // Role gate before storage (Decision 2): SEEKING fires here, so a
             // manager, sales or CRM posting must never reach the feed. The row
             // is still stored once, already pre-filtered with the matched rule
             // as its reason, and FILTERED replaces SEEKING.
             const role = classifyRole(j.title, { rejectCrm });
             if (role.verdict === "reject") {
+              if (!gateable) continue;
               const reason = `role gate: ${role.rule}`;
               // stored first, counted second: a counter failure must never cost
               // the posting, nor the rest of this source's batch.
@@ -357,12 +367,7 @@ export default {
             // rejected never gets here, so a rejection is explained once as a
             // rejection and never as a twin.
             if (ownerHash) {
-              // Only a posting that is still in the feed is suppressed (see
-              // SUPPRESSIBLE_STATES). Anything else — already scored out,
-              // already filtered, already applied, already suppressed — is left
-              // alone: there is no opening left to protect, and its state is
-              // worth more than a duplicate marker. Costs no write at all.
-              if (own && !SUPPRESSIBLE_STATES.has(own.state)) continue;
+              if (!gateable) continue;
               const reason = `duplicate of ${ownerHash}`;
               await upsertJob(db, row, { state: "DUPLICATE", detail: reason, role_fingerprint: fp });
               if (own) {

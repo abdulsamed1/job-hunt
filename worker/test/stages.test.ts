@@ -1081,6 +1081,40 @@ describe("queue lifecycle events", () => {
     }
   });
 
+  it("never relabels an applied posting the role gate matches", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The board retitled an applied posting into a management role. The row is
+    // TAILORED: relabelling it would rewrite the history of what was applied
+    // (and its evaluation to score 0), and the owner's remedy for a posting they
+    // already applied to is nil, so neither the count nor the alert is worth it.
+    const hash = canonicalHash(normalizeUrl("https://example.com/j/mgr"));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems.")));
+    try {
+      const { db, jobs, statements, counters, evaluations } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [storedJob({
+          canonical_hash: hash, url: "https://example.com/j/mgr",
+          title: "Senior Manager, Application Security", source: "test-rss",
+          state: "TAILORED", role_fingerprint: "",
+        })],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      // Not relabelled, not counted, not alerted, not scored -- and not even
+      // rewritten: the gate leaves the row alone entirely.
+      expect(jobs.get(hash)?.state).toBe("TAILORED");
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(0);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO evaluations"))).toHaveLength(0);
+      expect(counters.get("role_rejected")).toBeUndefined();
+      expect(evaluations.size).toBe(0);
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(false);
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
   it("explains a rejected posting once: a re-discovery never re-counts or re-alerts it", async () => {
     const { default: worker } = await import("../src/index.js");
     const texts: string[] = [];
@@ -1101,9 +1135,10 @@ describe("queue lifecycle events", () => {
       expect(alerts).toBe(1);
 
       await worker.queue({ messages: [{ body: discoverMsg }] } as any, env);
-      // Second sweep rewrites the row but records nothing new: no second
-      // reason (reasoning cannot grow), no second count, no second alert.
-      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(2);
+      // Second sweep records nothing new and now does not even rewrite the row:
+      // a posting already explained and already off the feed is left alone. No
+      // second reason (reasoning cannot grow), no second count, no second alert.
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(1);
       expect(counters.get("role_rejected")).toBe(1);
       expect(evaluations.get(hash)?.reasoning).toBe(reason);
       expect(texts.filter((t) => t.includes("[worker] FILTERED:"))).toHaveLength(alerts);

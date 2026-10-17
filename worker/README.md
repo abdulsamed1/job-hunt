@@ -132,15 +132,22 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   already-applied posting to protect a future one would destroy the history of
   the application. Three things cost debugging time here:
   - **Suppression is real, and counted on the transition.** The jobs upsert
-    never touches `state`, so a posting already in the feed when the gate finds
+    never touches `state`, so a posting that was still open when the gate found
     it (every row that predates the deploy) is moved with `setJobState` and its
     audit row written. `duplicate_suppressed` and the reason write ride that
     same transition, so a re-discovered twin costs neither a count nor a
     statement, and counting a suppression that was never performed is
-    impossible. Only a posting that is still in the feed is suppressed at all:
-    one already scored out, filtered, applied or suppressed is left exactly as
-    it is, which is what keeps the counter meaning "postings kept out of the
-    feed".
+    impossible.
+  - **Neither gate touches a posting the store has already decided.** Both act
+    only on rows whose outcome is still open — `DISCOVERED` or `ELIGIBLE`
+    (`GATEABLE_STATES` in `index.ts`). A row already scored out, filtered or
+    suppressed has no opening left to protect and would lose the verdict its
+    state records; a row already on its way to the employer (`TAILORED`,
+    `SUBMITTED`, `APPLICATION_STARTED`) carries the honest history of the
+    application, and a gate marker would rewrite it and its evaluation to score
+    0 for a posting the owner has no remedy for. So `role_rejected` and
+    `duplicate_suppressed` count postings kept out **while their outcome was
+    still open**, once per posting.
   - **A suppressed twin never reopens.** A twin's fingerprint can drift (the
     board edited the title) or lose its owner; the row under the posting's own
     hash is still the authority, and it stays suppressed. The evaluate stage's
