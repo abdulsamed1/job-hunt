@@ -272,36 +272,40 @@ export async function ensureRoleFingerprint(db: Db): Promise<void> {
 }
 
 /** One posting's stored identity: the URL hash and the role fingerprint, plus
- *  the state the duplicate check needs to tell an owner from a suppressed twin. */
+ *  the state and age the caller needs to decide ownership. */
 export interface KnownJobIdentity {
   canonical_hash: string;
   role_fingerprint: string;
   state: string;
+  discovered_at: string;
 }
 
 /** Which of these identifiers the store already carries, keyed by both
- * identifiers and carrying each row's pair. One statement per chunk (never one
- * per posting), which is what keeps a discover source inside the query budget.
+ *  identifiers and carrying each row's identity. One statement per chunk (never
+ *  one per posting), which is what keeps a discover source inside the query
+ *  budget.
  *
  * The caller needs the pair, not just a hit: a posting's own fingerprint is in
- * the database the moment it is first stored, so a set-membership test alone
- * would call every re-discovery a duplicate of itself. The canonical_hash
- * stored under the fingerprint is what separates "I have been seen before" from
- * "another board carries this requisition".
+ *  the database the moment it is first stored, so a set-membership test alone
+ *  would call every re-discovery a duplicate of itself. The canonical_hash
+ *  stored under the fingerprint is what separates "I have been seen before" from
+ *  "another board carries this requisition".
  *
- * `state` rides along because a suppressed twin stores the same fingerprint as
- * the posting it stands in for: without reading the state, that twin would
- * look like a second board and the winner would suppress itself forever. */
+ * Rows come back whatever their state and age: the caller, not this query,
+ *  decides which rows own a requisition (still applicable, still recent) and
+ *  which one the posting's own hash matched. */
 export async function findKnownJobs(
   db: Db, hashes: string[], fingerprints: string[],
 ): Promise<Map<string, KnownJobIdentity>> {
   const known = new Map<string, KnownJobIdentity>();
   const unique = (list: string[]) => [...new Set(list.filter(Boolean))];
   // 50 bindings per IN list keeps each statement inside D1's parameter cap.
+  // One chunk even for an empty list, so a fingerprint-only caller still gets
+  // its statement rather than a silent empty answer.
   const chunk = (list: string[]) => {
     const out: string[][] = [];
     for (let i = 0; i < list.length; i += 50) out.push(list.slice(i, i + 50));
-    return out;
+    return out.length ? out : [[]];
   };
   for (const hc of chunk(unique(hashes))) {
     for (const fc of chunk(unique(fingerprints))) {
@@ -311,13 +315,15 @@ export async function findKnownJobs(
       ];
       if (!where.length) continue;
       const { results } = await db.prepare(
-        `SELECT canonical_hash, role_fingerprint, state FROM jobs WHERE ${where.join(" OR ")}`,
+        `SELECT canonical_hash, role_fingerprint, state, discovered_at
+         FROM jobs WHERE ${where.join(" OR ")}`,
       ).bind(...hc, ...fc).all();
       for (const row of results || []) {
         const id: KnownJobIdentity = {
           canonical_hash: String(row.canonical_hash),
           role_fingerprint: String(row.role_fingerprint ?? ""),
           state: String(row.state ?? ""),
+          discovered_at: String(row.discovered_at ?? ""),
         };
         known.set(id.canonical_hash, id);
         if (id.role_fingerprint) known.set(id.role_fingerprint, id);

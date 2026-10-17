@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyToAts, buildTailoredText, renderPdfBytes } from "../src/stages/pipeline.js";
-import { canonicalHash, normalizeUrl } from "../src/lib/hash.js";
+import { canonicalHash, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
 import type { Profile } from "../src/lib/evaluate.js";
 
 const profile = (): Profile & { fullName: string; email: string; phone: string } => ({
@@ -108,11 +108,16 @@ describe("queue lifecycle events", () => {
   function memQueueDb(opts: {
     jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean;
     failCounters?: boolean; settings?: Record<string, string>;
+    seedJobs?: Array<Record<string, any>>;
   } = {}) {
     const statements: Array<{ sql: string; params: any[] }> = [];
     const seenEvents = new Set<string>();
     const counters = new Map<string, number>();
-    const jobs = new Map<string, Record<string, any>>();
+    // Rows that predate this queue invocation: what an earlier sweep, or a
+    // deploy before the gate, already stored.
+    const jobs = new Map<string, Record<string, any>>(
+      (opts.seedJobs || []).map((r) => [String(r.canonical_hash), { ...r }]),
+    );
     const evaluations = new Map<string, { score: number; eligible: number; reasoning: string; evaluated_at: string }>();
     const settings = new Map(Object.entries(opts.settings ?? {}));
     const db = {
@@ -126,6 +131,9 @@ describe("queue lifecycle events", () => {
             }
             if (sql.includes("FROM jobs")) {
               if (opts.failJobsSelect) throw new Error("d1 down");
+              // Honour the stage's own state guard: a row the stage excludes
+              // must read as absent, exactly as it would in D1.
+              if (sql.includes("state <> 'DUPLICATE'") && opts.jobRow?.state === "DUPLICATE") return null;
               return opts.jobRow ?? null;
             }
             return null;
@@ -160,6 +168,11 @@ describe("queue lifecycle events", () => {
                 role_fingerprint: rec.role_fingerprint ?? prev?.role_fingerprint ?? "",
               });
               return { meta: { changes: opts.upsertChanges ?? 1 } };
+            }
+            if (sql.includes("UPDATE jobs SET state")) {
+              const row = jobs.get(String(params[1]));
+              if (row) row.state = params[0];
+              return {};
             }
             if (sql.includes("INSERT INTO evaluations")) {
               const key = String(params[0]);
@@ -662,6 +675,161 @@ describe("queue lifecycle events", () => {
       expect(counters.get("duplicate_suppressed")).toBe(1);
       expect(q.EVALUATE_Q.sent.map((m: any) => m.hash)).toEqual([winner]);
       expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  // A row the store already holds, as an earlier sweep or a pre-gate deploy
+  // left it.
+  const storedJob = (over: Record<string, any>) => ({
+    canonical_hash: "", title: "Backend Engineer", company: "acme", location: "Remote",
+    url: "", description: "Python FastAPI backend role building reliable systems.",
+    source: "lever:acme", posted_at: new Date().toISOString(),
+    discovered_at: new Date().toISOString(),
+    score: 0, remote: 1, state: "DISCOVERED", role_fingerprint: "", notified: 0,
+    ...over,
+  });
+  const REQ_FP = roleFingerprint("acme", "Backend Engineer", "Remote, US");
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it("suppresses a posting already in the feed when its requisition is owned elsewhere", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The pre-gate shape: the twin's row exists and sits in the feed, with no
+    // fingerprint at all, while another board already owns the requisition.
+    const winner = canonicalHash(normalizeUrl(GH_URL));
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([LV_TWIN]));
+    try {
+      const { db, jobs, statements, counters, evaluations } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({ canonical_hash: winner, url: GH_URL, state: "DISCOVERED", role_fingerprint: REQ_FP }),
+          storedJob({ canonical_hash: twin, url: LV_URL, state: "DISCOVERED" }),
+        ],
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q);
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, env);
+      // The suppression is real: the row leaves the feed, it is not merely
+      // annotated while still sitting in it.
+      expect(jobs.get(twin)?.state).toBe("DUPLICATE");
+      const audit = statements.filter((s) => s.sql.includes("INSERT INTO audit_log"));
+      // bind order: job_hash, to_state, timestamp, details (from_state is NULL)
+      expect(audit.map((s) => s.params[1])).toContain("DUPLICATE");
+      expect(evaluations.get(twin)?.reasoning).toBe(`duplicate of ${winner}`);
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+      // And it is never applied: no evaluate message, no SEEKING.
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(0);
+
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, env);
+      // Once: the transition happened, so the second sweep re-counts nothing,
+      // re-audits nothing and re-explains nothing.
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO audit_log"))).toHaveLength(audit.length);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO evaluations"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps a suppressed twin suppressed when its own fingerprint drifts", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The board edited the title, so the twin's fingerprint no longer matches
+    // anything: no owner is found and the normal path would otherwise reopen a
+    // posting the store already parked as a duplicate.
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([{ ...LV_TWIN, title: "Backend Engineer II" }]));
+    try {
+      const { db, jobs } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [storedJob({ canonical_hash: twin, url: LV_URL, state: "DUPLICATE", role_fingerprint: "fp-from-2025" })],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(twin)?.state).toBe("DUPLICATE");
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("never promotes a suppressed twin that was queued before the gate landed", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, "");
+    try {
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-twin", title: "Backend Engineer", company: "acme",
+          location: "Remote", url: LV_URL, description: "Python FastAPI backend role.",
+          source: "lever:acme", state: "DUPLICATE",
+        },
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: { stage: "evaluate", hash: "h-twin" } }] } as any, queueEnv(db, q));
+      // The row reads as absent, so nothing is scored, nothing is applied and
+      // nothing is alerted: a twin cannot be promoted by a stale message.
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO evaluations"))).toHaveLength(0);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO audit_log"))).toHaveLength(0);
+      expect(q.APPLY_Q.sent).toHaveLength(0);
+      expect(texts.some((t) => t.includes("[worker] ELIGIBLE:"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("lets a twin through when the owner cannot be applied from", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The same requisition, but the owning row was rejected on its merits: it
+    // will never be applied, so suppressing the twin would lose the opening.
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([LV_TWIN]));
+    try {
+      const { db, jobs, counters } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({ canonical_hash: canonicalHash(normalizeUrl(GH_URL)), url: GH_URL, state: "REJECTED", role_fingerprint: REQ_FP }),
+        ],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(twin)?.state).toBe("DISCOVERED");
+      expect(counters.get("duplicate_suppressed")).toBeUndefined();
+      expect(q.EVALUATE_Q.sent).toHaveLength(1);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("lets a re-posted requisition through once its owner is stale", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // Ownership is bounded in time: a company re-posting the same remote role
+    // next quarter is a new requisition, not a twin of last quarter's row.
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([LV_TWIN]));
+    try {
+      const { db, jobs, counters } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({
+            canonical_hash: canonicalHash(normalizeUrl(GH_URL)), url: GH_URL,
+            state: "DISCOVERED", role_fingerprint: REQ_FP, discovered_at: daysAgo(31),
+          }),
+        ],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(twin)?.state).toBe("DISCOVERED");
+      expect(counters.get("duplicate_suppressed")).toBeUndefined();
+      expect(q.EVALUATE_Q.sent).toHaveLength(1);
     } finally {
       restore();
     }

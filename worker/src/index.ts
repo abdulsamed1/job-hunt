@@ -56,14 +56,28 @@ export interface Env {
 
 const SOURCES: SourceDef[] = GENERATED_SOURCES;
 
-/** Record that this canonical hash carries the given role fingerprint (see
- *  roleFingerprint). Used to answer "have I seen this posting?" and "does
- *  another posting own this requisition?" from one per-fingerprint index. */
+/** Record that this canonical hash owns the given role fingerprint (see
+ *  roleFingerprint): "does another posting own this requisition?".
+ *  `upsertJob` stores a posting's fingerprint, so a posting that reaches the
+ *  store owns the requisition it represents. */
 function noteFingerprint(index: Map<string, Set<string>>, fp: string, hash: string): void {
   const set = index.get(fp);
   if (set) set.add(hash);
   else index.set(fp, new Set([hash]));
 }
+
+// Which stored states may own a requisition, and for how long. Ownership is
+// the rule that suppresses a twin, so it is deliberately narrow: only a posting
+// that can still be applied from, and only while the opening is plausibly the
+// same one. A filtered or scored-out row owns nothing — that posting will never
+// be applied, so blocking its twin would lose the opening — and neither does a
+// row older than the window, which is how a re-posted requisition stays a new
+// requisition. The residual this leaves is deliberate and known: two genuinely
+// distinct openings at one company with the same title and place still collapse
+// into one, and once a twin exists a re-post older than the window is still
+// suppressed by it.
+const OWNER_STATES = new Set(["DISCOVERED", "ELIGIBLE", "TAILORED", "SUBMITTED"]);
+const OWNER_WINDOW_DAYS = 30;
 
 export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
@@ -278,22 +292,25 @@ export default {
           const known = await findKnownJobs(
             db, postings.map((p) => p.hash), postings.map((p) => p.fp),
           );
-          // Fingerprint -> the canonical hashes that carry it. Two questions,
-          // one index: `carriers` says whether this posting has been seen
-          // before (its own hash is in there), `owners` says whether some other
-          // posting owns the requisition (a hash that is not its own). A
-          // suppressed twin counts as a carrier but never as an owner, or the
-          // winner would suppress itself through the very duplicate row this
-          // check created for it.
-          const carriers = new Map<string, Set<string>>();
+          // Fingerprint -> the canonical hashes that own the requisition.
+          // Ownership is bounded: only a posting that can still be applied
+          // from, and only for OWNER_WINDOW_DAYS. A company re-posting the
+          // same remote role next quarter is a new requisition, not a twin of
+          // last quarter's row, and a row that was filtered or scored out never
+          // blocks the one posting that could still be applied.
           const owners = new Map<string, Set<string>>();
+          const ownerCutoff = Date.now() - OWNER_WINDOW_DAYS * 86_400_000;
           for (const row of known.values()) {
-            if (!row.role_fingerprint) continue;
-            noteFingerprint(carriers, row.role_fingerprint, row.canonical_hash);
-            if (row.state !== "DUPLICATE") noteFingerprint(owners, row.role_fingerprint, row.canonical_hash);
+            if (!row.role_fingerprint || !OWNER_STATES.has(row.state)) continue;
+            if (!(Date.parse(row.discovered_at) >= ownerCutoff)) continue;
+            noteFingerprint(owners, row.role_fingerprint, row.canonical_hash);
           }
           for (const { job: j, hash, fp } of postings) {
-            const seenBefore = carriers.get(fp)?.has(hash) ?? false;
+            // The row the store already holds under this posting's own URL is
+            // the authority on whether this posting is suppressed: a twin's
+            // fingerprint can drift (the board edited the title) or lose its
+            // owner, and neither may reopen the posting.
+            const own = known.get(hash);
             const ownerHash = [...(owners.get(fp) || [])].find((h) => h !== hash);
             const row = {
               canonical_hash: hash, title: j.title.slice(0, 200),
@@ -332,21 +349,41 @@ export default {
             // ever deleted) with the winner's hash as its reason, and gets no
             // SEEKING and no evaluation, so it can never be applied.
             if (ownerHash) {
+              // Once-per-posting signal, and the only side effects ride it: a
+              // twin that is already recorded as suppressed has nothing new to
+              // explain (the reason write costs a statement per duplicate per
+              // sweep) and nothing new to count.
+              const reason = `duplicate of ${ownerHash}`;
+              const firstTime = own?.state !== "DUPLICATE";
               await upsertJob(db, row, {
-                state: "DUPLICATE", detail: `duplicate of ${ownerHash}`, role_fingerprint: fp,
+                state: "DUPLICATE", role_fingerprint: fp,
+                ...(firstTime ? { detail: reason } : {}),
               });
-              // Counted on first storage only: a sweep that re-discovers a
-              // duplicate costs no second count (its own row carries the
-              // fingerprint, so `seenBefore` is true). Stored first, counted
-              // second — a counter failure must not cost the posting.
-              if (!seenBefore) {
+              if (firstTime) {
+                // The jobs upsert never touches state, so a posting that was
+                // already in the feed when the gate found it (every row that
+                // predates the deploy) has to be moved out of it explicitly.
+                // Counting a suppression we do not perform would inflate the
+                // duplicate count with rows that are still in the feed.
+                if (own) await setJobState(db, hash, "DUPLICATE", reason);
+                // Stored first, counted second: a counter failure must not cost
+                // the posting.
                 try {
                   await bumpCounter(db, "duplicate_suppressed");
                 } catch (e) {
                   console.log(`duplicate_suppressed counter failed: ${String(e).slice(0, 120)}`);
                 }
               }
-              noteFingerprint(carriers, fp, hash);
+              continue;
+            }
+            // A posting the store already parked as a duplicate stays parked
+            // even when nothing owns its fingerprint any more. Without this the
+            // normal path below would reopen it — and a dateless posting's row
+            // counts as improved on every sweep, so it would be queued for
+            // evaluation and applied a second time for one requisition.
+            if (own?.state === "DUPLICATE") {
+              // Refreshed text only; the upsert leaves the row's state alone.
+              await upsertJob(db, row, { role_fingerprint: fp });
               continue;
             }
             const isNew = await upsertJob(db, row, { role_fingerprint: fp });
@@ -356,12 +393,14 @@ export default {
             }
             // This posting owns the requisition now, so a second copy of it
             // inside this same batch collapses too.
-            noteFingerprint(carriers, fp, hash);
             noteFingerprint(owners, fp, hash);
           }
         } else if (m.stage === "evaluate" && m.hash) {
+          // A suppressed twin reads as absent: a message queued before the
+          // dedupe gate landed can never be promoted into an application.
           const row: any = await db.prepare(
-            `SELECT canonical_hash, title, company, location, url, description, source FROM jobs WHERE canonical_hash = ?`,
+            `SELECT canonical_hash, title, company, location, url, description, source FROM jobs
+             WHERE canonical_hash = ? AND state <> 'DUPLICATE'`,
           ).bind(m.hash).first();
           if (!row) continue;
           const r = evaluateJob(

@@ -121,17 +121,32 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   every all-remote spelling collapsed to one token (`lib/hash.ts`) — and the
   discover stage resolves the whole source's fingerprints in **one** batched
   `findKnownJobs` read (two `IN` lists, chunked at 50 bindings) before storing
-  anything. A hit owned by a *different* canonical hash is stored once as
-  `DUPLICATE` with `duplicate of <hash>` in `evaluations.reasoning`: no SEEKING,
-  no evaluation, never applied, and `duplicate_suppressed` is bumped only on
-  first storage. The subtlety that costs debugging time: a twin stores the same
-  fingerprint as the posting it stands in for, so the lookup also reads `state`
-  and a `DUPLICATE` row counts as a *carrier* (its own posting was seen before)
-  but never as an *owner* — otherwise the winner suppresses itself through its
-  own twin. The role gate keeps precedence: a rejected posting is explained as a
-  rejection, never as a duplicate. The column is declared in `schema.sql` and
-  added to existing databases by `ensureRoleFingerprint(db)` once per queue
-  batch, like `ensureSourceHealthColumns`.
+  anything. A hit owned by a *different* canonical hash is stored as `DUPLICATE`
+  with `duplicate of <hash>` in `evaluations.reasoning`: no SEEKING, no
+  evaluation, never applied. Three things cost debugging time here:
+  - **Suppression is real, and counted on the transition.** The jobs upsert
+    never touches `state`, so a posting already in the feed when the gate finds
+    it (every row that predates the deploy) is moved with `setJobState` and its
+    audit row written. `duplicate_suppressed` and the reason write ride the same
+    once-per-posting signal — the store's own state under this posting's hash —
+    so a re-discovered twin costs neither a count nor a statement, and counting
+    a suppression that was never performed is impossible.
+  - **A suppressed twin never reopens.** A twin's fingerprint can drift (the
+    board edited the title) or lose its owner; the row under the posting's own
+    hash is still the authority, and it stays suppressed. The evaluate stage's
+    SELECT excludes `DUPLICATE` rows, so a message queued before the gate landed
+    can never be promoted into an application either.
+  - **Ownership is narrow.** Only a row that can still be applied from
+    (`DISCOVERED`, `ELIGIBLE`, `TAILORED`, `SUBMITTED`) owns a requisition, and
+    only for 30 days. A filtered or scored-out row owns nothing — it will never
+    be applied, so blocking its twin would lose the opening — and a company
+    re-posting the same remote role next quarter gets a new requisition. Known
+    residual: two genuinely distinct openings at one company with the same title
+    and place still collapse into one, and once a twin exists, a re-post older
+    than the window is still suppressed by it.
+  The column is declared in `schema.sql` and added to existing databases by
+  `ensureRoleFingerprint(db)` once per queue batch, like
+  `ensureSourceHealthColumns`.
 - **The notification ledger claims before it sends.** `notification_events`
   (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
   Telegram call, so a queue retry that re-runs the message sees the conflict

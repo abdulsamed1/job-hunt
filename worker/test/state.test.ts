@@ -233,14 +233,46 @@ describe("role fingerprint column", () => {
   });
 
   it("tolerates a lost migration race", async () => {
+    // The PRAGMA answers the pre-migration table, so the ALTER really is
+    // attempted -- and another invocation won it, so it throws.
+    const cols = [...PRE_FINGERPRINT_COLS];
+    const queries: string[][] = [];
+    let attempted = false;
     const db = {
-      prepare: () => ({
+      prepare(query: string) {
+        const norm = query.trimStart().slice(0, 60);
+        return {
+          all: async () => ({ results: cols.map((name) => ({ name })) }),
+          run: async () => {
+            queries.push([norm]);
+            if (/ADD COLUMN/i.test(query)) {
+              attempted = true;
+              throw new Error("duplicate column name: role_fingerprint");
+            }
+            return {};
+          },
+        };
+      },
+      batch: async () => [],
+    } as any;
+    const { ensureRoleFingerprint } = await import("../src/state.js");
+    await expect(ensureRoleFingerprint(db)).resolves.toBeUndefined();
+    expect(attempted).toBe(true);
+    // The index still lands after the lost race.
+    expect(queries.filter((q) => q[0].startsWith("CREATE INDEX IF NOT EXISTS idx_jobs_role_fp"))).toHaveLength(1);
+  });
+
+  it("survives a table it cannot inspect", async () => {
+    const queries: string[] = [];
+    const db = {
+      prepare: (query: string) => ({
         all: async () => { throw new Error("no such table: jobs"); },
-        run: async () => { throw new Error("duplicate column name: role_fingerprint"); },
+        run: async () => { queries.push(query.trimStart().slice(0, 60)); return {}; },
       }),
     } as any;
     const { ensureRoleFingerprint } = await import("../src/state.js");
     await expect(ensureRoleFingerprint(db)).resolves.toBeUndefined();
+    expect(queries.some((q) => q.startsWith("CREATE INDEX IF NOT EXISTS idx_jobs_role_fp"))).toBe(true);
   });
 });
 
@@ -282,20 +314,27 @@ function knownJobsDb(
 }
 
 describe("findKnownJobs", () => {
+  const SEEN_AT = "2026-10-01T00:00:00.000Z";
   const STORED = [
-    { canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED" },
-    { canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE" },
-    { canonical_hash: "h3", role_fingerprint: "fp3", state: "ELIGIBLE" },
+    { canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED", discovered_at: SEEN_AT },
+    { canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE", discovered_at: SEEN_AT },
+    { canonical_hash: "h3", role_fingerprint: "fp3", state: "ELIGIBLE", discovered_at: SEEN_AT },
   ];
 
-  it("returns only identifiers already stored, each with its pair", async () => {
+  it("returns only identifiers already stored, each with its identity", async () => {
     const queries: string[][] = [];
     const { findKnownJobs } = await import("../src/state.js");
     const known = await findKnownJobs(knownJobsDb(STORED, queries), ["h1", "h-nope"], ["fp2", "fp-nope"]);
     // Both halves: a posting's own fingerprint is stored the moment it is, so
-    // the caller needs the row's canonical_hash to answer "me again".
-    expect(known.get("h1")).toEqual({ canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED" });
-    expect(known.get("fp2")).toEqual({ canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE" });
+    // the caller needs the row's canonical_hash to answer "me again". State and
+    // discovered_at ride along: the caller decides which rows own a
+    // requisition (still applicable, still recent).
+    expect(known.get("h1")).toEqual({
+      canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED", discovered_at: SEEN_AT,
+    });
+    expect(known.get("fp2")).toEqual({
+      canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE", discovered_at: SEEN_AT,
+    });
     // Nothing for identifiers the store does not carry.
     expect(known.get("h-nope")).toBeUndefined();
     expect(known.get("fp-nope")).toBeUndefined();
@@ -303,8 +342,20 @@ describe("findKnownJobs", () => {
     // One batched read per source invocation, not one per posting.
     expect(queries).toHaveLength(1);
     expect(queries[0][0]).toContain("SELECT canonical_hash, role_fingerprint");
+    expect(queries[0][0]).toContain("discovered_at");
     expect(queries[0][0]).toContain("canonical_hash IN (");
     expect(queries[0][0]).toContain("OR role_fingerprint IN (");
+  });
+
+  it("still reads a fingerprint-only call", async () => {
+    // A caller with no hashes to offer must not get a silent empty answer.
+    const queries: string[][] = [];
+    const { findKnownJobs } = await import("../src/state.js");
+    const known = await findKnownJobs(knownJobsDb(STORED, queries), [], ["fp1"]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0][0]).toContain("role_fingerprint IN (");
+    expect(queries[0][0]).not.toContain("canonical_hash IN (");
+    expect(known.get("fp1")?.canonical_hash).toBe("h1");
   });
 
   it("chunks the two lists and de-duplicates their bindings", async () => {
@@ -312,6 +363,10 @@ describe("findKnownJobs", () => {
     const { findKnownJobs } = await import("../src/state.js");
     const hashes = Array.from({ length: 60 }, (_, i) => `h${i}`);
     const fps = Array.from({ length: 51 }, (_, i) => `fp${i}`);
+    // Not a measured production budget: a source is capped at 40 postings by
+    // enrichDescriptions(remote.slice(0, 40)), so in production this is always
+    // one statement. The chunking is the guard for that cap moving, and the
+    // guard is what keeps the statement legal if it ever does.
     await findKnownJobs(knownJobsDb([], queries), hashes, fps);
     // 2 hash chunks x 2 fingerprint chunks, and no IN group ever carries more
     // than 50 bindings (D1's per-query parameter budget).
