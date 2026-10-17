@@ -26,7 +26,8 @@ import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
-import { ensureNotificationEvents, ensureSettings, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { classifyRole } from "./lib/roles.js";
+import { bumpCounter, ensureCounters, ensureNotificationEvents, ensureSettings, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 import { currentPointer, handleTelegramUpdate } from "./lib/webhook.js";
 
 export interface Env {
@@ -40,6 +41,7 @@ export interface Env {
   THRESHOLD?: string;
   REQUIRE_LINKEDIN_APPROVAL?: string;
   LINKEDIN_ENABLED?: string;
+  REJECT_CRM_ROLES?: string;
   LIVE_APPLY?: string;
   APPROVE_GREENHOUSE?: string;
   APPROVE_LEVER?: string;
@@ -204,12 +206,16 @@ export default {
     const db = env.DB as unknown as Db;
     const profile = profileFromEnv(env);
     const threshold = parseFloat(env.THRESHOLD || "70");
+    // CRM implementation roles are a Worker var, not a profile field (Decision
+    // 10). Absent means on, so a deploy missing the var still filters them.
+    const rejectCrm = env.REJECT_CRM_ROLES !== "false";
     // Migrated once per batch, not once per write (recordSourceHealth no
     // longer ensures columns itself; the notification ledger is created on
     // databases that predate it).
     await ensureSourceHealthColumns(db);
     await ensureNotificationEvents(db);
     await ensureSettings(db);
+    await ensureCounters(db);
     for (const msg of batch.messages) {
       let body: any = null;
       try {
@@ -250,17 +256,33 @@ export default {
           }
           for (const j of enriched) {
             const canon = normalizeUrl(j.url);
-            const isNew = await upsertJob(db, {
-              canonical_hash: canonicalHash(canon), title: j.title.slice(0, 200),
+            const hash = canonicalHash(canon);
+            const row = {
+              canonical_hash: hash, title: j.title.slice(0, 200),
               company: j.company.slice(0, 120), location: j.location.slice(0, 120),
               url: j.url.slice(0, 500), description: (j.desc || "").slice(0, 4000),
               source: j.source, posted_at: (j.posted_at || "").slice(0, 40),
               discovered_at: now, score: 0, remote: isRemoteish(j.location, j.desc),
-            });
+            };
+            const alert = { title: j.title, company: j.company, url: j.url };
+            // Role gate before storage (Decision 2): SEEKING fires here, so a
+            // manager, sales or CRM posting must never reach the feed. The row
+            // is still stored once, already pre-filtered with the matched rule
+            // as its reason, and FILTERED replaces SEEKING.
+            const role = classifyRole(j.title, { rejectCrm });
+            if (role.verdict === "reject") {
+              const reason = `role gate: ${role.rule}`;
+              const changed = await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason });
+              await bumpCounter(db, "role_rejected");
+              if (changed) {
+                await notifyEventOnce(db, env, "worker", hash, "FILTERED", alert, reason);
+              }
+              continue;
+            }
+            const isNew = await upsertJob(db, row);
             if (isNew) {
-              await env.EVALUATE_Q.send({ stage: "evaluate", hash: canonicalHash(canon) });
-              await notifyEventOnce(db, env, "worker", canonicalHash(canon), "SEEKING",
-                { title: j.title, company: j.company, url: j.url }, `New job from ${j.source}`);
+              await env.EVALUATE_Q.send({ stage: "evaluate", hash });
+              await notifyEventOnce(db, env, "worker", hash, "SEEKING", alert, `New job from ${j.source}`);
             }
           }
         } else if (m.stage === "evaluate" && m.hash) {
@@ -270,10 +292,10 @@ export default {
           if (!row) continue;
           const r = evaluateJob(
             { title: row.title, description: row.description || "", location: row.location },
-            profile, threshold,
+            profile, threshold, { rejectCrm },
           );
           if (r.gated) {
-            // Disability/eligibility/language pre-filter: evaluated and
+            // Disability/eligibility/language/role pre-filter: evaluated and
             // recorded straight into PRE_FILTERED_OUT (one state write, one
             // audit row), never queued for apply.
             await saveEvaluation(db, m.hash, r.score, r.eligible, r.reasoning, "PRE_FILTERED_OUT");

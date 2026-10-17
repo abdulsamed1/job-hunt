@@ -95,6 +95,19 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 - **Empty evidence is not eligibility.** Jobs with zero skill matches score 75
   from participation points but are held back by `matched.length >= 1`. That is
   the safety property; do not loosen it to inflate numbers.
+- **The feed is software-only: the role gate runs before SEEKING.** `classifyRole`
+  (`lib/roles.ts`, pure CPU) buckets a title as software / reject / unknown in the
+  discover loop *before* the row is stored, so a manager, sales or CRM posting is
+  stored once as `PRE_FILTERED_OUT` with its matched rule as the reason
+  (`FILTERED`, never `SEEKING`) and bumps `role_rejected` in the `counters`
+  table — never queued, never re-notified, and a no-op on re-discovery.
+  `scoreJob` runs it again as defense in depth (rows stored before the gate, or
+  messages already in flight) and caps unclassified titles at 69, one point below
+  the default threshold: unknown titles stay visible in the feed but never
+  applied to. `REJECT_CRM_ROLES = "false"` admits Salesforce implementation
+  roles; anything else (including an absent var) rejects them. `counters` is
+  created at runtime by `ensureCounters(db)` once per queue batch, like
+  `settings` and `notification_events`.
 - **The notification ledger claims before it sends.** `notification_events`
   (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
   Telegram call, so a queue retry that re-runs the message sees the conflict

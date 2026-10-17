@@ -113,3 +113,70 @@ describe("settings store", () => {
     expect(seen.some((q) => q.includes("CREATE TABLE IF NOT EXISTS settings"))).toBe(true);
   });
 });
+
+// Named running totals (role_rejected, duplicate_suppressed, dateless_dropped):
+// in-memory D1 double applying the ON CONFLICT accumulation.
+function countersDb(queries: string[][]) {
+  const store = new Map<string, number>();
+  const db = {
+    prepare(query: string) {
+      const norm = query.trimStart().slice(0, 40);
+      return {
+        bind: (...params: any[]) => ({
+          run: async () => {
+            queries.push([norm, ...params.map(String)]);
+            if (norm.startsWith("INSERT INTO counters")) {
+              const key = String(params[0]);
+              store.set(key, (store.get(key) ?? 0) + Number(params[1]));
+            }
+            return { meta: { changes: 1 } };
+          },
+        }),
+        run: async () => {
+          queries.push([norm]);
+          return {};
+        },
+      };
+    },
+    batch: async () => [],
+  } as any;
+  return { db, store };
+}
+
+describe("counters", () => {
+  it("ensureCounters creates the table, safe to re-run", async () => {
+    const queries: string[][] = [];
+    const { db } = countersDb(queries);
+    const { ensureCounters } = await import("../src/state.js");
+    await ensureCounters(db);
+    await ensureCounters(db);
+    expect(queries.filter((q) => q[0].includes("CREATE TABLE IF NOT EXISTS counters"))).toHaveLength(2);
+    expect(queries.filter((q) => q[0].startsWith("ALTER TABLE"))).toHaveLength(0);
+  });
+
+  it("ensureCounters survives a lost creation race", async () => {
+    const db = { prepare: () => ({ run: async () => { throw new Error("table already exists"); } }) } as any;
+    const { ensureCounters } = await import("../src/state.js");
+    await expect(ensureCounters(db)).resolves.toBeUndefined();
+  });
+
+  it("bumpCounter accumulates one posting per bump", async () => {
+    const queries: string[][] = [];
+    const { db, store } = countersDb(queries);
+    const { bumpCounter } = await import("../src/state.js");
+    await bumpCounter(db, "role_rejected");
+    await bumpCounter(db, "role_rejected");
+    await bumpCounter(db, "role_rejected");
+    expect(store.get("role_rejected")).toBe(3);
+    // One statement per bump, no read-back (the upsert holds the running total).
+    expect(queries.filter((q) => q[0].startsWith("INSERT INTO counters"))).toHaveLength(3);
+    expect(queries.some((q) => q[0].startsWith("SELECT"))).toBe(false);
+  });
+
+  it("bumpCounter adds the requested step", async () => {
+    const { db, store } = countersDb([]);
+    const { bumpCounter } = await import("../src/state.js");
+    await bumpCounter(db, "duplicate_suppressed", 5);
+    expect(store.get("duplicate_suppressed")).toBe(5);
+  });
+});

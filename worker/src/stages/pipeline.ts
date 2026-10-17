@@ -2,7 +2,7 @@
 // apply (direct ATS HTTP posts, approval-gated). No browser anywhere here.
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { scoreJob, type Profile } from "../lib/evaluate.js";
+import { scoreJob, type Profile, type ScoreOptions } from "../lib/evaluate.js";
 import { isFresh } from "../lib/freshness.js";
 
 export interface EvalInput {
@@ -11,8 +11,8 @@ export interface EvalInput {
   location: string;
 }
 
-export function evaluateJob(input: EvalInput, profile: Profile, threshold: number) {
-  return scoreJob(input.title, input.description, input.location, profile, threshold);
+export function evaluateJob(input: EvalInput, profile: Profile, threshold: number, opts: ScoreOptions = {}) {
+  return scoreJob(input.title, input.description, input.location, profile, threshold, opts);
 }
 
 /** @deprecated — apply path must attach stored bytes */

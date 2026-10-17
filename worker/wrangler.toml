@@ -52,6 +52,8 @@ LINKEDIN_ENABLED = "false"
 LIVE_APPLY = "false"
 APPROVE_GREENHOUSE = "false"
 APPROVE_LEVER = "false"
+# Role gate: reject Salesforce/CRM implementation roles. "false" admits them.
+REJECT_CRM_ROLES = "true"
 # Secrets (never commit): wrangler secret put REZI_MCP_TOKEN
 # Optional: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
 # Pipeline identity: wrangler secret put PROFILE_JSON  (or set [vars] below)

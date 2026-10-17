@@ -1,5 +1,7 @@
 // Deterministic fit scoring + hard gates (mirrors Python evaluation/engine.py).
 
+import { classifyRole } from "./roles.js";
+
 export interface Profile {
   verifiedSkills: string[];
   yearsOfExperience: number;
@@ -137,6 +139,15 @@ export interface ScoreResult {
   gated: boolean;
 }
 
+export interface ScoreOptions {
+  /** Reject Salesforce/CRM implementation roles. Defaults to true (see classifyRole). */
+  rejectCrm?: boolean;
+}
+
+/** Ceiling for an unclassified title: one point below the default threshold, so
+ * an unknown title can never clear 70 and therefore never reaches apply. */
+const UNKNOWN_ROLE_CAP = 69;
+
 const TECH_VOCAB = new Set([
   "python", "go", "rust", "java", "typescript", "javascript", "react", "node",
   "django", "fastapi", "kubernetes", "docker", "aws", "terraform", "sql",
@@ -145,6 +156,7 @@ const TECH_VOCAB = new Set([
 
 export function scoreJob(
   title: string, description: string, location: string, profile: Profile, threshold = 70,
+  opts: ScoreOptions = {},
 ): ScoreResult {
   const gate0 = checkDisabilityTargetingGate(title, description);
   if (gate0.verdict === "FAIL") {
@@ -157,6 +169,14 @@ export function scoreJob(
   const gate2 = checkLanguageGate(title, description, profile);
   if (gate2.verdict === "FAIL") {
     return { score: 0, eligible: false, matched: [], missing: [], reasoning: `Language gate FAIL: ${gate2.quote}`, gated: true };
+  }
+  // Role gate after the policy gates (their reasons stay the ones reported) and
+  // before any skill scoring. Defense in depth: the discover path already
+  // rejects these titles, but rows stored before it, or messages queued before
+  // the gate shipped, still land here.
+  const role = classifyRole(title, { rejectCrm: opts.rejectCrm });
+  if (role.verdict === "reject") {
+    return { score: 0, eligible: false, matched: [], missing: [], reasoning: `role gate: ${role.rule}`, gated: true };
   }
   const text = `${title} ${description}`.toLowerCase();
   const matched: string[] = [];
@@ -174,13 +194,19 @@ export function scoreJob(
   const loc = (location || "").toLowerCase();
   const isRemote = /remote|anywhere|worldwide|global/.test(loc);
   const locationScore = isRemote ? 20 : profile.openToRemote ? 15 : 10;
-  const score = Math.min(100, Math.round((skillScore + seniorityScore + locationScore) * 10) / 10);
+  const rawScore = Math.min(100, Math.round((skillScore + seniorityScore + locationScore) * 10) / 10);
   // Worker runs unsupervised: empty-signal generosity is a footgun (a title
   // with zero skill evidence must never go eligible on participation points).
-  const eligible = score >= threshold && matched.length >= 1;
+  // An unclassified title is the same idea at the other end: it stays scored and
+  // visible, but capped below the bar so only a positively identified software
+  // role is ever applied to.
+  const unknown = role.verdict === "unknown";
+  const score = unknown ? Math.min(rawScore, UNKNOWN_ROLE_CAP) : rawScore;
+  const eligible = !unknown && score >= threshold && matched.length >= 1;
   return {
     score, eligible, matched, missing: missing.slice(0, 10),
-    reasoning: `serverless score ${score} (skills ${skillScore.toFixed(1)}, seniority ${seniorityScore}, location ${locationScore})`,
+    reasoning: `serverless score ${score} (skills ${skillScore.toFixed(1)}, seniority ${seniorityScore}, location ${locationScore})`
+      + (unknown ? ` | role gate: ${role.rule} (unclassified, capped at ${UNKNOWN_ROLE_CAP})` : ""),
     gated: false,
   };
 }

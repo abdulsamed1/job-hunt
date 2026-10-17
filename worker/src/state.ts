@@ -12,12 +12,22 @@ export interface Db {
   batch(statements: any[]): Promise<any>;
 }
 
+export interface UpsertJobOptions {
+  /** Birth state of the row. Defaults to DISCOVERED; a gate reject stores
+   *  PRE_FILTERED_OUT so the posting exists but is never scored or applied. */
+  state?: JobState;
+  /** Why a PRE_FILTERED_OUT row was stored, e.g. "role gate: revenue:sales".
+   *  Appended to the row's evaluation reasoning. */
+  detail?: string;
+}
+
 export async function upsertJob(
   db: Db, job: {
     canonical_hash: string; title: string; company: string; location: string;
     url: string; description: string; source: string; posted_at: string; discovered_at: string;
     score: number; remote: boolean;
   },
+  opts: UpsertJobOptions = {},
 ): Promise<boolean> {
   // Returns true when the row is new OR was materially improved (richer
   // description / backfilled location or date). That is exactly the set of
@@ -26,7 +36,7 @@ export async function upsertJob(
 
   const res = await db.prepare(
     `INSERT INTO jobs (canonical_hash, title, company, location, url, description, source, posted_at, discovered_at, score, remote, state, notified)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DISCOVERED', 0)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
      ON CONFLICT (canonical_hash) DO UPDATE SET
        -- Backfill richer text: board APIs can start returning descriptions
        -- (or we add enrichment later), and a stale title-only row would keep
@@ -47,8 +57,26 @@ export async function upsertJob(
     job.canonical_hash, job.title.slice(0, 200), job.company.slice(0, 120),
     job.location.slice(0, 120), job.url.slice(0, 500), job.description.slice(0, 4000),
     job.source, job.posted_at.slice(0, 40), job.discovered_at, job.score, job.remote ? 1 : 0,
+    opts.state ?? "DISCOVERED",
   ).run();
-  return (res.meta.changes ?? 0) > 0;
+  const changed = (res.meta.changes ?? 0) > 0;
+  // A gate reject records why beside the row it created, in the same reasoning
+  // column the evaluate stage writes, so /recent and Telegram can say which
+  // rule fired. Only on a real write: a re-discovered reject stays a no-op and
+  // never re-states the row.
+  if (changed && opts.state === "PRE_FILTERED_OUT" && opts.detail) {
+    await db.prepare(
+      `INSERT INTO evaluations (job_hash, score, eligible, reasoning, evaluated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (job_hash) DO UPDATE SET
+         score = excluded.score,
+         eligible = excluded.eligible,
+         reasoning = CASE
+           WHEN length(evaluations.reasoning) > 0 THEN evaluations.reasoning || ' | ' || excluded.reasoning
+           ELSE excluded.reasoning END`,
+    ).bind(job.canonical_hash, 0, 0, opts.detail.slice(0, 1000), new Date().toISOString()).run();
+  }
+  return changed;
 }
 
 export async function setJobState(
@@ -141,6 +169,33 @@ export async function setSetting(db: Db, key: string, value: string): Promise<vo
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).bind(key, value, new Date().toISOString()).run();
+}
+
+/** Create the counters table on databases that predate it. This runtime
+ * migration is the only creator: unlike notification_events/settings it is not
+ * in schema.sql, and it runs once per queue batch (see queue() in index.ts)
+ * before any bump, so the table exists for every writer. Mirrors
+ * ensureSourceHealthColumns in style: one statement, safe to re-run, tolerant
+ * of a lost race. */
+export async function ensureCounters(db: Db): Promise<void> {
+  try {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS counters (
+         key TEXT PRIMARY KEY,
+         value INTEGER NOT NULL DEFAULT 0
+       )`,
+    ).run();
+  } catch { /* raced with another invocation (or table exists) */ }
+}
+
+/** Add n to one named counter (role_rejected, duplicate_suppressed,
+ * dateless_dropped). One statement, no read-back: the running total lives in
+ * the row, so N postings cost N writes and no extra query. */
+export async function bumpCounter(db: Db, key: string, n = 1): Promise<void> {
+  await db.prepare(
+    `INSERT INTO counters (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = counters.value + ?`,
+  ).bind(key, n, n).run();
 }
 
 /** Add the degraded-signal columns to pre-existing source_health tables.
