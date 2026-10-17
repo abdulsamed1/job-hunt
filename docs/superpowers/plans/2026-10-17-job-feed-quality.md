@@ -166,14 +166,18 @@ collapse whitespace, strip punctuation for matching), then (1) IC allow list, (2
 
 | Family | Matching words (title text, word-boundary matched) |
 |---|---|
-| IC allow (checked first) | `lead engineer`, `lead software engineer`, `staff`, `principal`, `senior`, `sr` |
+| IC allow (checked first) | `lead engineer`, `lead software engineer`; bare `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or `engineering` (otherwise `Senior Manager…` and `Senior Salesforce Developer` would be rescued by their seniority marker) |
 | people-management reject | `manager`, `team lead`, `group lead`, `head of`, `director`, `vp`, `chief`, `supervisor` |
 | revenue reject | `sales`, `sales development`, `business development`, `account executive`, `account manager`, `marketing`, `partner`, `customer success`, `customer support` |
 | CRM reject (only when `rejectCrm !== false`) | `salesforce`, plus any of `consultant`, `architect`, `administrator`, `analyst`, `developer` in the same title |
 | non-engineering reject | `recruiter`, `talent acquisition`, `human resources`, `accountant`, `finance`, `legal`, `nurse`, `medical`, `driver`, `content writer`, `graphic designer`, `intern`, `product manager` |
-| software allow | `software engineer`, `software developer`, `backend`, `frontend`, `front end`, `full stack`, `platform engineer`, `site reliability`, `sre`, `devops`, `cloud engineer`, `infrastructure`, `distributed systems`, `systems engineer`, `data engineer`, `ml engineer`, `machine learning`, `mobile`, `ios`, `android`, `qa`, `sdet`, `test engineer`, `security engineer`, `embedded`, `firmware`, `forward deployed engineer`, and any of `nodejs`, `node.js`, `typescript`, `react`, `reactjs`, `javascript`, `python`, `golang`, `rust`, `java` combined with `engineer` or `developer` |
+| software allow | `software engineer`, `software developer`, `backend`, `frontend`, `front end`, `full stack`, `platform engineer`, `site reliability`, `sre`, `devops`, `cloud engineer`, `infrastructure`, `distributed systems`, `systems engineer`, `data engineer`, `ml engineer`, `machine learning`, `mobile`, `ios`, `android`, `qa`, `sdet`, `test engineer`, `security engineer`, `embedded`, `firmware`, `forward deployed engineer`, the bare word `software` (so `Engineering Lead, Software` matches), and any of `nodejs`, `node.js`, `typescript`, `react`, `reactjs`, `javascript`, `python`, `golang`, `rust`, `java` combined with `engineer` or `developer` |
 
-`opts.rejectCrm` defaults to `true`. Return the first matching family's slug as `rule`.
+`opts.rejectCrm` defaults to `true`. Return the most specific matched slug as `rule`: collect every
+reject-family match and take the longest matched word, first-listed on a tie (so `Marketing Manager`
+reports `revenue:marketing` and `Product Manager` reports `non-engineering:product`). Known side effect
+of the bare `software` word: trainer-style titles classify as `software` and are capped below the
+eligibility threshold in Task 2 — visible in the feed, never applied.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
