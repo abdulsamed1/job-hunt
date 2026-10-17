@@ -91,6 +91,10 @@ def check_health(health: dict) -> list:
     `notification_events: null` means the deployed Worker could not read the
     ledger table (pre-migration deploy). Hard failure: events would silently
     go unrecorded, which breaks at-most-once semantics.
+
+    `master_resume_sha` must be a full 64-hex sha. `null`/absent means the
+    resume pointer is unset or the Worker predates the settings migration —
+    either way applications cannot resolve the master resume.
     """
     failures: list = []
     if health.get("live_apply") is True:
@@ -99,6 +103,12 @@ def check_health(health: dict) -> list:
         failures.append(
             "notification_events missing from /health — deployed schema predates the "
             "ledger migration (redeploy with worker/src/state.ts ensureNotificationEvents)"
+        )
+    sha = health.get("master_resume_sha")
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
+        failures.append(
+            "master_resume_sha missing/malformed in /health — the resume pointer is "
+            "unset or the Worker predates the settings migration"
         )
     return failures
 
@@ -129,7 +139,8 @@ def main() -> int:
     else:
         print(
             f"health: jobs={health.get('jobs')} skills={health.get('profile_skills')} "
-            f"live_apply={health.get('live_apply')} notification_events={health.get('notification_events')}"
+            f"live_apply={health.get('live_apply')} notification_events={health.get('notification_events')} "
+            f"master={str(health.get('master_resume_sha'))[:8]}"
         )
         failures.extend(check_health(health))
 
