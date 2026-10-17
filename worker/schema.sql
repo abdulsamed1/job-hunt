@@ -102,3 +102,10 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Named running totals for pipeline filters (role_rejected,
+-- duplicate_suppressed, dateless_dropped): observability, not a gate.
+CREATE TABLE IF NOT EXISTS counters (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
+);

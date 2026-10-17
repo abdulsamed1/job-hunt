@@ -272,9 +272,18 @@ export default {
             const role = classifyRole(j.title, { rejectCrm });
             if (role.verdict === "reject") {
               const reason = `role gate: ${role.rule}`;
-              const changed = await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason });
-              await bumpCounter(db, "role_rejected");
-              if (changed) {
+              // stored first, counted second: a counter failure must never cost
+              // the posting, nor the rest of this source's batch.
+              const outcome = { recorded: false };
+              await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason, outcome });
+              // `recorded` (not the upsert's return value) is the first-time
+              // signal: a re-discovered reject costs no count and no alert.
+              if (outcome.recorded) {
+                try {
+                  await bumpCounter(db, "role_rejected");
+                } catch (e) {
+                  console.log(`role_rejected counter failed: ${String(e).slice(0, 120)}`);
+                }
                 await notifyEventOnce(db, env, "worker", hash, "FILTERED", alert, reason);
               }
               continue;

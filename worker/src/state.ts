@@ -17,8 +17,21 @@ export interface UpsertJobOptions {
    *  PRE_FILTERED_OUT so the posting exists but is never scored or applied. */
   state?: JobState;
   /** Why a PRE_FILTERED_OUT row was stored, e.g. "role gate: revenue:sales".
-   *  Appended to the row's evaluation reasoning. */
+   *  Recorded in the row's evaluation reasoning, once per distinct reason. */
   detail?: string;
+  /** Optional out-parameter: what this call actually recorded. The return value
+   *  stays the new-or-improved boolean every existing caller reads. */
+  outcome?: UpsertOutcome;
+}
+
+export interface UpsertOutcome {
+  /** True only when this call wrote the gate reason for the first time: the
+   *  posting was new, or it predates the gate and had never been explained.
+   *  False when the reason is already recorded, which is the case for every
+   *  re-discovery — including a dateless posting, whose jobs row counts as
+   *  "improved" on every sweep. Callers gate side effects (counters, alerts) on
+   *  this, never on the jobs upsert's own return value. */
+  recorded: boolean;
 }
 
 export async function upsertJob(
@@ -60,21 +73,28 @@ export async function upsertJob(
     opts.state ?? "DISCOVERED",
   ).run();
   const changed = (res.meta.changes ?? 0) > 0;
-  // A gate reject records why beside the row it created, in the same reasoning
-  // column the evaluate stage writes, so /recent and Telegram can say which
-  // rule fired. Only on a real write: a re-discovered reject stays a no-op and
-  // never re-states the row.
+  const outcome: UpsertOutcome = opts.outcome ?? { recorded: false };
+  // A gate reject records why beside the row, in the same reasoning column the
+  // evaluate stage writes. `instr` makes the write happen once per distinct
+  // reason: a posting re-discovered on a later sweep reports changes = 1 (its
+  // dateless row counts as improved forever) but the reason is already stored,
+  // so this statement is a no-op and `recorded` stays false. Reasoning therefore
+  // cannot grow per sweep and callers get a first-time signal to gate counters
+  // and alerts on.
   if (changed && opts.state === "PRE_FILTERED_OUT" && opts.detail) {
-    await db.prepare(
+    const detail = await db.prepare(
       `INSERT INTO evaluations (job_hash, score, eligible, reasoning, evaluated_at)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (job_hash) DO UPDATE SET
-         score = excluded.score,
-         eligible = excluded.eligible,
+         score = 0,
+         eligible = 0,
          reasoning = CASE
            WHEN length(evaluations.reasoning) > 0 THEN evaluations.reasoning || ' | ' || excluded.reasoning
-           ELSE excluded.reasoning END`,
+           ELSE excluded.reasoning END,
+         evaluated_at = excluded.evaluated_at
+       WHERE instr(evaluations.reasoning, excluded.reasoning) = 0`,
     ).bind(job.canonical_hash, 0, 0, opts.detail.slice(0, 1000), new Date().toISOString()).run();
+    outcome.recorded = (detail.meta.changes ?? 0) > 0;
   }
   return changed;
 }
@@ -171,12 +191,11 @@ export async function setSetting(db: Db, key: string, value: string): Promise<vo
   ).bind(key, value, new Date().toISOString()).run();
 }
 
-/** Create the counters table on databases that predate it. This runtime
- * migration is the only creator: unlike notification_events/settings it is not
- * in schema.sql, and it runs once per queue batch (see queue() in index.ts)
- * before any bump, so the table exists for every writer. Mirrors
- * ensureSourceHealthColumns in style: one statement, safe to re-run, tolerant
- * of a lost race. */
+/** Create the counters table on databases that predate it. Fresh databases get
+ * it from schema.sql; this is the migration for existing ones, exactly like
+ * ensureNotificationEvents and ensureSettings. Runs once per queue batch (see
+ * queue() in index.ts) before any bump. Mirrors ensureSourceHealthColumns in
+ * style: one statement, safe to re-run, tolerant of a lost race. */
 export async function ensureCounters(db: Db): Promise<void> {
   try {
     await db.prepare(
@@ -190,7 +209,9 @@ export async function ensureCounters(db: Db): Promise<void> {
 
 /** Add n to one named counter (role_rejected, duplicate_suppressed,
  * dateless_dropped). One statement, no read-back: the running total lives in
- * the row, so N postings cost N writes and no extra query. */
+ * the row, so N postings cost N writes and no extra query. Counters are
+ * observability, never a gate — callers must tolerate a failure here rather
+ * than let it abandon the postings they are counting. */
 export async function bumpCounter(db: Db, key: string, n = 1): Promise<void> {
   await db.prepare(
     `INSERT INTO counters (key, value) VALUES (?, ?)

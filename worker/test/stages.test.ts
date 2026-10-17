@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyToAts, buildTailoredText, renderPdfBytes } from "../src/stages/pipeline.js";
+import { canonicalHash, normalizeUrl } from "../src/lib/hash.js";
 import type { Profile } from "../src/lib/evaluate.js";
 
 const profile = (): Profile & { fullName: string; email: string; phone: string } => ({
@@ -100,12 +101,17 @@ describe("upsertJob backfill semantics", () => {
 describe("queue lifecycle events", () => {
   // In-memory D1 double for the queue consumer: routes the handful of
   // statements index.ts issues, captures binds for assertions, dedups
-  // notification_events inserts D1-style (UNIQUE conflict on repeat keys) and
-  // accumulates counters rows.
-  function memQueueDb(opts: { jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean; settings?: Record<string, string> } = {}) {
+  // notification_events inserts D1-style (UNIQUE conflict on repeat keys),
+  // accumulates counters rows and stores evaluations rows under the upsert /
+  // evaluate conflict rules.
+  function memQueueDb(opts: {
+    jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean;
+    failCounters?: boolean; settings?: Record<string, string>;
+  } = {}) {
     const statements: Array<{ sql: string; params: any[] }> = [];
     const seenEvents = new Set<string>();
     const counters = new Map<string, number>();
+    const evaluations = new Map<string, { score: number; eligible: number; reasoning: string; evaluated_at: string }>();
     const settings = new Map(Object.entries(opts.settings ?? {}));
     const db = {
       prepare: (sql: string) => ({
@@ -135,7 +141,26 @@ describe("queue lifecycle events", () => {
               return { success: true };
             }
             if (sql.includes("INSERT INTO jobs")) return { meta: { changes: opts.upsertChanges ?? 1 } };
+            if (sql.includes("INSERT INTO evaluations")) {
+              const key = String(params[0]);
+              const next = {
+                score: Number(params[1]), eligible: Number(params[2]),
+                reasoning: String(params[3]), evaluated_at: String(params[4]),
+              };
+              const prev = evaluations.get(key);
+              // saveEvaluation overwrites; upsertJob's gate write appends only
+              // when that reason is not already recorded (the instr(...) guard).
+              if (prev && sql.includes("instr(") && prev.reasoning.includes(next.reasoning)) {
+                return { meta: { changes: 0 } };
+              }
+              evaluations.set(key, {
+                ...next,
+                reasoning: prev && prev.reasoning ? `${prev.reasoning} | ${next.reasoning}` : next.reasoning,
+              });
+              return { meta: { changes: 1 } };
+            }
             if (sql.includes("INSERT INTO counters")) {
+              if (opts.failCounters) throw new Error("no such table: counters");
               const key = String(params[0]);
               counters.set(key, (counters.get(key) ?? 0) + Number(params[1]));
               return {};
@@ -153,7 +178,7 @@ describe("queue lifecycle events", () => {
         all: async () => ({ results: [] }),
       }),
     } as any;
-    return { db, statements, counters };
+    return { db, statements, counters, evaluations };
   }
 
   function memQueues() {
@@ -480,22 +505,24 @@ describe("queue lifecycle events", () => {
     }
   });
 
-  // One posting on one RSS feed, driven through the discover message the
-  // scheduled sweep sends (see queue lifecycle events above).
-  const rssWith = (title: string, link: string, description: string) => [
-    '<?xml version="1.0"?><rss><channel><item>',
+  // RSS feed bodies, driven through the discover message the scheduled sweep
+  // sends (see queue lifecycle events above).
+  const rssItem = (title: string, link: string, description: string) => [
+    "<item>",
     `<title>${title}</title>`,
     `<link>${link}</link>`,
     `<description>${description}</description>`,
     `<pubDate>${new Date().toUTCString()}</pubDate>`,
-    "</item></channel></rss>",
+    "</item>",
   ].join("");
+  const rssWith = (...items: string[]) =>
+    ['<?xml version="1.0"?><rss><channel>', ...items, "</channel></rss>"].join("");
   const discoverMsg = { stage: "discover", def: { name: "test-rss", kind: "rss", url: "https://example.com/feed", cadence: "hourly" } };
 
   it("stores a manager posting as PRE_FILTERED_OUT and never sends SEEKING or an evaluate message", async () => {
     const { default: worker } = await import("../src/index.js");
     const texts: string[] = [];
-    const restore = stubQueueFetch(texts, rssWith("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems."));
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems.")));
     try {
       const { db, statements, counters } = memQueueDb({ upsertChanges: 1 });
       const q = memQueues();
@@ -527,7 +554,7 @@ describe("queue lifecycle events", () => {
   it("keeps SEEKING for a software posting and queues its evaluation", async () => {
     const { default: worker } = await import("../src/index.js");
     const texts: string[] = [];
-    const restore = stubQueueFetch(texts, rssWith("Senior Software Engineer, Query", "https://example.com/j/1", "Python FastAPI backend role building reliable systems."));
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Software Engineer, Query", "https://example.com/j/1", "Python FastAPI backend role building reliable systems.")));
     try {
       const { db, statements } = memQueueDb({ upsertChanges: 1 });
       const q = memQueues();
@@ -588,7 +615,7 @@ describe("queue lifecycle events", () => {
     // Unclassified title with perfect skill evidence: scored, capped, never applied.
     const strongSkills = "Build and run resilient payment services. Python and FastAPI are the daily tools, alongside thorough testing, code review, on-call rotations, observability, incident response, mentoring and clear documentation.";
     const texts: string[] = [];
-    const restore = stubQueueFetch(texts, rssWith("Data Scientist", "https://example.com/j/ds", strongSkills));
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Data Scientist", "https://example.com/j/ds", strongSkills)));
     try {
       const { db, statements } = memQueueDb({
         jobRow: {
@@ -610,10 +637,71 @@ describe("queue lifecycle events", () => {
       await worker.queue({ messages: [{ body: { stage: "evaluate", hash: q.EVALUATE_Q.sent[0].hash } }] } as any, env);
       const evalInserts = statements.filter((s) => s.sql.includes("INSERT INTO evaluations"));
       expect(evalInserts).toHaveLength(1);
+      // Capped, not zeroed: the skills were scored, the verdict just cannot
+      // clear the threshold. Reasoning names the cap so FILTERED can say why.
+      expect(Number(evalInserts[0].params[1])).toBeGreaterThan(0);
       expect(Number(evalInserts[0].params[1])).toBeLessThanOrEqual(69);
       expect(evalInserts[0].params[2]).toBe(0);
-      expect(String(evalInserts[0].params[3])).toContain("unknown");
+      const reasoning = String(evalInserts[0].params[3]);
+      expect(reasoning).toMatch(/serverless score/);
+      expect(reasoning).toContain("unknown");
+      expect(reasoning).toContain("capped at 69");
       expect(q.APPLY_Q.sent).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("explains a rejected posting once: a re-discovery never re-counts or re-alerts it", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems.")));
+    try {
+      // upsertChanges stays 1 for every call: a dateless row counts as
+      // "materially improved" forever, so the jobs write reports a change long
+      // after the posting was first seen.
+      const { db, statements, counters, evaluations } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const env = queueEnv(db, q);
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, env);
+      const hash = canonicalHash(normalizeUrl("https://example.com/j/mgr"));
+      const reason = "role gate: people-management:manager";
+      expect(counters.get("role_rejected")).toBe(1);
+      expect(evaluations.get(hash)?.reasoning).toBe(reason);
+      const alerts = texts.filter((t) => t.includes("[worker] FILTERED:")).length;
+      expect(alerts).toBe(1);
+
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, env);
+      // Second sweep rewrites the row but records nothing new: no second
+      // reason (reasoning cannot grow), no second count, no second alert.
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(2);
+      expect(counters.get("role_rejected")).toBe(1);
+      expect(evaluations.get(hash)?.reasoning).toBe(reason);
+      expect(texts.filter((t) => t.includes("[worker] FILTERED:"))).toHaveLength(alerts);
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("stores every posting even when the role_rejected counter cannot be written", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const feed = rssWith(
+      rssItem("Senior Manager, Application Security", "https://example.com/j/mgr", "Python FastAPI backend role building reliable systems."),
+      rssItem("Senior Software Engineer, Query", "https://example.com/j/1", "Python FastAPI backend role building reliable systems."),
+    );
+    const restore = stubQueueFetch(texts, feed);
+    try {
+      const { db, statements } = memQueueDb({ upsertChanges: 1, failCounters: true });
+      const q = memQueues();
+      // Counters are observability: a failed bump must not abandon the rest of
+      // the source's postings.
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(2);
+      expect(q.EVALUATE_Q.sent).toHaveLength(1);
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+      expect(texts.some((t) => t.includes("STAGE_FAILED"))).toBe(false);
     } finally {
       restore();
     }

@@ -98,16 +98,22 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 - **The feed is software-only: the role gate runs before SEEKING.** `classifyRole`
   (`lib/roles.ts`, pure CPU) buckets a title as software / reject / unknown in the
   discover loop *before* the row is stored, so a manager, sales or CRM posting is
-  stored once as `PRE_FILTERED_OUT` with its matched rule as the reason
-  (`FILTERED`, never `SEEKING`) and bumps `role_rejected` in the `counters`
-  table — never queued, never re-notified, and a no-op on re-discovery.
-  `scoreJob` runs it again as defense in depth (rows stored before the gate, or
+  stored once as `PRE_FILTERED_OUT`, bumps `role_rejected` in the `counters` table
+  and alerts `FILTERED` instead of `SEEKING`. The gate reason is recorded in the
+  row's `evaluations.reasoning`, **once per posting** (`instr` guard): a
+  re-discovery — a dateless posting's row counts as "improved" on every sweep —
+  re-counts nothing, re-notifies nothing and cannot grow the reasoning. Callers
+  gate those side effects on `upsertJob`'s `outcome.recorded`, never on its
+  new-or-improved return value. Counters are observability: a failed bump is
+  logged, never allowed to abandon a posting.
+  `scoreJob` runs the gate again as defense in depth (rows stored before it, or
   messages already in flight) and caps unclassified titles at 69, one point below
   the default threshold: unknown titles stay visible in the feed but never
   applied to. `REJECT_CRM_ROLES = "false"` admits Salesforce implementation
   roles; anything else (including an absent var) rejects them. `counters` is
-  created at runtime by `ensureCounters(db)` once per queue batch, like
-  `settings` and `notification_events`.
+  declared in `schema.sql` and created for existing databases at runtime by
+  `ensureCounters(db)` once per queue batch, like `settings` and
+  `notification_events`.
 - **The notification ledger claims before it sends.** `notification_events`
   (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
   Telegram call, so a queue retry that re-runs the message sees the conflict
