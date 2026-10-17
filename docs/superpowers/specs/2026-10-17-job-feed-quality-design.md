@@ -156,10 +156,11 @@ first, at `engine.py:369`, which cannot express "lead engineer is fine, team lea
 
 ### 2. Freshness
 
-- Worker: keep the 12h hardcoded window (stricter than the requested 24h) but make it a named
-  constant, and add the freshness re-check to the apply path — today the apply path re-checks only
-  the disability gate (`index.ts:312`); the dead `freshWithin` helper in `pipeline.ts:158` is removed
-  or reused, not left dangling.
+- Worker: the window becomes the single named constant `HOURS_OLD = 24`. Not the current hardcoded
+  12h: with a daily deep sweep, a 12h window silently drops every posting that lands 13-24h before the
+  sweep, and the owner's requirement is 24h. Add the freshness re-check to the apply path — today the
+  apply path re-checks only the disability gate (`index.ts:312`); the dead `freshWithin` helper in
+  `pipeline.ts:158` is removed or reused, not left dangling.
 - Python: clamp the 62 `hours_old: 72` entries to 24. `hours_old: 0` stays available for a deliberate
   manual run, never for a scheduled one (the CLI and the Actions workflow own that default).
 - Dateless (Decision 4): stored, counted, never scored.
