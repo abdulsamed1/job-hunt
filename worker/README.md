@@ -114,6 +114,24 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   declared in `schema.sql` and created for existing databases at runtime by
   `ensureCounters(db)` once per queue batch, like `settings` and
   `notification_events`.
+- **One application per requisition: the role fingerprint is a second identity.**
+  `jobs.canonical_hash` is the URL alone, so the same opening arriving on two
+  boards (or under two jids) used to become two applications. Every posting now
+  also stores `jobs.role_fingerprint` — normalized company + role + place, with
+  every all-remote spelling collapsed to one token (`lib/hash.ts`) — and the
+  discover stage resolves the whole source's fingerprints in **one** batched
+  `findKnownJobs` read (two `IN` lists, chunked at 50 bindings) before storing
+  anything. A hit owned by a *different* canonical hash is stored once as
+  `DUPLICATE` with `duplicate of <hash>` in `evaluations.reasoning`: no SEEKING,
+  no evaluation, never applied, and `duplicate_suppressed` is bumped only on
+  first storage. The subtlety that costs debugging time: a twin stores the same
+  fingerprint as the posting it stands in for, so the lookup also reads `state`
+  and a `DUPLICATE` row counts as a *carrier* (its own posting was seen before)
+  but never as an *owner* — otherwise the winner suppresses itself through its
+  own twin. The role gate keeps precedence: a rejected posting is explained as a
+  rejection, never as a duplicate. The column is declared in `schema.sql` and
+  added to existing databases by `ensureRoleFingerprint(db)` once per queue
+  batch, like `ensureSourceHealthColumns`.
 - **The notification ledger claims before it sends.** `notification_events`
   (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
   Telegram call, so a queue retry that re-runs the message sees the conflict
