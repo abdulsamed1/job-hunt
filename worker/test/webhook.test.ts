@@ -126,6 +126,7 @@ describe("handleTelegramUpdate", () => {
       await handleTelegramUpdate(update({ document: doc() }), m.db, bk.b, ENV);
       await handleTelegramUpdate(update({ document: doc() }), m.db, bk.b, ENV);
       expect(bk.puts).toHaveLength(0);
+      expect(sent).toHaveLength(2);
       expect(sent.every((t) => t.startsWith("Already current:"))).toBe(true);
       expect(m.store.get("master_resume_sha")).toBe(sha);
     } finally { restore(); }
