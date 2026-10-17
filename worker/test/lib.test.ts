@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { canonicalHash, fnv1a, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
+import { canonicalHash, fnv1a, normalizeLocation, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
 import { filterRemoteList, filterRecentList, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt } from "../src/lib/freshness.js";
 import { checkDisabilityTargetingGate, checkEligibilityGate, checkLanguageGate, classifyTier, scoreJob, type Profile } from "../src/lib/evaluate.js";
 import { checkboxAction, matchAnswerToOption } from "../src/lib/match.js";
@@ -25,10 +25,71 @@ describe("hash", () => {
   it("strips tracking params", () => {
     expect(normalizeUrl("https://x.com/j/1?utm_source=a&x=1")).toBe("https://x.com/j/1?x=1");
   });
+  it("strips every utm_* variant plus the tracker params Python strips", () => {
+    // Prefix rule covers utm params nobody has listed yet; the exact names
+    // mirror Python's dedup.TRACKING_PARAM_PATTERNS so both runtimes collapse
+    // the same aggregator mirrors.
+    expect(normalizeUrl("https://x.com/j/1?utm_campaign=b&x=1")).toBe("https://x.com/j/1?x=1");
+    expect(normalizeUrl("https://x.com/j/1?utm_whatever=c&x=1")).toBe("https://x.com/j/1?x=1");
+    expect(
+      normalizeUrl("https://x.com/j/1?igshid=a&_hsenc=b&_hsmi=c&trk=d&trackingid=e&ref_code=f&gh_src=g&x=1"),
+    ).toBe("https://x.com/j/1?x=1");
+  });
   it("stable hashes", () => {
     expect(fnv1a("abc")).toBe(fnv1a("abc"));
     expect(canonicalHash("https://x.com/j/1?utm_source=a")).toBe(canonicalHash("https://x.com/j/1"));
     expect(roleFingerprint("Acme", "Dev", "Remote")).toBe(roleFingerprint("ACME ", " dev ", "remote"));
+  });
+});
+
+describe("normalizeLocation", () => {
+  it("maps every remote synonym to one token, empty/unknown to ?", () => {
+    expect(normalizeLocation("Remote")).toBe("remote");
+    expect(normalizeLocation("  REMOTE ")).toBe("remote");
+    expect(normalizeLocation("Anywhere")).toBe("remote");
+    expect(normalizeLocation("Worldwide")).toBe("remote");
+    expect(normalizeLocation("WFH")).toBe("remote");
+    expect(normalizeLocation("Work From Home")).toBe("remote");
+    expect(normalizeLocation("Distributed")).toBe("remote");
+    expect(normalizeLocation("Telecommute")).toBe("remote");
+    expect(normalizeLocation("United States")).toBe("remote");
+    expect(normalizeLocation("US")).toBe("remote");
+    expect(normalizeLocation("USA")).toBe("remote");
+    expect(normalizeLocation("Global")).toBe("remote");
+    // A mixed location keeps its place: remote-anything collapses, "remote in
+    // Berlin" does not.
+    expect(normalizeLocation("Remote, US")).toBe("remote");
+    expect(normalizeLocation("Remote - Europe")).toBe("remote europe");
+    expect(normalizeLocation("Berlin, Germany")).toBe("berlin germany");
+    expect(normalizeLocation("")).toBe("?");
+    expect(normalizeLocation("   ")).toBe("?");
+  });
+});
+
+describe("roleFingerprint", () => {
+  it("collapses remote location synonyms to one token", () => {
+    expect(roleFingerprint("Acme", "Backend Engineer", "Remote, US")).toBe(
+      roleFingerprint("Acme", "Backend Engineer", "United States"),
+    );
+  });
+
+  it("keeps an unknown location distinct from remote", () => {
+    expect(roleFingerprint("Acme", "Backend Engineer", "")).not.toBe(
+      roleFingerprint("Acme", "Backend Engineer", "Remote"),
+    );
+  });
+
+  it("ignores punctuation and case in title and company", () => {
+    expect(roleFingerprint("Acme, Inc.", "Sr. Backend Engineer (Payments)", "Remote")).toBe(
+      roleFingerprint("acme inc", "sr backend engineer payments", "remote"),
+    );
+  });
+
+  it("separates a different place, company or title", () => {
+    const base = roleFingerprint("Acme", "Backend Engineer", "Remote");
+    expect(roleFingerprint("Acme", "Backend Engineer", "Remote - Europe")).not.toBe(base);
+    expect(roleFingerprint("Beta", "Backend Engineer", "Remote")).not.toBe(base);
+    expect(roleFingerprint("Acme", "Frontend Engineer", "Remote")).not.toBe(base);
   });
 });
 

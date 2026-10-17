@@ -103,7 +103,8 @@ describe("queue lifecycle events", () => {
   // statements index.ts issues, captures binds for assertions, dedups
   // notification_events inserts D1-style (UNIQUE conflict on repeat keys),
   // accumulates counters rows and stores evaluations rows under the upsert /
-  // evaluate conflict rules.
+  // evaluate conflict rules. jobs rows are kept too, so the batched duplicate
+  // lookup sees what earlier queue messages stored.
   function memQueueDb(opts: {
     jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean;
     failCounters?: boolean; settings?: Record<string, string>;
@@ -111,6 +112,7 @@ describe("queue lifecycle events", () => {
     const statements: Array<{ sql: string; params: any[] }> = [];
     const seenEvents = new Set<string>();
     const counters = new Map<string, number>();
+    const jobs = new Map<string, Record<string, any>>();
     const evaluations = new Map<string, { score: number; eligible: number; reasoning: string; evaluated_at: string }>();
     const settings = new Map(Object.entries(opts.settings ?? {}));
     const db = {
@@ -140,7 +142,25 @@ describe("queue lifecycle events", () => {
               seenEvents.add(key);
               return { success: true };
             }
-            if (sql.includes("INSERT INTO jobs")) return { meta: { changes: opts.upsertChanges ?? 1 } };
+            if (sql.includes("INSERT INTO jobs")) {
+              // Read binds through the statement's own column list, so the
+              // double follows the SQL rather than a positional guess.
+              const cols = sql.slice(sql.indexOf("(") + 1, sql.indexOf(")")).split(",").map((c) => c.trim());
+              const rec: Record<string, any> = Object.fromEntries(cols.map((c, i) => [c, params[i]]));
+              const hash = String(rec.canonical_hash);
+              const prev = jobs.get(hash);
+              // The real ON CONFLICT clause refreshes the text columns and the
+              // fingerprint but never the state: a row's state only moves
+              // through setJobState.
+              jobs.set(hash, {
+                ...rec,
+                score: Number(rec.score),
+                remote: Number(rec.remote),
+                state: prev?.state ?? rec.state,
+                role_fingerprint: rec.role_fingerprint ?? prev?.role_fingerprint ?? "",
+              });
+              return { meta: { changes: opts.upsertChanges ?? 1 } };
+            }
             if (sql.includes("INSERT INTO evaluations")) {
               const key = String(params[0]);
               const next = {
@@ -174,6 +194,24 @@ describe("queue lifecycle events", () => {
           },
           all: async () => {
             statements.push({ sql, params });
+            // findKnownJobs: answer the `col IN (...)` groups from the stored
+            // jobs, one param slice per group, in the order they are bound.
+            if (sql.includes("FROM jobs") && sql.includes(" IN (")) {
+              const groups: Array<[string, string[]]> = [];
+              let cursor = 0;
+              for (const col of ["canonical_hash", "role_fingerprint"]) {
+                const at = sql.indexOf(`${col} IN (`);
+                if (at < 0) continue;
+                const width = (sql.slice(at, sql.indexOf(")", at)).match(/\?/g) || []).length;
+                groups.push([col, params.slice(cursor, cursor + width).map(String)]);
+                cursor += width;
+              }
+              return {
+                results: [...jobs.values()].filter((r) =>
+                  groups.some(([col, list]) => list.includes(String(r[col] ?? ""))),
+                ),
+              };
+            }
             return { results: [] };
           },
         }),
@@ -182,7 +220,7 @@ describe("queue lifecycle events", () => {
         all: async () => ({ results: [] }),
       }),
     } as any;
-    return { db, statements, counters, evaluations };
+    return { db, statements, counters, jobs, evaluations };
   }
 
   function memQueues() {
@@ -228,9 +266,10 @@ describe("queue lifecycle events", () => {
   }
 
   // Telegram-capturing fetch stub: telegram URLs record message text and
-  // resolve ok; every other URL resolves with the given body text (RSS feed
-  // XML for discovery, "{}" for the ATS submit POST which only needs .text()).
-  function stubQueueFetch(texts: string[], bodyText: string, urls: string[] = []) {
+  // resolve ok; every other URL resolves with the given body — RSS feed XML
+  // for discovery, "{}" for the ATS submit POST which only needs .text().
+  // A function body serves two different boards out of one batch.
+  function stubQueueFetch(texts: string[], body: string | ((url: string) => string), urls: string[] = []) {
     const prev = globalThis.fetch;
     (globalThis as any).fetch = async (url: string, init: any) => {
       if (String(url).includes("api.telegram.org")) {
@@ -238,10 +277,12 @@ describe("queue lifecycle events", () => {
         return { ok: true, status: 200 };
       }
       urls.push(String(url));
+      const bodyText = typeof body === "function" ? body(String(url)) : body;
       return {
         ok: true,
         status: 200,
         text: async () => bodyText,
+        json: async () => JSON.parse(bodyText || "{}"),
         arrayBuffer: async () => new TextEncoder().encode(bodyText).buffer,
       };
     };
@@ -522,6 +563,132 @@ describe("queue lifecycle events", () => {
   const rssWith = (...items: string[]) =>
     ['<?xml version="1.0"?><rss><channel>', ...items, "</channel></rss>"].join("");
   const discoverMsg = { stage: "discover", def: { name: "test-rss", kind: "rss", url: "https://example.com/feed", cadence: "hourly" } };
+
+  // One requisition on two boards: the same employer slug on a Greenhouse and
+  // a Lever board, same title, same remote work spelled differently, two URLs.
+  const ghMsg = { stage: "discover", def: { name: "gh-acme", kind: "greenhouse", org: "acme", cadence: "hourly" } };
+  const lvMsg = { stage: "discover", def: { name: "lv-acme", kind: "lever", org: "acme", cadence: "hourly" } };
+  const GH_JOB = 1;
+  const LV_JOB = 9;
+  const GH_URL = "https://boards.greenhouse.io/acme/jobs/1";
+  const LV_URL = "https://jobs.lever.co/acme/9";
+  type BoardJob = { id: number; title: string; url: string; location: string };
+  const ghBody = (jobs: BoardJob[]) => JSON.stringify({
+    jobs: jobs.map((j) => ({
+      id: j.id, title: j.title, absolute_url: j.url,
+      location: { name: j.location }, updated_at: new Date().toISOString(),
+    })),
+  });
+  const lvBody = (jobs: BoardJob[]) => JSON.stringify(jobs.map((j) => ({
+    id: j.id, text: j.title, hostedUrl: j.url,
+    categories: { location: j.location }, createdAt: new Date().toISOString(),
+  })));
+  const twoBoards = (greenhouse: string, lever: string) =>
+    (url: string) => (String(url).includes("greenhouse") ? greenhouse : lever);
+  const GH_POSTING = { id: GH_JOB, title: "Backend Engineer", url: GH_URL, location: "Remote, US" };
+  const LV_TWIN = { id: LV_JOB, title: "Backend Engineer", url: LV_URL, location: "Worldwide" };
+
+  it("collapses one requisition carried by two boards into one application", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // Same requisition, same place ("Remote, US" vs "Worldwide"), two boards.
+    const bodies = twoBoards(ghBody([GH_POSTING]), lvBody([LV_TWIN]));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, bodies);
+    try {
+      const { db, jobs, counters, evaluations } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: ghMsg }, { body: lvMsg }] } as any, queueEnv(db, q));
+      const winner = canonicalHash(normalizeUrl(GH_URL));
+      const twin = canonicalHash(normalizeUrl(LV_URL));
+      expect(jobs.get(winner)?.state).toBe("DISCOVERED");
+      expect(jobs.get(twin)?.state).toBe("DUPLICATE");
+      // The twin says which posting it is standing in for.
+      expect(evaluations.get(twin)?.reasoning).toBe(`duplicate of ${winner}`);
+      // One requisition, one application: one evaluate message, one SEEKING.
+      expect(q.EVALUATE_Q.sent.map((m: any) => m.hash)).toEqual([winner]);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("counts a collapsed duplicate once: a re-discovery never re-counts it", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const bodies = twoBoards(ghBody([GH_POSTING]), lvBody([LV_TWIN]));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, bodies);
+    try {
+      const { db, jobs, counters, evaluations } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const env = queueEnv(db, q);
+      const winner = canonicalHash(normalizeUrl(GH_URL));
+      const twin = canonicalHash(normalizeUrl(LV_URL));
+      await worker.queue({ messages: [{ body: ghMsg }, { body: lvMsg }] } as any, env);
+      await worker.queue({ messages: [{ body: ghMsg }, { body: lvMsg }] } as any, env);
+      // The twin is written again every sweep (the double keeps reporting a
+      // changed jobs row) but counted once, and its reason does not grow.
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+      expect(evaluations.get(twin)?.reasoning).toBe(`duplicate of ${winner}`);
+      expect(jobs.get(twin)?.state).toBe("DUPLICATE");
+      // The posting that won the requisition never suppresses itself through
+      // its own twin, and the owner still hears about it exactly once.
+      expect(jobs.get(winner)?.state).toBe("DISCOVERED");
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("collapses two copies of one requisition inside a single board batch", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // One board listing the same opening twice under two jids: the first copy
+    // seeds the fingerprint, the second lands in DUPLICATE.
+    const GH_TWIN_URL = "https://boards.greenhouse.io/acme/jobs/2";
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, ghBody([
+      { id: GH_JOB, title: "Backend Engineer", url: GH_URL, location: "Remote" },
+      { id: 2, title: "Backend Engineer", url: GH_TWIN_URL, location: "Remote" },
+    ]));
+    try {
+      const { db, jobs, counters, evaluations } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: ghMsg }] } as any, queueEnv(db, q));
+      const winner = canonicalHash(normalizeUrl(GH_URL));
+      const twin = canonicalHash(normalizeUrl(GH_TWIN_URL));
+      expect(jobs.get(winner)?.state).toBe("DISCOVERED");
+      expect(jobs.get(twin)?.state).toBe("DUPLICATE");
+      expect(evaluations.get(twin)?.reasoning).toBe(`duplicate of ${winner}`);
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+      expect(q.EVALUATE_Q.sent.map((m: any) => m.hash)).toEqual([winner]);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not collapse the same title at different locations", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // Same company and role, two places: two postings, two applications.
+    const bodies = twoBoards(
+      ghBody([GH_POSTING]),
+      lvBody([{ ...LV_TWIN, location: "Remote - Europe" }]),
+    );
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, bodies);
+    try {
+      const { db, jobs, counters } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: ghMsg }, { body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(canonicalHash(normalizeUrl(GH_URL)))?.state).toBe("DISCOVERED");
+      expect(jobs.get(canonicalHash(normalizeUrl(LV_URL)))?.state).toBe("DISCOVERED");
+      expect(counters.get("duplicate_suppressed")).toBeUndefined();
+      expect(q.EVALUATE_Q.sent).toHaveLength(2);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(2);
+    } finally {
+      restore();
+    }
+  });
 
   it("stores a manager posting as PRE_FILTERED_OUT and never sends SEEKING or an evaluate message", async () => {
     const { default: worker } = await import("../src/index.js");

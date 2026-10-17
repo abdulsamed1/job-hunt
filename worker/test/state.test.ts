@@ -181,6 +181,162 @@ describe("counters", () => {
   });
 });
 
+// D1 jobs-table migration: PRAGMA answers the live column list and an
+// ALTER really adds its column, so a second run sees the migrated table.
+function jobsTableDb(cols: string[], queries: string[][]) {
+  const db = {
+    prepare(query: string) {
+      const norm = query.trimStart().slice(0, 60);
+      return {
+        bind: (...params: any[]) => {
+          queries.push([norm, ...params.map(String)]);
+          return { run: async () => ({}) };
+        },
+        all: async () => {
+          queries.push([norm]);
+          return { results: cols.map((name) => ({ name })) };
+        },
+        run: async () => {
+          queries.push([norm]);
+          const added = (query.match(/ADD COLUMN (\w+)/i) || [])[1];
+          if (added && !cols.includes(added)) cols.push(added);
+          return {};
+        },
+      };
+    },
+    batch: async () => [],
+  } as any;
+  return db;
+}
+
+const PRE_FINGERPRINT_COLS = [
+  "canonical_hash", "title", "company", "location", "url", "description",
+  "source", "posted_at", "discovered_at", "score", "remote", "state", "notified",
+];
+
+describe("role fingerprint column", () => {
+  it("adds the column once, then only re-asserts the index", async () => {
+    const cols = [...PRE_FINGERPRINT_COLS];
+    const queries: string[][] = [];
+    const db = jobsTableDb(cols, queries);
+    const { ensureRoleFingerprint } = await import("../src/state.js");
+    await ensureRoleFingerprint(db);
+    expect(cols).toContain("role_fingerprint");
+    expect(queries.filter((q) => q[0].startsWith("ALTER TABLE jobs"))).toHaveLength(1);
+    expect(queries.filter((q) => q[0].startsWith("PRAGMA table_info(jobs)"))).toHaveLength(1);
+    // The index is what the duplicate lookup rides on.
+    expect(queries.filter((q) => q[0].startsWith("CREATE INDEX IF NOT EXISTS idx_jobs_role_fp"))).toHaveLength(1);
+    // Idempotent: second run finds the column, so no second ALTER.
+    await ensureRoleFingerprint(db);
+    expect(queries.filter((q) => q[0].startsWith("ALTER TABLE jobs"))).toHaveLength(1);
+    expect(queries.filter((q) => q[0].startsWith("CREATE INDEX IF NOT EXISTS idx_jobs_role_fp"))).toHaveLength(2);
+  });
+
+  it("tolerates a lost migration race", async () => {
+    const db = {
+      prepare: () => ({
+        all: async () => { throw new Error("no such table: jobs"); },
+        run: async () => { throw new Error("duplicate column name: role_fingerprint"); },
+      }),
+    } as any;
+    const { ensureRoleFingerprint } = await import("../src/state.js");
+    await expect(ensureRoleFingerprint(db)).resolves.toBeUndefined();
+  });
+});
+
+// The dedupe lookup: one SELECT answering two IN lists, keyed by both
+// identifiers so the caller can tell "mine again" from "another board".
+function knownJobsDb(
+  rows: Array<{ canonical_hash: string; role_fingerprint: string; state: string }>,
+  queries: string[][],
+) {
+  const db = {
+    prepare(query: string) {
+      return {
+        bind: (...params: any[]) => ({
+          all: async () => {
+            queries.push([query, ...params.map(String)]);
+            // Walk the WHERE clause in bind order: one slice of params per
+            // `col IN (...)` group, exactly as the real statement binds them.
+            const clauses: Array<[string, string[]]> = [];
+            let cursor = 0;
+            for (const col of ["canonical_hash", "role_fingerprint"]) {
+              const at = query.indexOf(`${col} IN (`);
+              if (at < 0) continue;
+              const group = query.slice(at, query.indexOf(")", at));
+              const width = (group.match(/\?/g) || []).length;
+              clauses.push([col, params.slice(cursor, cursor + width).map(String)]);
+              cursor += width;
+            }
+            const matched = rows.filter((r) =>
+              clauses.some(([col, list]) => list.includes(String((r as any)[col] ?? ""))),
+            );
+            return { results: matched };
+          },
+        }),
+      };
+    },
+    batch: async () => [],
+  } as any;
+  return db;
+}
+
+describe("findKnownJobs", () => {
+  const STORED = [
+    { canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED" },
+    { canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE" },
+    { canonical_hash: "h3", role_fingerprint: "fp3", state: "ELIGIBLE" },
+  ];
+
+  it("returns only identifiers already stored, each with its pair", async () => {
+    const queries: string[][] = [];
+    const { findKnownJobs } = await import("../src/state.js");
+    const known = await findKnownJobs(knownJobsDb(STORED, queries), ["h1", "h-nope"], ["fp2", "fp-nope"]);
+    // Both halves: a posting's own fingerprint is stored the moment it is, so
+    // the caller needs the row's canonical_hash to answer "me again".
+    expect(known.get("h1")).toEqual({ canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED" });
+    expect(known.get("fp2")).toEqual({ canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE" });
+    // Nothing for identifiers the store does not carry.
+    expect(known.get("h-nope")).toBeUndefined();
+    expect(known.get("fp-nope")).toBeUndefined();
+    expect(known.get("fp3")).toBeUndefined();
+    // One batched read per source invocation, not one per posting.
+    expect(queries).toHaveLength(1);
+    expect(queries[0][0]).toContain("SELECT canonical_hash, role_fingerprint");
+    expect(queries[0][0]).toContain("canonical_hash IN (");
+    expect(queries[0][0]).toContain("OR role_fingerprint IN (");
+  });
+
+  it("chunks the two lists and de-duplicates their bindings", async () => {
+    const queries: string[][] = [];
+    const { findKnownJobs } = await import("../src/state.js");
+    const hashes = Array.from({ length: 60 }, (_, i) => `h${i}`);
+    const fps = Array.from({ length: 51 }, (_, i) => `fp${i}`);
+    await findKnownJobs(knownJobsDb([], queries), hashes, fps);
+    // 2 hash chunks x 2 fingerprint chunks, and no IN group ever carries more
+    // than 50 bindings (D1's per-query parameter budget).
+    expect(queries).toHaveLength(4);
+    for (const q of queries) {
+      const groups = [...q[0].matchAll(/IN \(([^)]*)\)/g)].map((m) => (m[1].match(/\?/g) || []).length);
+      expect(groups.length).toBeGreaterThan(0);
+      expect(Math.max(...groups)).toBeLessThanOrEqual(50);
+      expect(q.length - 1).toBeLessThanOrEqual(100);
+    }
+
+    const dupes: string[][] = [];
+    await findKnownJobs(knownJobsDb([], dupes), ["h1", "h1"], ["fp1", "fp1"]);
+    expect(dupes).toHaveLength(1);
+    expect(dupes[0].slice(1)).toEqual(["h1", "fp1"]);
+  });
+
+  it("costs no query when a source yields nothing", async () => {
+    const queries: string[][] = [];
+    const { findKnownJobs } = await import("../src/state.js");
+    expect(await findKnownJobs(knownJobsDb([], queries), [], [])).toEqual(new Map());
+    expect(queries).toHaveLength(0);
+  });
+});
+
 // upsertJob's gate write, modelled with its own conflict rule: append the
 // reason only when it is not already recorded (the instr(...) guard).
 function gateDb(changes = 1, seed?: Record<string, any>) {
@@ -297,8 +453,38 @@ describe("upsertJob gate detail", () => {
     const outcome = { recorded: false };
     expect(await upsertJob(db, { ...REJECTED, canonical_hash: "h-sw", title: "Backend Engineer" }, { outcome })).toBe(true);
     const jobInsert = queries.find((q) => q[0].startsWith("INSERT INTO jobs"))!;
-    expect(jobInsert[jobInsert.length - 1]).toBe("DISCOVERED");
+    expect(jobInsert).toContain("DISCOVERED");
     expect(evaluations.size).toBe(0);
     expect(outcome.recorded).toBe(false);
+  });
+
+  it("stores the role fingerprint the caller offers, blank when it offers none", async () => {
+    const { db, queries } = gateDb(1);
+    const { upsertJob } = await import("../src/state.js");
+    await upsertJob(db, REJECTED, { state: "PRE_FILTERED_OUT", role_fingerprint: "fp-mgr" });
+    const withFp = queries.find((q) => q[0].startsWith("INSERT INTO jobs"))!;
+    // Last bound column is role_fingerprint; the state sits just before it.
+    expect(withFp[withFp.length - 1]).toBe("fp-mgr");
+    expect(withFp[withFp.length - 2]).toBe("PRE_FILTERED_OUT");
+
+    const { db: plain, queries: plainQueries } = gateDb(1);
+    await upsertJob(plain, { ...REJECTED, canonical_hash: "h-sw" });
+    const blank = plainQueries.find((q) => q[0].startsWith("INSERT INTO jobs"))!;
+    expect(blank[blank.length - 1]).toBe("");
+  });
+
+  it("explains a cross-board duplicate once, like a role reject", async () => {
+    const { db, queries, evaluations } = gateDb(1);
+    const { upsertJob } = await import("../src/state.js");
+    const opts = { state: "DUPLICATE" as const, detail: "duplicate of h1", role_fingerprint: "fp1" };
+    expect(await upsertJob(db, { ...REJECTED, canonical_hash: "h2" }, opts)).toBe(true);
+    expect(evaluations.get("h2").reasoning).toBe("duplicate of h1");
+    // A re-discovery never grows the reason, so the caller can read `recorded`
+    // as "this twin is new to the store".
+    const outcome = { recorded: false };
+    expect(await upsertJob(db, { ...REJECTED, canonical_hash: "h2" }, { ...opts, outcome })).toBe(true);
+    expect(outcome.recorded).toBe(false);
+    expect(evaluations.get("h2").reasoning).toBe("duplicate of h1");
+    expect(queries.filter((q) => q[0].startsWith("INSERT INTO evaluations"))).toHaveLength(2);
   });
 });

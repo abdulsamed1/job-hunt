@@ -19,7 +19,7 @@ import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBo
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import type { RawJob } from "./adapters/http.js";
-import { canonicalHash, normalizeUrl, roleFingerprint } from "./lib/hash.js";
+import { canonicalHash, roleFingerprint } from "./lib/hash.js";
 import { boardUrlForDef, classifyHost } from "./lib/hosts.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt } from "./lib/freshness.js";
@@ -27,7 +27,7 @@ import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
 import { classifyRole } from "./lib/roles.js";
-import { bumpCounter, ensureCounters, ensureNotificationEvents, ensureSettings, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { bumpCounter, ensureCounters, ensureNotificationEvents, ensureRoleFingerprint, ensureSettings, ensureSourceHealthColumns, findKnownJobs, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
 import { currentPointer, handleTelegramUpdate } from "./lib/webhook.js";
 
 export interface Env {
@@ -55,6 +55,15 @@ export interface Env {
 }
 
 const SOURCES: SourceDef[] = GENERATED_SOURCES;
+
+/** Record that this canonical hash carries the given role fingerprint (see
+ *  roleFingerprint). Used to answer "have I seen this posting?" and "does
+ *  another posting own this requisition?" from one per-fingerprint index. */
+function noteFingerprint(index: Map<string, Set<string>>, fp: string, hash: string): void {
+  const set = index.get(fp);
+  if (set) set.add(hash);
+  else index.set(fp, new Set([hash]));
+}
 
 export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
@@ -216,6 +225,7 @@ export default {
     await ensureNotificationEvents(db);
     await ensureSettings(db);
     await ensureCounters(db);
+    await ensureRoleFingerprint(db);
     for (const msg of batch.messages) {
       let body: any = null;
       try {
@@ -254,9 +264,37 @@ export default {
             await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
             healthRecorded = true;
           }
-          for (const j of enriched) {
-            const canon = normalizeUrl(j.url);
-            const hash = canonicalHash(canon);
+          // One application per requisition: identity today is the canonical
+          // URL, so the same opening arriving on two boards, or under two jids,
+          // becomes two applications. Each posting therefore carries a second
+          // identity — company + role + place — and the whole source's
+          // fingerprints are resolved in one batched read before any of them is
+          // stored, so the check never costs a query per posting.
+          const postings = enriched.map((j) => ({
+            job: j,
+            hash: canonicalHash(j.url),
+            fp: roleFingerprint(j.company, j.title, j.location),
+          }));
+          const known = await findKnownJobs(
+            db, postings.map((p) => p.hash), postings.map((p) => p.fp),
+          );
+          // Fingerprint -> the canonical hashes that carry it. Two questions,
+          // one index: `carriers` says whether this posting has been seen
+          // before (its own hash is in there), `owners` says whether some other
+          // posting owns the requisition (a hash that is not its own). A
+          // suppressed twin counts as a carrier but never as an owner, or the
+          // winner would suppress itself through the very duplicate row this
+          // check created for it.
+          const carriers = new Map<string, Set<string>>();
+          const owners = new Map<string, Set<string>>();
+          for (const row of known.values()) {
+            if (!row.role_fingerprint) continue;
+            noteFingerprint(carriers, row.role_fingerprint, row.canonical_hash);
+            if (row.state !== "DUPLICATE") noteFingerprint(owners, row.role_fingerprint, row.canonical_hash);
+          }
+          for (const { job: j, hash, fp } of postings) {
+            const seenBefore = carriers.get(fp)?.has(hash) ?? false;
+            const ownerHash = [...(owners.get(fp) || [])].find((h) => h !== hash);
             const row = {
               canonical_hash: hash, title: j.title.slice(0, 200),
               company: j.company.slice(0, 120), location: j.location.slice(0, 120),
@@ -275,7 +313,7 @@ export default {
               // stored first, counted second: a counter failure must never cost
               // the posting, nor the rest of this source's batch.
               const outcome = { recorded: false };
-              await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason, outcome });
+              await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason, role_fingerprint: fp, outcome });
               // `recorded` (not the upsert's return value) is the first-time
               // signal: a re-discovered reject costs no count and no alert.
               if (outcome.recorded) {
@@ -288,11 +326,38 @@ export default {
               }
               continue;
             }
-            const isNew = await upsertJob(db, row);
+            // Duplicate gate, after the role gate: a posting the role gate
+            // rejected never gets here, so a rejection is explained once as a
+            // rejection and never as a twin. The twin is recorded (nothing is
+            // ever deleted) with the winner's hash as its reason, and gets no
+            // SEEKING and no evaluation, so it can never be applied.
+            if (ownerHash) {
+              await upsertJob(db, row, {
+                state: "DUPLICATE", detail: `duplicate of ${ownerHash}`, role_fingerprint: fp,
+              });
+              // Counted on first storage only: a sweep that re-discovers a
+              // duplicate costs no second count (its own row carries the
+              // fingerprint, so `seenBefore` is true). Stored first, counted
+              // second — a counter failure must not cost the posting.
+              if (!seenBefore) {
+                try {
+                  await bumpCounter(db, "duplicate_suppressed");
+                } catch (e) {
+                  console.log(`duplicate_suppressed counter failed: ${String(e).slice(0, 120)}`);
+                }
+              }
+              noteFingerprint(carriers, fp, hash);
+              continue;
+            }
+            const isNew = await upsertJob(db, row, { role_fingerprint: fp });
             if (isNew) {
               await env.EVALUATE_Q.send({ stage: "evaluate", hash });
               await notifyEventOnce(db, env, "worker", hash, "SEEKING", alert, `New job from ${j.source}`);
             }
+            // This posting owns the requisition now, so a second copy of it
+            // inside this same batch collapses too.
+            noteFingerprint(carriers, fp, hash);
+            noteFingerprint(owners, fp, hash);
           }
         } else if (m.stage === "evaluate" && m.hash) {
           const row: any = await db.prepare(

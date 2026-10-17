@@ -11,7 +11,16 @@ CREATE TABLE IF NOT EXISTS jobs (
   score REAL NOT NULL DEFAULT 0,
   remote INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL DEFAULT 'DISCOVERED',
-  notified INTEGER NOT NULL DEFAULT 0
+  notified INTEGER NOT NULL DEFAULT 0,
+  -- Second identity of the posting: same company, role and place on any board,
+  -- whatever the URL. This is what collapses one requisition arriving on two
+  -- boards into one application (see roleFingerprint in src/lib/hash.ts).
+  -- A table that predates the column is migrated at runtime by
+  -- ensureRoleFingerprint (state.ts) -- an existing table cannot be re-declared
+  -- here -- which also creates idx_jobs_role_fp, because a CREATE INDEX on this
+  -- missing column would abort `d1 execute --file schema.sql` on such a
+  -- database.
+  role_fingerprint TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score);
