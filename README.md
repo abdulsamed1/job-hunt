@@ -258,6 +258,25 @@ A Telegram outage drops events, with per-runtime recovery semantics:
 
 Either way the pipeline keeps running without notification backpressure.
 
+### Inbound: updating the master resume from Telegram
+
+Send a PDF to the bot from the owner's chat and it becomes the master resume:
+the Worker validates it (`%PDF-` header, `pdf-lib` parse, ≤15 MB), stores it
+as `cvs/master/<sha256>.pdf` in R2, and repoints `settings.master_resume_sha`
+in D1. All future applications use it; old versions stay in R2. Text `/master`
+reports the current sha and its source (`d1` or the `MASTER_RESUME_SHA`
+secret fallback).
+
+Everything else inbound is ignored; the webhook rejects requests without the
+Telegram secret-token header.
+
+Local sync (this machine is NOT the source of truth):
+
+```bash
+uv run python scripts/pull_master.py         # replace data/cvs/Abdulsamed_Hamdy.pdf with the current master
+uv run python scripts/pull_master.py --check # exit 1 when the local file drifts
+```
+
 Disability-targeted programs are filtered at evaluation time and re-checked
 right before tailoring/applying (both runtimes): a `disabilit*` mention in the
 **title** fails outright; in the description it fails when a program or

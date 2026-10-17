@@ -1,6 +1,7 @@
 // Telegram outbound lifecycle events: seeking, filter, evaluation, tailor,
 // application attempt, submission, dry-run result, failure, and stage-failure
-// notices. Outbound only — the bot takes no inbound commands. Sends are
+// notices. Inbound is limited to the owner's chat: PDF master-resume uploads
+// and the /master status command (see lib/webhook.ts). Sends are
 // best-effort with at-most-once semantics per (runtime, job_hash, event): the
 // event key is inserted into `notification_events` before sending, so queue
 // retries see the conflicting key and skip. With Telegram credentials unset

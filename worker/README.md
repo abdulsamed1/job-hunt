@@ -75,6 +75,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
 | `POST /run?deep=1` | Fan out the whole shard, one source per message, ≤50 per `sendBatch`. Omit `deep` for the hourly subset. |
 | `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_12h` / `remote_fresh`. Writes nothing. |
 | `POST /queue` | Fetch jobs by state (`{"state":"ELIGIBLE","count":10}`). |
+| `POST /telegram/webhook` | Owner-only Telegram inbound; `X-Telegram-Bot-Api-Secret-Token` must match `TELEGRAM_WEBHOOK_SECRET` (else 401). A PDF upload updates `settings.master_resume_sha` (precedence: D1 → `MASTER_RESUME_SHA` secret); `/master` reports the current sha + source; everything else is ignored. |
 
 ## Pipeline gotchas worth not rediscovering
 
@@ -101,6 +102,17 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   credentials unset nothing is claimed. The table is created at runtime
   (`ensureNotificationEvents`, once per queue batch) for databases that
   predate it; `/health` reports `null` when it is missing.
+- **`settings` holds the master-resume pointer, also created at runtime.**
+  `settings` (`key TEXT PRIMARY KEY`, `value TEXT NOT NULL`,
+  `updated_at TEXT NOT NULL`) stores `master_resume_sha`; `schema.sql`
+  declares it and `ensureSettings(db)` migrates databases that predate it,
+  mirroring `ensureNotificationEvents`. The apply path resolves the pointer as
+  `settings.master_resume_sha` → `MASTER_RESUME_SHA` secret, so the secret is
+  only the bootstrap/fallback and a Telegram upload needs no secret rotation.
+  Old R2 objects are never deleted.
+- **Webhook processing is inline and idempotent (same sha = zero writes)**,
+  so Telegram retries are safe. Subrequests stay modest (≈7 on the worst
+  path); never log bodies — only file ids, shas, and byte counts.
 
 ## Deploy
 
@@ -136,6 +148,24 @@ notifications (`SEEKING` / `FILTERED` / `ELIGIBLE` / `TAILORED` /
 `APPLICATION_ATTEMPT` / `SUBMITTED` / `DRY_RUN` / `FAILED` / `STAGE_FAILED`),
 at most once per `(runtime, job_hash, event)` via the `notification_events`
 ledger. Unset credentials = silent no-op, nothing claimed.
+
+Inbound master-resume updates need `TELEGRAM_WEBHOOK_SECRET` (random hex) and a
+**fresh** `TELEGRAM_BOT_TOKEN` — revoke the old one in BotFather first — plus a
+one-time `setWebhook` registration with the secret token:
+
+```bash
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+curl "https://api.telegram.org/bot<bot-token>/setWebhook" \
+  -d "url=https://jobhunt.habdulsamed777.workers.dev/telegram/webhook" \
+  -d "secret_token=<webhook-secret>" \
+  -d "drop_pending_updates=true"
+```
+
+Telegram will only deliver updates whose secret header matches; the pointer
+precedence stays D1 → `MASTER_RESUME_SHA`. `deleteWebhook` is the rollback:
+restoring the previous D1 pointer (or deleting the row) brings back the old
+master, and no R2 object is ever deleted.
 
 ## Boundaries (non-negotiable)
 

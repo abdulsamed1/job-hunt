@@ -8,6 +8,7 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - `uv run python -m job_hunt.cli <scan|evaluate|tailor|apply|run>` — pipeline stages
 - `python scripts/rezi_login.py` — Rezi OAuth (laptop with browser, human signs in)
 - `uv run python scripts/linkedin_login.py` — LinkedIn session (unused while LinkedIn is disabled)
+- `uv run python scripts/pull_master.py` — sync `data/cvs/Abdulsamed_Hamdy.pdf` from the Worker master-resume pointer (`--check` reports drift only, exit 1)
 
 ## LinkedIn status: DISABLED (account ban, 2026-10-02)
 
@@ -187,3 +188,9 @@ gives you structural context (callers, dependents, test coverage) that file sear
   web-UI runs stay silent; `--no-notify` per CLI run. Worker claims the ledger
   key pre-send (at-most-once); local retries a failed send on the next
   emission. Disability gate re-runs at tailor/apply time in both runtimes.
+  Telegram inbound is owner-restricted: PDF uploads via `POST /telegram/webhook`
+  (secret token header) update the master resume pointer
+  (`settings.master_resume_sha` in D1; `MASTER_RESUME_SHA` secret is the
+  bootstrap fallback) and `/master` reports it. Everything else is ignored.
+  Keep the local `data/cvs/Abdulsamed_Hamdy.pdf` in sync with
+  `uv run python scripts/pull_master.py --check` before local runs.
