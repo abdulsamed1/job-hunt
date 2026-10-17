@@ -211,3 +211,31 @@ describe("handleTelegramUpdate", () => {
     );
   });
 });
+
+describe("POST /telegram/webhook route", () => {
+  it("rejects missing or wrong secret tokens with 401", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const env = { DB: memDb().db, CV_BUCKET: fakeBucket().b } as any;
+    for (const headers of [{}, { "X-Telegram-Bot-Api-Secret-Token": "nope" }] as Record<string, string>[]) {
+      const res = await worker.fetch(
+        new Request("https://worker/telegram/webhook", { method: "POST", headers, body: "{}" }), { ...env, TELEGRAM_WEBHOOK_SECRET: "sec" },
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("accepts the secret header and acknowledges non-message updates", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const res = await worker.fetch(
+      new Request("https://worker/telegram/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": "sec" },
+        body: JSON.stringify({ update_id: 1 }),
+      }),
+      { DB: memDb().db, CV_BUCKET: fakeBucket().b, TELEGRAM_WEBHOOK_SECRET: "sec" } as any,
+    );
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body.ok).toBe(true);
+  });
+});

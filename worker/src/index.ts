@@ -26,7 +26,8 @@ import { filterRecentList, filterRemoteList, isFresh, isRemoteish, parsePostedAt
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
-import { ensureNotificationEvents, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { ensureNotificationEvents, ensureSettings, ensureSourceHealthColumns, getActionableJobs, getJobsByState, recordSourceHealth, saveApplication, saveEvaluation, setJobState, upsertJob, type Db, type JobState } from "./state.js";
+import { currentPointer, handleTelegramUpdate } from "./lib/webhook.js";
 
 export interface Env {
   DB: D1Database;
@@ -47,6 +48,7 @@ export interface Env {
   PROFILE_JSON?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
   REZI_MCP_TOKEN?: string;
 }
 
@@ -207,6 +209,7 @@ export default {
     // databases that predate it).
     await ensureSourceHealthColumns(db);
     await ensureNotificationEvents(db);
+    await ensureSettings(db);
     for (const msg of batch.messages) {
       let body: any = null;
       try {
@@ -319,8 +322,9 @@ export default {
           // wrapper's backfill lives here now that callers use notifyEventOnce).
           const scored = (detail: string) =>
             typeof row.score === "number" ? `(score ${row.score})${detail ? ` ${detail}` : ""}` : detail;
-          const sha = (env.MASTER_RESUME_SHA || "").trim();
-          const failDetailSha = "resume bytes missing: MASTER_RESUME_SHA secret not set (cvs/master/<sha>.pdf unreachable)";
+          const ptr = await currentPointer(db, env);
+          const sha = ptr.sha;
+          const failDetailSha = "resume bytes missing: master resume unset (settings.master_resume_sha / MASTER_RESUME_SHA)";
           if (!sha) {
             await saveApplication(db, m.hash, "FAILED", failDetailSha, null);
             if (await notifyEventOnce(db, env, "worker", m.hash, "FAILED", row, scored(failDetailSha)) !== "sent") console.log(`telegram notify failed for ${m.hash} (FAILED)`);
@@ -417,6 +421,7 @@ export default {
         const n: any = await db.prepare(`SELECT COUNT(*) AS n FROM notification_events`).first();
         notificationEvents = n?.n ?? 0;
       } catch { /* table missing on pre-ledger deploys */ }
+      const ptr = await currentPointer(db, env);
       return Response.json({
         ok: true,
         jobs: row?.n ?? 0,
@@ -426,6 +431,7 @@ export default {
         threshold: parseFloat(env.THRESHOLD || "70"),
         live_apply: env.LIVE_APPLY === "true",
         notification_events: notificationEvents,
+        master_resume_sha: ptr.sha || null,
       });
     }
     if (url.pathname === "/recent") {
@@ -512,6 +518,22 @@ export default {
       }
       return Response.json({ queued: true, sources: defs.length, deep });
     }
-    return new Response("jobhunt worker: /health /recent /sources /coverage /queue /run /probe", { status: 200 });
+    if (url.pathname === "/telegram/webhook" && request.method === "POST") {
+      // Restricted inbound surface: owner-only document uploads and /master.
+      // Telegram authenticates with the secret-token header configured at
+      // setWebhook time; anything else is rejected before any side effect.
+      const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+      if (!env.TELEGRAM_WEBHOOK_SECRET || secret !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("unauthorized", { status: 401 });
+      }
+      const update: any = await request.json().catch(() => ({}));
+      try {
+        await handleTelegramUpdate(update, db, env.CV_BUCKET as any, env);
+      } catch (e) {
+        console.log(`telegram webhook failed: ${String(e).slice(0, 200)}`);
+      }
+      return Response.json({ ok: true });
+    }
+    return new Response("jobhunt worker: /health /recent /sources /coverage /queue /run /probe /telegram/webhook", { status: 200 });
   },
 };

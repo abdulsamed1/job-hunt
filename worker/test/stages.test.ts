@@ -101,14 +101,19 @@ describe("queue lifecycle events", () => {
   // In-memory D1 double for the queue consumer: routes the handful of
   // statements index.ts issues, captures binds for assertions, and dedups
   // notification_events inserts D1-style (UNIQUE conflict on repeat keys).
-  function memQueueDb(opts: { jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean } = {}) {
+  function memQueueDb(opts: { jobRow?: any; upsertChanges?: number; failJobsSelect?: boolean; settings?: Record<string, string> } = {}) {
     const statements: Array<{ sql: string; params: any[] }> = [];
     const seenEvents = new Set<string>();
+    const settings = new Map(Object.entries(opts.settings ?? {}));
     const db = {
       prepare: (sql: string) => ({
         bind: (...params: any[]) => ({
           first: async () => {
             statements.push({ sql, params });
+            if (sql.includes("FROM settings")) {
+              const v = settings.get(String(params[0]));
+              return v === undefined ? null : { value: v };
+            }
             if (sql.includes("FROM jobs")) {
               if (opts.failJobsSelect) throw new Error("d1 down");
               return opts.jobRow ?? null;
@@ -128,6 +133,7 @@ describe("queue lifecycle events", () => {
               return { success: true };
             }
             if (sql.includes("INSERT INTO jobs")) return { meta: { changes: opts.upsertChanges ?? 1 } };
+            if (sql.includes("INTO settings")) { settings.set(String(params[0]), String(params[1])); return {}; }
             return {};
           },
           all: async () => {
@@ -431,6 +437,37 @@ describe("queue lifecycle events", () => {
       expect(texts.some((t) => t.includes("[worker] STAGE_FAILED: Backend Engineer @ Acme"))).toBe(true);
       expect(texts.some((t) => t.includes("queued stage failed; see worker logs"))).toBe(true);
       expect(texts.some((t) => t.includes("r2 exploded"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("apply path prefers the D1 pointer over MASTER_RESUME_SHA", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, "");
+    try {
+      const { db } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: "Python FastAPI backend role.",
+          source: "greenhouse:acme",
+          score: 90,
+        },
+        settings: { master_resume_sha: "cafe" },
+      });
+      const q = memQueues();
+      const keys: string[] = [];
+      const env = queueEnv(db, q, {
+        MASTER_RESUME_SHA: "deadbeef",
+        CV_BUCKET: { get: async (key: string) => { keys.push(key); return { arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }; } },
+      });
+      await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash: "h" } }] } as any, env);
+      expect(keys).toEqual(["cvs/master/cafe.pdf"]);
     } finally {
       restore();
     }
