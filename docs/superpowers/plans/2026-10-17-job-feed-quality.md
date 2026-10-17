@@ -71,7 +71,7 @@ listed, and a reviewer should treat an unpinned one as a gap in that task.
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `classifyRole(title: string, opts?: { rejectCrm?: boolean }): { verdict: "software" | "reject" | "unknown"; rule: string }` — `rule` is a stable slug (`people-management:manager`, `revenue:sales`, `crm:salesforce`, `non-engineering:recruiter`, `software:swe`, `unknown:none`), never an empty string.
+- Produces: `classifyRole(title: string, opts?: { rejectCrm?: boolean }): { verdict: "software" | "reject" | "unknown"; rule: string }` — `rule` is a stable slug (`people-management:manager`, `revenue:sales`, `crm:salesforce`, `non-engineering:recruiter`, `software:ic`, `software:stack`, `software:software`, `software:<technology>`, `unknown:none`), never an empty string. Later tasks key on `verdict`, never on a software slug.
   Task 2 imports this exact name and shape.
 
 - [ ] **Step 1: Write the failing tests**
@@ -166,7 +166,7 @@ collapse whitespace, strip punctuation for matching), then (1) IC allow list, (2
 
 | Family | Matching words (title text, word-boundary matched) |
 |---|---|
-| IC allow (checked first) | `lead engineer`, `lead software engineer`; bare `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or `engineering` (otherwise `Senior Manager…` and `Senior Salesforce Developer` would be rescued by their seniority marker) |
+| IC allow (checked first) | `lead engineer`, `lead software engineer`; bare `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or `engineering` **and no people-management word matches** (otherwise `Senior Manager…`, `Senior Salesforce Developer` and `Senior Engineering Manager` would each be rescued by a seniority marker) |
 | people-management reject | `manager`, `team lead`, `group lead`, `head of`, `director`, `vp`, `chief`, `supervisor` |
 | revenue reject | `sales`, `sales development`, `business development`, `account executive`, `account manager`, `marketing`, `partner`, `customer success`, `customer support` |
 | CRM reject (only when `rejectCrm !== false`) | `salesforce`, plus any of `consultant`, `architect`, `administrator`, `analyst`, `developer` in the same title |
