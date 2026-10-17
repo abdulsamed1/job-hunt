@@ -71,7 +71,7 @@ listed, and a reviewer should treat an unpinned one as a gap in that task.
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `classifyRole(title: string, opts?: { rejectCrm?: boolean }): { verdict: "software" | "reject" | "unknown"; rule: string }` — `rule` is a stable slug (`people-management:manager`, `revenue:sales`, `crm:salesforce`, `non-engineering:recruiter`, `software:ic`, `software:stack`, `software:software`, `software:<technology>`, `unknown:none`), never an empty string. Later tasks key on `verdict`, never on a software slug.
+- Produces: `classifyRole(title: string, opts?: { rejectCrm?: boolean }): { verdict: "software" | "reject" | "unknown"; rule: string }` — `rule` is a stable slug (`people-management:manager`, `revenue:sales`, `crm:salesforce`, `non-engineering:recruiter`, `software:ic`, `software:stack`, and one per technology word (`software:backend`, `software:devops`, …), `unknown:none`), never an empty string. Later tasks key on `verdict`, never on a software slug.
   Task 2 imports this exact name and shape.
 
 - [ ] **Step 1: Write the failing tests**
