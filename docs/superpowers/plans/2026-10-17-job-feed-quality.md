@@ -24,7 +24,8 @@ plan implements it and the decisions in its "Decisions taken" section are bindin
 - No new npm or Python dependencies. `pdf-lib` and the Workers runtime stay as they are.
 - Worker free tier: 5 cron triggers, 50 subrequests/queries per invocation, queue batch caps. The role
   classifier is pure CPU (no I/O); the duplicate check is exactly one batched `IN (...)` query per
-  source invocation.
+  source invocation. Per-posting D1 cost is bounded: a newly stored posting may cost one counter bump,
+  and a posting that is re-discovered later costs no counter bump, no detail write and no notification.
 - Zero paid APIs. Board probing uses the product's own adapters.
 - Safety flags are unchanged: `LIVE_APPLY=false`, `LINKEDIN_ENABLED=false`, and LinkedIn stays
   filtered out of every shard until the owner explicitly re-enables it.
@@ -247,7 +248,11 @@ Expected: FAIL — no counters table, manager posting still stored as DISCOVERED
    `const role = classifyRole(j.title, { rejectCrm: env.REJECT_CRM_ROLES !== "false" });`
    - `role.verdict === "reject"` → `upsertJob(..., { state: "PRE_FILTERED_OUT", detail: `role gate: ${role.rule}` })`,
      `bumpCounter(db, "role_rejected")`, no `EVALUATE_Q` message, and a `FILTERED` notification via the
-     existing `notifyEventOnce` instead of `SEEKING`.
+     existing `notifyEventOnce` instead of `SEEKING`. The detail, the counter bump and the notification
+     fire on a **genuine insert only**, never on a later "materially improved" re-discovery — dateless
+     rows look materially improved forever, so gating on `changed` would write and count them every
+     sweep. `jobs` has no reasoning column, so the detail text lives in `evaluations.reasoning`
+     (audit-only today; the `FILTERED` notification carries the reason to the owner).
    - otherwise → today's behaviour unchanged (store, queue, SEEKING).
 2. In `scoreJob`, before skill scoring: `const role = classifyRole(title, ...)`; on `reject` return
    `{ score: 0, eligible: false, matched: [], missing: [], reasoning: `role gate: ${role.rule}`, gated: true }`;
