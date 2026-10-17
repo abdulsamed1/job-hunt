@@ -74,9 +74,11 @@ export async function upsertJob(
        posted_at = CASE
          WHEN length(jobs.posted_at) = 0 THEN excluded.posted_at
          ELSE jobs.posted_at END,
-       -- The fingerprint is recomputed every sweep, so the freshest value wins.
-       -- Still inside the same guard: the update only fires when the row is
-       -- materially improved, which keeps this write off the re-discovery path.
+       -- The fingerprint is recomputed on every write that happens at all, so
+       -- the value the caller just computed is what lands. Deliberately still
+       -- inside the same guard: on a re-discovery the update does not fire, so
+       -- a stored fingerprint stays as it was until the row is materially
+       -- improved.
        role_fingerprint = excluded.role_fingerprint
      WHERE length(excluded.description) > length(jobs.description)
         OR length(jobs.location) = 0
@@ -237,7 +239,12 @@ export async function ensureCounters(db: Db): Promise<void> {
  * dateless_dropped). One statement, no read-back: the running total lives in
  * the row, so N postings cost N writes and no extra query. Counters are
  * observability, never a gate — callers must tolerate a failure here rather
- * than let it abandon the postings they are counting. */
+ * than let it abandon the postings they are counting.
+ *
+ * The counters are all "postings kept out of the feed", counted once per
+ * posting on the transition: role_rejected for the role gate,
+ * duplicate_suppressed for postings the dedupe gate suppressed. A posting that
+ * was already off the feed, or already applied, is not counted for either. */
 export async function bumpCounter(db: Db, key: string, n = 1): Promise<void> {
   await db.prepare(
     `INSERT INTO counters (key, value) VALUES (?, ?)

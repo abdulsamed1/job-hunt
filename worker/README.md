@@ -123,14 +123,24 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   `findKnownJobs` read (two `IN` lists, chunked at 50 bindings) before storing
   anything. A hit owned by a *different* canonical hash is stored as `DUPLICATE`
   with `duplicate of <hash>` in `evaluations.reasoning`: no SEEKING, no
-  evaluation, never applied. Three things cost debugging time here:
+  evaluation, and it never reaches the apply queue from here on. The one hole
+  left is disclosed deliberately: an apply message **already in flight** when the
+  posting is suppressed is not blocked — a twin that reached `ELIGIBLE` and
+  queued `tailor-apply`, then lost the gate on a later sweep, can still be
+  applied by that message. This stage does not guard the apply path (that is the
+  apply-time re-gate's job), and closing it here is not free: relabelling an
+  already-applied posting to protect a future one would destroy the history of
+  the application. Three things cost debugging time here:
   - **Suppression is real, and counted on the transition.** The jobs upsert
     never touches `state`, so a posting already in the feed when the gate finds
     it (every row that predates the deploy) is moved with `setJobState` and its
-    audit row written. `duplicate_suppressed` and the reason write ride the same
-    once-per-posting signal — the store's own state under this posting's hash —
-    so a re-discovered twin costs neither a count nor a statement, and counting
-    a suppression that was never performed is impossible.
+    audit row written. `duplicate_suppressed` and the reason write ride that
+    same transition, so a re-discovered twin costs neither a count nor a
+    statement, and counting a suppression that was never performed is
+    impossible. Only a posting that is still in the feed is suppressed at all:
+    one already scored out, filtered, applied or suppressed is left exactly as
+    it is, which is what keeps the counter meaning "postings kept out of the
+    feed".
   - **A suppressed twin never reopens.** A twin's fingerprint can drift (the
     board edited the title) or lose its owner; the row under the posting's own
     hash is still the authority, and it stays suppressed. The evaluate stage's
@@ -140,10 +150,13 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
     (`DISCOVERED`, `ELIGIBLE`, `TAILORED`, `SUBMITTED`) owns a requisition, and
     only for 30 days. A filtered or scored-out row owns nothing — it will never
     be applied, so blocking its twin would lose the opening — and a company
-    re-posting the same remote role next quarter gets a new requisition. Known
-    residual: two genuinely distinct openings at one company with the same title
-    and place still collapse into one, and once a twin exists, a re-post older
-    than the window is still suppressed by it.
+    re-posting the same remote role next quarter gets a new requisition.
+    Suppression removes the demoted hash from the owner set as it goes, so two
+    live rows that share a fingerprint (which the backfill can create) lose one
+    posting between them, not both. Known residual: two genuinely distinct
+    openings at one company with the same title and place still collapse into
+    one, and once a twin exists, a re-post older than the window is still
+    suppressed by it.
   The column is declared in `schema.sql` and added to existing databases by
   `ensureRoleFingerprint(db)` once per queue batch, like
   `ensureSourceHealthColumns`.

@@ -79,6 +79,16 @@ function noteFingerprint(index: Map<string, Set<string>>, fp: string, hash: stri
 const OWNER_STATES = new Set(["DISCOVERED", "ELIGIBLE", "TAILORED", "SUBMITTED"]);
 const OWNER_WINDOW_DAYS = 30;
 
+// The states the gate may still act on: a posting that is in the owner's feed
+// and could still become an application. Every other row is left exactly as it
+// is — one already off the feed (REJECTED, PRE_FILTERED_OUT, FAILED, ...)
+// gains nothing from being relabelled and would lose the verdict its state
+// records, and one already on its way to the employer (TAILORED, SUBMITTED,
+// APPLICATION_STARTED) carries the honest history of the application. Acting on
+// exactly these two states is what makes duplicate_suppressed mean "postings
+// this gate kept out of the feed", counted once per posting.
+const SUPPRESSIBLE_STATES = new Set(["DISCOVERED", "ELIGIBLE"]);
+
 export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
 }
@@ -345,34 +355,33 @@ export default {
             }
             // Duplicate gate, after the role gate: a posting the role gate
             // rejected never gets here, so a rejection is explained once as a
-            // rejection and never as a twin. The twin is recorded (nothing is
-            // ever deleted) with the winner's hash as its reason, and gets no
-            // SEEKING and no evaluation, so it can never be applied.
+            // rejection and never as a twin.
             if (ownerHash) {
-              // Once-per-posting signal, and the only side effects ride it: a
-              // twin that is already recorded as suppressed has nothing new to
-              // explain (the reason write costs a statement per duplicate per
-              // sweep) and nothing new to count.
+              // Only a posting that is still in the feed is suppressed (see
+              // SUPPRESSIBLE_STATES). Anything else — already scored out,
+              // already filtered, already applied, already suppressed — is left
+              // alone: there is no opening left to protect, and its state is
+              // worth more than a duplicate marker. Costs no write at all.
+              if (own && !SUPPRESSIBLE_STATES.has(own.state)) continue;
               const reason = `duplicate of ${ownerHash}`;
-              const firstTime = own?.state !== "DUPLICATE";
-              await upsertJob(db, row, {
-                state: "DUPLICATE", role_fingerprint: fp,
-                ...(firstTime ? { detail: reason } : {}),
-              });
-              if (firstTime) {
+              await upsertJob(db, row, { state: "DUPLICATE", detail: reason, role_fingerprint: fp });
+              if (own) {
                 // The jobs upsert never touches state, so a posting that was
                 // already in the feed when the gate found it (every row that
                 // predates the deploy) has to be moved out of it explicitly.
-                // Counting a suppression we do not perform would inflate the
-                // duplicate count with rows that are still in the feed.
-                if (own) await setJobState(db, hash, "DUPLICATE", reason);
-                // Stored first, counted second: a counter failure must not cost
-                // the posting.
-                try {
-                  await bumpCounter(db, "duplicate_suppressed");
-                } catch (e) {
-                  console.log(`duplicate_suppressed counter failed: ${String(e).slice(0, 120)}`);
-                }
+                await setJobState(db, hash, "DUPLICATE", reason);
+                // Demoted out of the owner set. Two live rows can share one
+                // fingerprint (the backfill can create that), and without this
+                // the second would find the first still listed and demote it
+                // too: one requisition losing both postings, counted twice.
+                owners.get(fp)?.delete(hash);
+              }
+              // Counted on the transition only — stored and moved first, so a
+              // counter failure must not cost the posting.
+              try {
+                await bumpCounter(db, "duplicate_suppressed");
+              } catch (e) {
+                console.log(`duplicate_suppressed counter failed: ${String(e).slice(0, 120)}`);
               }
               continue;
             }

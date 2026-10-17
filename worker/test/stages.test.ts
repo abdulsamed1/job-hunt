@@ -735,6 +735,96 @@ describe("queue lifecycle events", () => {
     }
   });
 
+  it("suppresses only one of two live postings that share a requisition", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // Two live rows carrying one fingerprint -- a state the backfill can create.
+    // Both are offered in one batch, so the first must be demoted out of the
+    // owner set: otherwise the second finds it and demotes it back, and one
+    // requisition loses both postings and two suppressions.
+    const twinUrl = "https://boards.greenhouse.io/acme/jobs/2";
+    const first = canonicalHash(normalizeUrl(GH_URL));
+    const second = canonicalHash(normalizeUrl(twinUrl));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, ghBody([
+      { id: GH_JOB, title: "Backend Engineer", url: GH_URL, location: "Remote" },
+      { id: 2, title: "Backend Engineer", url: twinUrl, location: "Remote" },
+    ]));
+    try {
+      const { db, jobs, counters } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({ canonical_hash: first, url: GH_URL, state: "DISCOVERED", role_fingerprint: REQ_FP }),
+          storedJob({ canonical_hash: second, url: twinUrl, state: "DISCOVERED", role_fingerprint: REQ_FP }),
+        ],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: ghMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(first)?.state).toBe("DUPLICATE");
+      // The survivor keeps the requisition: it is stored, scored and announced.
+      expect(jobs.get(second)?.state).toBe("DISCOVERED");
+      expect(counters.get("duplicate_suppressed")).toBe(1);
+      expect(q.EVALUATE_Q.sent.map((m: any) => m.hash)).toEqual([second]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("never relabels a posting that is already on its way to the employer", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The twin is already TAILORED: its state is the honest history of an
+    // application, and relabelling it DUPLICATE would also rewrite its
+    // evaluation to score 0.
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([LV_TWIN]));
+    try {
+      const { db, jobs, statements, counters } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({ canonical_hash: canonicalHash(normalizeUrl(GH_URL)), url: GH_URL, state: "DISCOVERED", role_fingerprint: REQ_FP }),
+          storedJob({ canonical_hash: twin, url: LV_URL, state: "TAILORED", role_fingerprint: REQ_FP }),
+        ],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(twin)?.state).toBe("TAILORED");
+      // No relabelling, no rewritten score, no count for a posting that was
+      // never in the feed twice.
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO evaluations"))).toHaveLength(0);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO audit_log"))).toHaveLength(0);
+      expect(counters.get("duplicate_suppressed")).toBeUndefined();
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not count a twin whose row was already off the feed", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // A scored-out twin: REJECTED already keeps it out of the feed, and that
+    // state is the verdict worth keeping. Relabelling it would destroy the
+    // verdict, and counting it would inflate a counter that reads as "postings
+    // kept out of the feed".
+    const twin = canonicalHash(normalizeUrl(LV_URL));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, lvBody([LV_TWIN]));
+    try {
+      const { db, jobs, statements, counters } = memQueueDb({
+        upsertChanges: 1,
+        seedJobs: [
+          storedJob({ canonical_hash: canonicalHash(normalizeUrl(GH_URL)), url: GH_URL, state: "DISCOVERED", role_fingerprint: REQ_FP }),
+          storedJob({ canonical_hash: twin, url: LV_URL, state: "REJECTED", role_fingerprint: REQ_FP }),
+        ],
+      });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: lvMsg }] } as any, queueEnv(db, q));
+      expect(jobs.get(twin)?.state).toBe("REJECTED");
+      expect(counters.get("duplicate_suppressed")).toBeUndefined();
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO evaluations"))).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
   it("keeps a suppressed twin suppressed when its own fingerprint drifts", async () => {
     const { default: worker } = await import("../src/index.js");
     // The board edited the title, so the twin's fingerprint no longer matches
