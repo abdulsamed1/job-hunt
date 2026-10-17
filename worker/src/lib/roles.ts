@@ -31,11 +31,13 @@ interface Match {
 }
 
 /** Lowercase with punctuation flattened to spaces, whitespace collapsed. Dots stay
- *  inside words so "node.js" survives as one token; edge dots ("Sr.") are dropped. */
+ *  inside words so "node.js" survives as one token; edge dots ("Sr.") are dropped.
+ *  Letters, marks and digits of any script survive — this feed reads MENA, Egypt
+ *  and India boards, so an accented title must keep its words. */
 function normalizeWords(title: string): string[] {
   return String(title ?? "")
     .toLowerCase()
-    .replace(/[^a-z0-9.]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}.]+/gu, " ")
     .split(" ")
     .map((w) => w.replace(/^\.+|\.+$/g, ""))
     .filter(Boolean);
@@ -60,6 +62,11 @@ function collectMatches(norm: string, prefix: string, rules: Rule[]): Match[] {
   return matches;
 }
 
+/** Any word of a family present. */
+function hasFamilyMatch(norm: string, rules: Rule[]): boolean {
+  return rules.some((rule) => rule.words.some((word) => hasWord(norm, word)));
+}
+
 /** Most specific match wins: the longest matched word, first listed on a tie. A
  *  titled specialist beats a generic label, so "Marketing Manager" is marketing
  *  and "Customer Success Manager" is customer success, while "Senior Manager,
@@ -75,8 +82,8 @@ function mostSpecific(matches: Match[]): Match | null {
 // (1) IC allow, checked first: seniority that marks individual-contributor work.
 // "lead engineer" is matched as written so "Team Lead, Backend Engineering" stays
 // a reject. A bare seniority marker only counts when the title also names
-// engineering work, so "Senior Manager" and "Senior Salesforce Developer" fall
-// through to the reject families instead of being rescued by the prefix.
+// engineering work, and never once a people-management word is present — see
+// the IC branch in classifyRole.
 const IC_PHRASES = ["lead engineer", "lead software engineer"];
 const SENIORITY = ["staff", "principal", "senior", "sr"];
 const ENGINEERING_NOUNS = ["engineer", "engineers", "engineering"];
@@ -167,7 +174,12 @@ export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): Rol
   const norm = words.join(" ");
   const wordSet = new Set(words);
 
-  if (isIcRole(norm, wordSet)) return { verdict: "software", rule: "software:ic" };
+  // The IC branch runs first, but management outranks seniority: "Senior
+  // Engineering Manager" and "Principal Engineering Manager" are manager roles,
+  // so a people-management word makes the IC branch stand aside.
+  if (!hasFamilyMatch(norm, PEOPLE_MANAGEMENT) && isIcRole(norm, wordSet)) {
+    return { verdict: "software", rule: "software:ic" };
+  }
 
   const rejects: Match[] = [];
   for (const family of REJECT_FAMILIES) rejects.push(...collectMatches(norm, family.prefix, family.rules));

@@ -9,6 +9,10 @@ const REJECTS: Array<[string, string]> = [
   ["Director of Software Engineering - Distributed Systems", "people-management:director"],
   ["VP of Engineering", "people-management:vp"],
   ["Deputy Department Manager, PRE Division Product SRE", "people-management:manager"],
+  ["Senior Engineering Manager", "people-management:manager"],
+  ["Sr Manager, Engineering", "people-management:manager"],
+  ["Principal Engineering Manager", "people-management:manager"],
+  ["Staff Engineering Manager, Platform", "people-management:manager"],
   ["Account Executive, EMEA", "revenue:account executive"],
   ["Sales Development Representative", "revenue:sales development"],
   ["Marketing Manager", "revenue:marketing"],
@@ -56,16 +60,35 @@ describe("classifyRole", () => {
     expect(classifyRole(title).rule.startsWith("crm:")).toBe(true);
   });
   it("allows CRM roles when rejectCrm is off", () => {
-    expect(classifyRole("Senior Salesforce Developer", { rejectCrm: false }).verdict).not.toBe("reject");
+    expect(classifyRole("Salesforce Developer, Python")).toEqual({ verdict: "reject", rule: "crm:salesforce" });
+    expect(classifyRole("Salesforce Developer, Python", { rejectCrm: false })).toEqual({
+      verdict: "software",
+      rule: "software:stack",
+    });
+    expect(classifyRole("Senior Salesforce Developer", { rejectCrm: false })).toEqual({
+      verdict: "unknown",
+      rule: "unknown:none",
+    });
   });
-  it("prefers the IC allow over a reject word (allow-first ordering)", () => {
+  it("prefers the IC allow over a reject word, except management titles", () => {
     expect(classifyRole("Lead Software Engineer").verdict).toBe("software");
     expect(classifyRole("Engineering Lead, Software").verdict).toBe("software");
+    expect(classifyRole("Staff Engineer, Sales Tools").verdict).toBe("software");
+    expect(classifyRole("Lead Engineering Manager").verdict).toBe("reject");
     expect(classifyRole("Team Lead, Backend Engineering").verdict).toBe("reject");
   });
   it("returns unknown for titles with no signal", () => {
     expect(classifyRole("")).toEqual({ verdict: "unknown", rule: "unknown:none" });
     expect(classifyRole("Data Scientist").verdict).toBe("unknown");
     expect(classifyRole("Guru of spreadsheets").verdict).toBe("unknown");
+  });
+  it("needs more than a single signal word", () => {
+    expect(classifyRole("JavaScript")).toEqual({ verdict: "unknown", rule: "unknown:none" }); // no build role
+    expect(classifyRole("Sr. Developer")).toEqual({ verdict: "unknown", rule: "unknown:none" }); // no engineering noun
+    expect(classifyRole("Salesforce")).toEqual({ verdict: "unknown", rule: "unknown:none" }); // no CRM companion
+  });
+  it("normalizes accented and non-latin titles", () => {
+    expect(classifyRole("Ingénieur DevOps")).toEqual({ verdict: "software", rule: "software:devops" });
+    expect(classifyRole("مهندس DevOps")).toEqual({ verdict: "software", rule: "software:devops" });
   });
 });
