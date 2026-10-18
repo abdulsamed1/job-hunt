@@ -352,3 +352,46 @@ def test_disability_bare_program_fails(engine, candidate):
     assert result.pre_filtered is True
     assert result.eligible is False
     assert "disabilit" in (result.pre_filter_reason or result.reasoning).lower()
+
+
+@pytest.mark.parametrize("title", [
+    "Senior Manager, Application Security",
+    "Engineering Team Lead, Platform",
+    "Director of Software Engineering - Distributed Systems",
+    "Head of Engineering",
+    "Account Executive, EMEA",
+    "Marketing Manager",
+])
+def test_pre_filter_rejects_non_ic_roles(engine, candidate, title):
+    job = JobPosting(
+        source="test", title=title, company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is False
+
+
+@pytest.mark.parametrize("title", ["Lead Software Engineer", "Staff Engineer, Platform",
+                                   "Forward Deployed Engineer", "Senior Software Engineer"])
+def test_pre_filter_keeps_ic_titles(engine, candidate, title):
+    job = JobPosting(
+        source="test", title=title, company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is True
+
+
+def test_pre_filter_allows_ic_title_before_checking_negatives(engine, candidate):
+    job = JobPosting(
+        source="test", title="Staff Engineer, Sales Tools", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is True

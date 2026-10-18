@@ -67,10 +67,10 @@ def test_role_normalization():
 
 
 def test_location_normalization():
-    assert normalize_location("Remote, US") == "remote us"
-    assert normalize_location("Remote - Worldwide") == "remote global"
+    assert normalize_location("Remote, US") == "remote"
+    assert normalize_location("Remote - Worldwide") == "remote"
     assert normalize_location("San Francisco, CA") == "san francisco ca"
-    assert normalize_location("") == "unknown"
+    assert normalize_location("") == "?"
 
 
 def test_role_fingerprint():
@@ -78,6 +78,14 @@ def test_role_fingerprint():
     fp1 = compute_role_fingerprint("Stripe Inc.", "Sr. Software Engineer", "Remote, US")
     fp2 = compute_role_fingerprint("Stripe", "Senior Software Engineer", "Remote (US)")
     assert fp1 == fp2
+
+
+def test_role_fingerprint_collapses_remote_synonyms():
+    fp1 = compute_role_fingerprint("Acme", "Backend Engineer", "Remote, US")
+    fp2 = compute_role_fingerprint("Acme", "Backend Engineer", "United States")
+    assert fp1 == fp2
+    fp3 = compute_role_fingerprint("Acme", "Backend Engineer", "")
+    assert fp3 != fp1
 
 
 def test_content_hashing():

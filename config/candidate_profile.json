@@ -221,6 +221,7 @@
   },
   "open_to_remote": true,
   "remote_only": false,
+  "reject_crm_roles": true,
   "target_locations": [
     "Remote",
     "Worldwide",

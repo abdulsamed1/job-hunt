@@ -193,33 +193,35 @@ def normalize_role(title: Optional[str]) -> str:
     return re.sub(r"\s+", " ", joined).strip()
 
 
+# Remote location synonyms that all name the same thing: work not tied to a place.
+REMOTE_LOCATION_WORDS = {
+    "remote", "anywhere", "worldwide", "wfh", "work", "from", "home",
+    "distributed", "telecommute", "united", "states", "us", "usa", "global",
+}
+
+
 def normalize_location(location: Optional[str]) -> str:
-    """Normalize location string, standardizing remote representations."""
+    """Normalize location string, standardizing remote representations.
+
+    Mirrors worker/src/lib/hash.ts normalizeLocation: lowercase, collapse
+    punctuation/whitespace, map remote synonyms to ``remote``, empty/unknown to ``?``.
+    """
     if not location or not isinstance(location, str):
-        return "unknown"
+        return "?"
 
     text = location.strip().lower()
     if not text:
-        return "unknown"
+        return "?"
 
-    # Replace punctuation with space
-    text = re.sub(r"[^\w\s]", " ", text)
-    tokens = text.split()
-    text = " ".join(tokens)
+    # Collapse punctuation/whitespace to single spaces.
+    tokens = re.sub(r"[^a-z0-9]+", " ", text).split()
+    if not tokens:
+        return "?"
 
-    # Common remote variations
-    if "remote" in text:
-        if any(term in text for term in ("us", "usa", "united states")):
-            return "remote us"
-        if any(term in text for term in ("eu", "europe")):
-            return "remote eu"
-        if any(term in text for term in ("uk", "united kingdom")):
-            return "remote uk"
-        if any(term in text for term in ("worldwide", "global", "anywhere")):
-            return "remote global"
+    if all(tok in REMOTE_LOCATION_WORDS for tok in tokens):
         return "remote"
 
-    return text
+    return " ".join(tokens)
 
 
 def clean_content_text(content: Optional[str]) -> str:

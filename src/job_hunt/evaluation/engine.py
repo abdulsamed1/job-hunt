@@ -11,6 +11,26 @@ from job_hunt.models import CandidateProfile, EvaluationResult, JobPosting
 
 logger = logging.getLogger(__name__)
 
+# IC allow list: seniority that marks individual-contributor work. Checked before
+# the reject families so "Lead Software Engineer" survives while "Team Lead" does not.
+IC_ALLOW_PATTERNS = [
+    re.compile(r"\blead\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\blead\s+software\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\b(?:staff|principal|senior|sr\.?)\b.*\b(?:engineer|engineering)\b", re.IGNORECASE),
+]
+
+# People-management words: when present the IC allow stands aside.
+PEOPLE_MANAGEMENT_PATTERNS = [
+    re.compile(r"\bmanager\b", re.IGNORECASE),
+    re.compile(r"\bteam\s+lead\b", re.IGNORECASE),
+    re.compile(r"\bgroup\s+lead\b", re.IGNORECASE),
+    re.compile(r"\bhead\s+of\b", re.IGNORECASE),
+    re.compile(r"\bdirector\b", re.IGNORECASE),
+    re.compile(r"\bvp\b", re.IGNORECASE),
+    re.compile(r"\bchief\b", re.IGNORECASE),
+    re.compile(r"\bsupervisor\b", re.IGNORECASE),
+]
+
 # Positive role patterns for Software Engineer & related roles
 SWE_ROLE_PATTERNS = [
     re.compile(r"\bsoftware\s+(?:engineer|developer)\b", re.IGNORECASE),
@@ -23,32 +43,69 @@ SWE_ROLE_PATTERNS = [
     re.compile(r"\bsite\s+reliability\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bsre\b", re.IGNORECASE),
     re.compile(r"\bdistributed\s+systems\b", re.IGNORECASE),
+    re.compile(r"\bforward\s+deployed\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\bsecurity\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bcloud\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bdevops\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bml\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bmachine\s+learning\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bdata\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bpython\s+(?:engineer|developer)\b", re.IGNORECASE),
+    re.compile(r"\bsoftware\b", re.IGNORECASE),
+    re.compile(r"\bbackend\b", re.IGNORECASE),
+    re.compile(r"\bfrontend\b", re.IGNORECASE),
+    re.compile(r"\bfront\s+end\b", re.IGNORECASE),
+    re.compile(r"\bfull\s+stack\b", re.IGNORECASE),
+    re.compile(r"\bdevops\b", re.IGNORECASE),
+    re.compile(r"\binfrastructure\b", re.IGNORECASE),
+    re.compile(r"\bmobile\b", re.IGNORECASE),
+    re.compile(r"\bios\b", re.IGNORECASE),
+    re.compile(r"\bandroid\b", re.IGNORECASE),
+    re.compile(r"\bqa\b", re.IGNORECASE),
+    re.compile(r"\bsdet\b", re.IGNORECASE),
+    re.compile(r"\btest\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\bembedded\b", re.IGNORECASE),
+    re.compile(r"\bfirmware\b", re.IGNORECASE),
+    re.compile(r"\b(?:nodejs|node\.js|typescript|react|reactjs|javascript|python|golang|rust|java)\b.*\b(?:engineer|developer|engineering)\b", re.IGNORECASE),
+    re.compile(r"\b(?:engineer|developer|engineering)\b.*\b(?:nodejs|node\.js|typescript|react|reactjs|javascript|python|golang|rust|java)\b", re.IGNORECASE),
 ]
 
-# Negative patterns: non-engineering or out-of-scope roles
+# Negative patterns: non-engineering or out-of-scope roles. Grouped by family to
+# mirror worker/src/lib/roles.ts (people-management, revenue, non-engineering).
 NEGATIVE_ROLE_PATTERNS = [
-    re.compile(r"\bmarketing\b", re.IGNORECASE),
+    # people management
+    re.compile(r"\bmanager\b", re.IGNORECASE),
+    re.compile(r"\bteam\s+lead\b", re.IGNORECASE),
+    re.compile(r"\bgroup\s+lead\b", re.IGNORECASE),
+    re.compile(r"\bhead\s+of\b", re.IGNORECASE),
+    re.compile(r"\bdirector\b", re.IGNORECASE),
+    re.compile(r"\bvp\b", re.IGNORECASE),
+    re.compile(r"\bchief\b", re.IGNORECASE),
+    re.compile(r"\bsupervisor\b", re.IGNORECASE),
+    # revenue
     re.compile(r"\bsales\b", re.IGNORECASE),
+    re.compile(r"\bsales\s+development\b", re.IGNORECASE),
+    re.compile(r"\bbusiness\s+development\b", re.IGNORECASE),
+    re.compile(r"\baccount\s+executive\b", re.IGNORECASE),
+    re.compile(r"\baccount\s+manager\b", re.IGNORECASE),
+    re.compile(r"\bmarketing\b", re.IGNORECASE),
+    re.compile(r"\bpartner\b", re.IGNORECASE),
+    re.compile(r"\bcustomer\s+success\b", re.IGNORECASE),
+    re.compile(r"\bcustomer\s+support\b", re.IGNORECASE),
+    # non-engineering
     re.compile(r"\brecruiter\b", re.IGNORECASE),
     re.compile(r"\btalent\s+acquisition\b", re.IGNORECASE),
     re.compile(r"\bhuman\s+resources\b", re.IGNORECASE),
-    re.compile(r"\baccount\s+executive\b", re.IGNORECASE),
     re.compile(r"\baccountant\b", re.IGNORECASE),
     re.compile(r"\bfinance\b", re.IGNORECASE),
     re.compile(r"\blegal\b", re.IGNORECASE),
     re.compile(r"\bnurse\b", re.IGNORECASE),
     re.compile(r"\bmedical\b", re.IGNORECASE),
     re.compile(r"\bdriver\b", re.IGNORECASE),
-    re.compile(r"\bcustomer\s+support\b", re.IGNORECASE),
     re.compile(r"\bcontent\s+writer\b", re.IGNORECASE),
     re.compile(r"\bgraphic\s+designer\b", re.IGNORECASE),
     re.compile(r"\bintern(?:ship)?\b", re.IGNORECASE),
+    re.compile(r"\bproduct\s+manager\b", re.IGNORECASE),
 ]
 
 CLEARANCE_PATTERNS = [
@@ -365,15 +422,28 @@ class EvaluationEngine:
                 if bk and bk.lower() in desc_lower:
                     return False, f"Blocked keyword in posting: {bk}"
 
-        # Check negative role patterns
-        for neg_pat in NEGATIVE_ROLE_PATTERNS:
-            if neg_pat.search(title):
-                return False, f"Title matches negative filter: {neg_pat.pattern}"
+        # IC allow list runs before the reject families (allow-first ordering).
+        reject_crm = getattr(profile, "reject_crm_roles", True)
+        is_ic = (not any(p.search(title) for p in PEOPLE_MANAGEMENT_PATTERNS)) and any(
+            p.search(title) for p in IC_ALLOW_PATTERNS
+        )
 
-        # Check positive SWE role patterns
-        matched_swe = any(pos_pat.search(title) for pos_pat in SWE_ROLE_PATTERNS)
-        if not matched_swe:
-            return False, "Title does not match targeted Software Engineer roles"
+        if not is_ic:
+            # Check negative role patterns
+            for neg_pat in NEGATIVE_ROLE_PATTERNS:
+                if neg_pat.search(title):
+                    return False, f"Title matches negative filter: {neg_pat.pattern}"
+
+            # CRM reject (only when reject_crm is on): salesforce + a companion.
+            if reject_crm and re.search(r"\bsalesforce\b", title, re.IGNORECASE):
+                companions = ("consultant", "architect", "administrator", "analyst", "developer")
+                if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in companions):
+                    return False, "Title matches negative filter: crm:salesforce"
+
+            # Check positive SWE role patterns
+            matched_swe = any(pos_pat.search(title) for pos_pat in SWE_ROLE_PATTERNS)
+            if not matched_swe:
+                return False, "Title does not match targeted Software Engineer roles"
 
         # Check clearance requirements in description
         desc = job.description or ""
