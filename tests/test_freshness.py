@@ -75,3 +75,22 @@ def test_filter_remote_keeps_unknown_drops_onsite():
     ]
     kept = filter_remote(jobs)
     assert len(kept) == 2
+
+
+def test_no_configured_source_exceeds_24h():
+    from pathlib import Path
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    cfg = yaml.safe_load((root / "config" / "sources.yaml").read_text()) or {}
+    sources = cfg.get("sources") or []
+    offenders = []
+    for s in sources:
+        if not isinstance(s, dict):
+            continue
+        ho = s.get("hours_old")
+        if ho is None:
+            continue
+        if ho > 24:
+            offenders.append((s.get("name"), ho))
+    assert not offenders, f"sources exceed 24h: {offenders}"

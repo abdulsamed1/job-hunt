@@ -59,7 +59,7 @@ from job_hunt import orchestrator as orch_mod
 import inspect
 
 
-def test_twelve_hour_defaults():
+def test_twenty_four_hour_defaults():
     p = build_parser()
     assert p.parse_args(["scan"]).hours_old == 12
     assert p.parse_args(["run", "--once"]).hours_old == 12

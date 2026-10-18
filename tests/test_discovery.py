@@ -861,3 +861,36 @@ def test_feed_parser_tolerates_preamble_junk():
     assert len(postings) == 1
     assert postings[0].title == "Backend Engineer"
     assert postings[0].company == "Acme"
+
+
+@pytest.mark.asyncio
+async def test_discovery_clamps_per_source_hours_old_to_24(tmp_path):
+    from job_hunt.orchestrator import PipelineOrchestrator
+    from job_hunt.storage import Storage
+
+    db_file = tmp_path / "disc_clamp.db"
+    storage = Storage(db_file)
+    orch = PipelineOrchestrator(storage=storage, db_path=str(db_file), use_llm=False)
+
+    captured = {}
+
+    class StubRegistry:
+        def load_sources_file(self, path):
+            return [
+                {"adapter": "test", "name": "high", "url": "https://example.com/h", "hours_old": 72},
+                {"adapter": "test", "name": "missing", "url": "https://example.com/m"},
+                {"adapter": "test", "name": "disabled", "url": "https://example.com/d", "hours_old": 0},
+            ]
+
+        async def discover_all(self, sources=None, **kwargs):
+            captured["sources"] = [dict(s) for s in (sources or [])]
+            return []
+
+    orch.registry = StubRegistry()
+    # Caller window 0 (disabled) must not be promoted to 24 for missing entries.
+    await orch.run_discovery_stage(hours_old=0)
+
+    by_name = {s["name"]: s for s in captured["sources"]}
+    assert by_name["high"]["hours_old"] == 24
+    assert "hours_old" not in by_name["missing"]
+    assert by_name["disabled"]["hours_old"] == 0
