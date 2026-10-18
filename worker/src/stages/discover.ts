@@ -1,10 +1,11 @@
 // The discover stage: one queue message, one source. Fetch it, keep the fresh
-// remote postings, resolve which requisition is already owned in one batched
-// read, store every posting once behind the role and duplicate gates, and queue
-// the ones that reach the feed for evaluation. No browser anywhere here, and no
-// module-level mutable state: the queue handler runs messages concurrently
-// through ctx.waitUntil, so every run builds its own state from the message, db
-// and env it is handed.
+// remote postings inside the 24h window and under a per-source intake cap,
+// store dateless ones for the record, resolve which requisition is already
+// owned in one batched read, store every posting once behind the role and
+// duplicate gates, and queue the ones that reach the feed for evaluation. No
+// browser anywhere here, and no module-level mutable state: the queue handler
+// runs messages concurrently through ctx.waitUntil, so every run builds its own
+// state from the message, db and env it is handed.
 
 import { fetchArbeitnow, fetchBdJobs, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "../adapters/boards.js";
 import { fetchRssFeed } from "../adapters/rss.js";
@@ -14,7 +15,7 @@ import type { RawJob } from "../adapters/http.js";
 import { canonicalHash, roleFingerprint } from "../lib/hash.js";
 import { boardUrlForDef, classifyHost } from "../lib/hosts.js";
 import { detectDegraded } from "../lib/health.js";
-import { filterRecentList, filterRemoteList, isRemoteish } from "../lib/freshness.js";
+import { filterRemoteList, HOURS_OLD, isRemoteish, parsePostedAt, partitionFresh } from "../lib/freshness.js";
 import { notifyEventOnce } from "../lib/notify.js";
 import { classifyRole } from "../lib/roles.js";
 import { bumpCounter, findKnownJobs, recordSourceHealth, setJobState, upsertJob, type Db } from "../state.js";
@@ -30,6 +31,15 @@ export interface QueueMessage {
 export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
 }
+
+/** Postings one source may contribute per run. Recency orders them, so what is
+ *  held back is the oldest of a chatty board, not a random slice. */
+const INTAKE_CAP = 30;
+
+/** Why a dateless posting is parked. One vocabulary, shared by the discover
+ *  drop and the apply-time re-gate (see index.ts), so a row explains itself the
+ *  same way whichever stage parked it. */
+export const NO_DATE_DETAIL = "no posting date";
 
 /**
  * Queue guard: fail closed on spoofed ATS hosts AND smuggled orgs/URLs. ATS
@@ -182,18 +192,38 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     healthRecorded = true;
     throw e;
   }
-  const fresh = filterRecentList(
+  // Split, don't filter: a dateless posting is stored for the record and
+  // counted (Decision 4) rather than reaching the feed, and a provably-stale
+  // one is simply never stored. `stale` needs no handling beyond that.
+  const { fresh, dateless } = partitionFresh(
     jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
-    12,
+    HOURS_OLD,
   );
   const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
   const now = new Date().toISOString();
+  // One chatty board cannot fill the run: at most INTAKE_CAP postings per
+  // source reach the store, newest first. Without it a single aggregator
+  // decides what the day's feed looks like and the other sources are never
+  // read. The held-back postings are counted, not silently dropped — that
+  // count is what says a board is being throttled.
+  const kept = [...remote].sort((a, b) => (parsePostedAt(b.posted_at) ?? 0) - (parsePostedAt(a.posted_at) ?? 0)).slice(0, INTAKE_CAP);
+  const heldBack = remote.length - kept.length;
+  if (heldBack > 0) {
+    try {
+      await bumpCounter(db, "intake_capped", heldBack);
+    } catch (e) {
+      console.log(`intake_capped counter failed: ${String(e).slice(0, 120)}`);
+    }
+  }
   // Board APIs omit descriptions; enrich the few survivors so scoring
   // has real evidence instead of a title-only string.
-  const enriched = await enrichDescriptions(remote.slice(0, 40));
+  const enriched = await enrichDescriptions(kept);
   const degraded = detectDegraded(remote, m.def.url || "", m.def.kind || "");
   if (!healthRecorded) {
-    await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, remote.length, "", degraded);
+    // raw stays the board's own count: coverage measures what the source
+    // answered, not what the window let through. kept is what this run could
+    // actually contribute — post-cap, so the two never disagree.
+    await recordSourceHealth(db, m.def.name, m.def.kind || "", jobs.length, kept.length, "", degraded);
     healthRecorded = true;
   }
   // One application per requisition: identity today is the canonical
@@ -207,8 +237,18 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     hash: canonicalHash(j.url),
     fp: roleFingerprint(j.company, j.title, j.location),
   }));
+  const datelessPostings = dateless.map((j) => ({
+    job: j,
+    hash: canonicalHash(j.url),
+    fp: roleFingerprint(j.company, j.title, j.location),
+  }));
+  // One batched read covers both lists: the dateless rows are looked up for the
+  // same reason the fresh ones are — a row the store already decided must not
+  // be relabelled by this stage.
   const known = await findKnownJobs(
-    db, postings.map((p) => p.hash), postings.map((p) => p.fp),
+    db,
+    [...postings, ...datelessPostings].map((p) => p.hash),
+    [...postings, ...datelessPostings].map((p) => p.fp),
   );
   // Fingerprint -> the canonical hashes that own the requisition.
   // Ownership is bounded: only a posting that can still be applied
@@ -222,6 +262,34 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     if (!row.role_fingerprint || !OWNER_STATES.has(row.state)) continue;
     if (!(Date.parse(row.discovered_at) >= ownerCutoff)) continue;
     noteFingerprint(owners, row.role_fingerprint, row.canonical_hash);
+  }
+  // Dateless postings first: stored once, parked out of the feed, counted, and
+  // never announced. Nothing downstream can reach them — no queue message, no
+  // evaluate message, no SEEKING, no apply — so the owner's only evidence is
+  // the counter. The count rides `outcome.recorded` (the reason write), not the
+  // jobs upsert: a dateless row's posted_at stays empty forever, so its upsert
+  // reports "materially improved" on every sweep and would count one posting
+  // once per source per day.
+  for (const { job: j, hash, fp } of datelessPostings) {
+    const own = known.get(hash);
+    if (own && !GATEABLE_STATES.has(own.state)) continue;
+    const row = {
+      canonical_hash: hash, title: (j.title || "").slice(0, 200),
+      company: (j.company || "").slice(0, 120), location: (j.location || "").slice(0, 120),
+      url: (j.url || "").slice(0, 500), description: (j.desc || "").slice(0, 4000),
+      source: j.source, posted_at: "", discovered_at: now, score: 0,
+      remote: isRemoteish(j.location, j.desc),
+    };
+    // stored first, counted second: a counter failure must never cost the row.
+    const outcome = { recorded: false };
+    await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: NO_DATE_DETAIL, role_fingerprint: fp, outcome });
+    if (outcome.recorded) {
+      try {
+        await bumpCounter(db, "dateless_dropped");
+      } catch (e) {
+        console.log(`dateless_dropped counter failed: ${String(e).slice(0, 120)}`);
+      }
+    }
   }
   for (const { job: j, hash, fp } of postings) {
     // The row the store already holds under this posting's own URL is
@@ -237,7 +305,12 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
       source: j.source, posted_at: (j.posted_at || "").slice(0, 40),
       discovered_at: now, score: 0, remote: isRemoteish(j.location, j.desc),
     };
-    const alert = { title: j.title, company: j.company, url: j.url };
+    // The alert carries the board and the posting's own age, so a feed that
+    // quietly drifts older than a day is visible at a glance.
+    const alert = {
+      title: j.title, company: j.company, url: j.url,
+      source: j.source, posted_at: j.posted_at,
+    };
     // Both gates act only on postings whose outcome is still open (see
     // GATEABLE_STATES). A row the store has already decided is left
     // exactly as it is: there is no opening left to protect, and its

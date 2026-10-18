@@ -165,7 +165,7 @@ def main() -> int:
             warnings.append(msg)
             rows.append((name, "inconclusive" if probe.get("inconclusive") else "empty", (probe.get("error") or "")[:60]))
         else:
-            rows.append((name, f"raw={probe.get('raw')} fresh={probe.get('fresh_12h')} remote={probe.get('remote_fresh')}", ""))
+            rows.append((name, f"raw={probe.get('raw')} fresh={probe.get('fresh_24h')} remote={probe.get('remote_fresh')}", ""))
 
     print("\nprobe results:")
     for name, res, extra in rows:

@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { canonicalHash, fnv1a, normalizeLocation, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
-import { filterRemoteList, filterRecentList, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt } from "../src/lib/freshness.js";
+import { filterRemoteList, filterRecentList, HOURS_OLD, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt, partitionFresh } from "../src/lib/freshness.js";
 import { checkDisabilityTargetingGate, checkEligibilityGate, checkLanguageGate, classifyTier, scoreJob, type Profile } from "../src/lib/evaluate.js";
 import { checkboxAction, matchAnswerToOption } from "../src/lib/match.js";
 
@@ -117,6 +117,52 @@ describe("freshness", () => {
   it("list filters drop only provable cases", () => {
     expect(filterRecentList([{ posted_at: null }], 24)).toHaveLength(1);
     expect(filterRemoteList([{ location: "", description: "" }])).toHaveLength(1);
+  });
+});
+
+describe("partitionFresh", () => {
+  it("splits postings into fresh, stale and dateless", () => {
+    const { fresh, stale, dateless } = partitionFresh(
+      [{ posted_at: new Date(Date.now() - 3600e3).toISOString() },
+        { posted_at: new Date(Date.now() - 48 * 3600e3).toISOString() },
+        { posted_at: "" }], 24,
+    );
+    expect(fresh).toHaveLength(1); expect(stale).toHaveLength(1); expect(dateless).toHaveLength(1);
+  });
+
+  it("never calls an undated posting fresh, whatever the window", () => {
+    // A dateless posting is its own bucket: the window cannot vouch for it, and
+    // a disabled window (hours_old: 0, manual runs only) must not either.
+    const now = new Date().toISOString();
+    for (const hoursOld of [24, 0]) {
+      const { fresh, stale, dateless } = partitionFresh(
+        [{ posted_at: "" }, { posted_at: now }, { posted_at: "2020-01-01" }], hoursOld,
+      );
+      expect(dateless).toHaveLength(1);
+      expect(fresh.every((p) => p.posted_at !== "")).toBe(true);
+      expect(fresh.some((p) => p.posted_at === now)).toBe(true);
+      // A disabled window keeps everything dated, stale included.
+      expect(stale).toHaveLength(hoursOld > 0 ? 1 : 0);
+    }
+  });
+
+  it("keeps the input order inside every bucket", () => {
+    const postings = [
+      { posted_at: new Date(Date.now() - 3 * 3600e3).toISOString(), url: "a" },
+      { posted_at: new Date(Date.now() - 30 * 3600e3).toISOString(), url: "b" },
+      { posted_at: new Date(Date.now() - 1 * 3600e3).toISOString(), url: "c" },
+    ];
+    const { fresh, stale } = partitionFresh(postings, HOURS_OLD);
+    expect(fresh.map((p) => p.url)).toEqual(["a", "c"]);
+    expect(stale.map((p) => p.url)).toEqual(["b"]);
+  });
+
+  it("reads the window from one named constant", () => {
+    // The Worker's window is 24h everywhere: a 12h window would silently drop
+    // every posting that lands 13-24h before the daily deep sweep.
+    expect(HOURS_OLD).toBe(24);
+    expect(partitionFresh([{ posted_at: new Date(Date.now() - 20 * 3600e3).toISOString() }], HOURS_OLD).fresh).toHaveLength(1);
+    expect(partitionFresh([{ posted_at: new Date(Date.now() - 20 * 3600e3).toISOString() }], 12).stale).toHaveLength(1);
   });
 });
 

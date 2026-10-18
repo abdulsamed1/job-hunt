@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alert, formatJobAlert, notifyEventOnce } from "../src/lib/notify.js";
+import { alert, formatJobAlert, formatPostedAge, notifyEventOnce } from "../src/lib/notify.js";
 
 const ENV = { TELEGRAM_BOT_TOKEN: "tok", TELEGRAM_CHAT_ID: "123" };
 
@@ -230,6 +230,46 @@ describe("notifyEventOnce", () => {
       await expect(notifyEventOnce(db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("failed");
       expect(s.calls).toHaveLength(0);
     } finally { s.restore(); }
+  });
+});
+
+describe("formatJobAlert source and posted age", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("renders the source and posted age in the alert line", () => {
+    const t = formatJobAlert("worker", { ...ROW, source: "greenhouse:acme", posted_at: ago(3 * 3600e3) }, "SEEKING", "new posting");
+    expect(t.split("\n")[0]).toBe("[worker] SEEKING: Backend Engineer @ Acme · greenhouse:acme · 3h ago");
+    expect(t).toContain("https://x/1");
+  });
+
+  it("renders minutes inside the hour and days past a day", () => {
+    expect(formatPostedAge(ago(20 * 60e3))).toBe("20m ago");
+    expect(formatPostedAge(ago(3 * 3600e3))).toBe("3h ago");
+    expect(formatPostedAge(ago(50 * 3600e3))).toBe("2d ago");
+    // A board clock that runs ahead never renders a negative age.
+    expect(formatPostedAge(new Date(Date.now() + 3600e3).toISOString())).toBe("0m ago");
+  });
+
+  it("says date unknown rather than guessing an age", () => {
+    expect(formatPostedAge("")).toBe("date unknown");
+    expect(formatPostedAge(undefined)).toBe("date unknown");
+    expect(formatPostedAge("sometime last week")).toBe("date unknown");
+    expect(formatJobAlert("worker", { ...ROW, source: "rss:x" }, "ELIGIBLE", "ok")).toContain("date unknown");
+  });
+
+  it("never leaves a dangling separator when the row carries no source", () => {
+    expect(formatJobAlert("worker", { title: "T", company: "C" }, "FILTERED", "why").split("\n")[0])
+      .toBe("[worker] FILTERED: T @ C · date unknown");
+  });
+
+  it("keeps the whole alert bounded with a source and an age", () => {
+    const t = formatJobAlert(
+      "worker",
+      { title: "t".repeat(500), company: "c".repeat(500), source: "s".repeat(300), posted_at: ago(3600e3) },
+      "FAILED",
+      "d".repeat(5000),
+    );
+    expect(t.length).toBeLessThanOrEqual(3000);
   });
 });
 

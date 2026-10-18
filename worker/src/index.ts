@@ -15,13 +15,14 @@
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
-import { filterRecentList, filterRemoteList, isFresh, parsePostedAt } from "./lib/freshness.js";
+import { filterRecentList, filterRemoteList, HOURS_OLD, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
-import { discoverSource, linkedinEnabled, runDiscoverStage } from "./stages/discover.js";
+import { discoverSource, linkedinEnabled, NO_DATE_DETAIL, runDiscoverStage } from "./stages/discover.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
 import { ensureCounters, ensureNotificationEvents, ensureRoleFingerprint, ensureSettings, ensureSourceHealthColumns, getActionableJobs, getJobsByState, saveApplication, saveEvaluation, setJobState, type Db, type JobState } from "./state.js";
 import { currentPointer, handleTelegramUpdate } from "./lib/webhook.js";
+import { classifyRole } from "./lib/roles.js";
 
 // Stage behaviour, still exported from here: index is the module the source
 // selectors and the tests import from, and the LinkedIn kill switch and the ATS
@@ -172,7 +173,7 @@ export default {
           }
         } else if (m.stage === "tailor-apply" && m.hash) {
           const row: any = await db.prepare(
-            `SELECT canonical_hash, title, company, location, url, source, description, score FROM jobs WHERE canonical_hash = ?`,
+            `SELECT canonical_hash, title, company, location, url, source, description, score, posted_at FROM jobs WHERE canonical_hash = ?`,
           ).bind(m.hash).first();
           if (!row || !row.url) continue;
           // Application-time disability re-check: rows can predate the gate
@@ -182,6 +183,27 @@ export default {
             const regateDetail = `disability gate re-check: ${regate.quote || "targeting phrase"}`.slice(0, 200);
             await setJobState(db, m.hash, "PRE_FILTERED_OUT", regateDetail);
             await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, regateDetail);
+            continue;
+          }
+          // Apply-time window + role re-check. The window is re-read here, not
+          // trusted from discovery: a posting can sit in the queue across the
+          // window's edge (the deep sweep is daily, so an ELIGIBLE row can be
+          // hours old by the time its tailor-apply message is read), and a row
+          // stored before the window existed may never have had a date at all.
+          // The role is re-read for the same reason the disability gate is:
+          // the board can retitle a posting after it was stored. Mirrors the
+          // re-check above — set state, alert FILTERED, continue — so a posting
+          // that aged or drifted out never reaches an employer.
+          const postedAt = parsePostedAt(row.posted_at);
+          const roleRegate = classifyRole(row.title || "", { rejectCrm });
+          let staleDetail = "";
+          if (roleRegate.verdict === "reject") staleDetail = `role gate: ${roleRegate.rule}`;
+          else if (postedAt === null) staleDetail = NO_DATE_DETAIL;
+          else if (postedAt < Date.now() - HOURS_OLD * 3_600_000) staleDetail = `older than ${HOURS_OLD}h`;
+          if (staleDetail) {
+            const applyDetail = staleDetail.slice(0, 200);
+            await setJobState(db, m.hash, "PRE_FILTERED_OUT", applyDetail);
+            await notifyEventOnce(db, env, "worker", m.hash, "FILTERED", row, applyDetail);
             continue;
           }
           await setJobState(db, m.hash, "TAILORED", "worker tailor");
@@ -356,12 +378,15 @@ export default {
       if (!def) return Response.json({ error: "unknown source" }, { status: 404 });
       try {
         const jobs = await discoverSource(def, env);
-        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), 12);
+        // The probe measures the same window the pipeline applies, so a board
+        // that only carries 13-24h-old postings reads as yielding here exactly
+        // as it does in production.
+        const fresh = filterRecentList(jobs.map((j) => ({ ...j, posted_at: j.posted_at })), HOURS_OLD);
         const remote = filterRemoteList(
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
         return Response.json({
-          name: def.name, kind: def.kind, raw: jobs.length, fresh_12h: fresh.length, remote_fresh: remote.length,
+          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length, remote_fresh: remote.length,
           degraded: detectDegraded(remote, def.url || "", def.kind || ""),
           sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });

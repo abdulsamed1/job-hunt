@@ -25,6 +25,8 @@ export type WorkerEvent =
   | "FAILED"
   | "STAGE_FAILED";
 
+import { parsePostedAt } from "./freshness.js";
+
 export interface AlertEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
@@ -35,6 +37,10 @@ export interface AlertJobRow {
   company?: string | null;
   url?: string | null;
   score?: number | null;
+  /** Board the posting came from, e.g. "greenhouse:acme". */
+  source?: string | null;
+  /** The source's own date; drives the rendered age. */
+  posted_at?: string | null;
 }
 
 const MAX_ALERT_LEN = 3000;
@@ -60,10 +66,28 @@ export async function alert(env: AlertEnv, text: string): Promise<boolean> {
 }
 
 /**
+ * How old a posting is, as the owner reads it: `3h ago`, `20m ago`, `2d ago`.
+ * A board clock running ahead clamps to `0m ago` rather than rendering a
+ * negative age, and a date that cannot be parsed says so — the whole point of
+ * the rendered age is that an unverifiable posting is visible as unverifiable.
+ */
+export function formatPostedAge(postedAt: unknown, now: number = Date.now()): string {
+  const ts = parsePostedAt(postedAt);
+  if (ts === null) return "date unknown";
+  const minutes = Math.floor(Math.max(0, now - ts) / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+/**
  * Render the source-tagged per-event message. Pure function — fully
  * unit-tested. Shape mirrors the Python `format_event` contract:
  * `[runtime] EVENT: title @ company` plus detail/url lines, bounded to
- * 3000 chars. Never includes tokens or credentials (callers pass only job
+ * 3000 chars, and the head line carries the board and the posting's own age
+ * so a feed that quietly drifts older than a day is visible at a glance.
+ * Never includes tokens or credentials (callers pass only job
  * fields and state reasons).
  */
 export function formatJobAlert(
@@ -76,7 +100,12 @@ export function formatJobAlert(
   const name = (event || "UNKNOWN").slice(0, 40);
   const title = (row.title || "Untitled role").slice(0, 120);
   const company = (row.company || "Unknown company").slice(0, 80);
-  const lines = [`[${tag}] ${name}: ${title} @ ${company}`];
+  // Only the segments the row actually carries: a STAGE_FAILED alert that
+  // found no row must not render "· date unknown · date unknown".
+  const head = [`[${tag}] ${name}: ${title} @ ${company}`];
+  if (row.source) head.push(row.source.slice(0, 120));
+  head.push(formatPostedAge(row.posted_at));
+  const lines = [head.join(" · ")];
   if (detail) lines.push(detail.slice(0, 2000));
   if (row.url) lines.push(row.url.slice(0, 500));
   return lines.join("\n").slice(0, MAX_ALERT_LEN);

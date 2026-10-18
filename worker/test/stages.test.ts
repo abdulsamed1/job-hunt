@@ -365,6 +365,7 @@ describe("queue lifecycle events", () => {
           description: "Python FastAPI backend role building reliable systems.",
           source: "greenhouse:acme",
           score: 100,
+          posted_at: new Date().toISOString(),
         },
         upsertChanges: 1,
       });
@@ -418,6 +419,7 @@ describe("queue lifecycle events", () => {
           description: "Python FastAPI backend role building reliable systems.",
           source: "greenhouse:acme",
           score: 100,
+          posted_at: new Date().toISOString(),
         },
         upsertChanges: 1,
       });
@@ -514,6 +516,7 @@ describe("queue lifecycle events", () => {
           description: "Python FastAPI backend role building reliable systems.",
           source: "greenhouse:acme",
           score: 100,
+          posted_at: new Date().toISOString(),
         },
       });
       const q = memQueues();
@@ -547,6 +550,7 @@ describe("queue lifecycle events", () => {
           description: "Python FastAPI backend role.",
           source: "greenhouse:acme",
           score: 90,
+          posted_at: new Date().toISOString(),
         },
         settings: { master_resume_sha: "cafe" },
       });
@@ -565,12 +569,14 @@ describe("queue lifecycle events", () => {
 
   // RSS feed bodies, driven through the discover message the scheduled sweep
   // sends (see queue lifecycle events above).
-  const rssItem = (title: string, link: string, description: string) => [
+  // pubDate is optional on purpose: a feed that omits it yields the dateless
+  // posting the 24h window refuses, so the tests can build one.
+  const rssItem = (title: string, link: string, description: string, pubDate: string | null = new Date().toUTCString()) => [
     "<item>",
     `<title>${title}</title>`,
     `<link>${link}</link>`,
     `<description>${description}</description>`,
-    `<pubDate>${new Date().toUTCString()}</pubDate>`,
+    ...(pubDate ? [`<pubDate>${pubDate}</pubDate>`] : []),
     "</item>",
   ].join("");
   const rssWith = (...items: string[]) =>
@@ -1168,6 +1174,205 @@ describe("queue lifecycle events", () => {
       // The jobs row was left alone: no queue message, no SEEKING.
       expect(statements.filter((s) => s.sql.includes("UPDATE jobs SET state"))).toHaveLength(0);
       expect(texts.some((t) => t.includes("[worker] SEEKING:"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  // ---- The 24h window, the dateless drop and the intake cap ----
+
+  const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000).toISOString();
+  const SKILL_EVIDENCE = "Python FastAPI backend role building reliable systems. ";
+
+  it("stores a dateless posting without scoring, notifying or applying", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    // No pubDate: the feed never dated this posting, so nothing proves it is
+    // inside the window. It is kept for the record and kept out of the feed.
+    const restore = stubQueueFetch(texts, rssWith(rssItem("Senior Software Engineer, Query", "https://example.com/j/nodate", SKILL_EVIDENCE.repeat(20), null)));
+    try {
+      const { db, statements, jobs, counters, evaluations } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const env = queueEnv(db, q);
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, env);
+      const hash = canonicalHash(normalizeUrl("https://example.com/j/nodate"));
+      // Stored, pre-filtered, with the reason that kept it out.
+      expect(jobs.get(hash)?.state).toBe("PRE_FILTERED_OUT");
+      expect(evaluations.get(hash)?.reasoning).toBe("no posting date");
+      expect(counters.get("dateless_dropped")).toBe(1);
+      // Never scored, never announced: no SEEKING, no FILTERED, no evaluate message.
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+      expect(texts.some((t) => t.includes("[worker] SEEKING:"))).toBe(false);
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(false);
+
+      // A dateless row counts as "materially improved" on every sweep (its
+      // posted_at stays empty forever), so the count must ride the reason
+      // write, not the upsert: a second sweep changes nothing.
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, env);
+      expect(counters.get("dateless_dropped")).toBe(1);
+      expect(evaluations.get(hash)?.reasoning).toBe("no posting date");
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO jobs"))).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("drops a posting older than 24h before the store ever sees it", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, rssWith(
+      rssItem("Senior Software Engineer, Stale", "https://example.com/j/stale", SKILL_EVIDENCE.repeat(20), hoursAgo(30)),
+      rssItem("Senior Software Engineer, Fresh", "https://example.com/j/fresh", SKILL_EVIDENCE.repeat(20), hoursAgo(3)),
+    ));
+    try {
+      const { db, statements, jobs } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      // The 30h-old posting is not stored at all: nothing downstream can read it.
+      expect(jobs.size).toBe(1);
+      expect(jobs.get(canonicalHash(normalizeUrl("https://example.com/j/fresh")))).toBeTruthy();
+      expect(jobs.get(canonicalHash(normalizeUrl("https://example.com/j/stale")))).toBeUndefined();
+      expect(q.EVALUATE_Q.sent).toHaveLength(1);
+      expect(texts.filter((t) => t.includes("[worker] SEEKING:"))).toHaveLength(1);
+      // Coverage still measures what the board said: raw keeps both postings.
+      const health = statements.find((s) => s.sql.includes("INSERT INTO source_health"));
+      expect(health?.params[3]).toBe(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it("caps one source at 30 kept postings per run, keeping the most recent", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // A chatty board: 45 dated postings, oldest first in the feed, so a cap
+    // that ignored recency would keep the worst 30.
+    const feed = rssWith(...Array.from({ length: 45 }, (_, i) => rssItem(
+      `Backend Engineer ${i + 1}`,
+      `https://example.com/j/cap-${i + 1}`,
+      SKILL_EVIDENCE.repeat(20),
+      new Date(Date.now() - (45 - i) * 60_000).toUTCString(),
+    )));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, feed);
+    try {
+      const { db, jobs, counters } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      expect(jobs.size).toBe(30);
+      // The 15 most recent survive; the 15 oldest are held back and counted.
+      expect(jobs.has(canonicalHash(normalizeUrl("https://example.com/j/cap-45")))).toBe(true);
+      expect(jobs.has(canonicalHash(normalizeUrl("https://example.com/j/cap-16")))).toBe(true);
+      expect(jobs.has(canonicalHash(normalizeUrl("https://example.com/j/cap-15")))).toBe(false);
+      expect(jobs.has(canonicalHash(normalizeUrl("https://example.com/j/cap-1")))).toBe(false);
+      expect(counters.get("intake_capped")).toBe(15);
+      expect(q.EVALUATE_Q.sent).toHaveLength(30);
+    } finally {
+      restore();
+    }
+  });
+
+  it("refuses to apply a posting that aged past 24h", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const urls: string[] = [];
+    const restore = stubQueueFetch(texts, "", urls);
+    try {
+      // A row the store already holds: stored fresh, applied a day later.
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-aged",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: SKILL_EVIDENCE.repeat(4),
+          source: "greenhouse:acme",
+          score: 100,
+          posted_at: hoursAgo(30),
+        },
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef", LIVE_APPLY: "true", APPROVE_GREENHOUSE: "true" });
+      await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash: "h-aged" } }] } as any, env);
+      const states = statements.filter((s) => s.sql.includes("UPDATE jobs SET state")).map((s) => s.params[0]);
+      expect(states).toEqual(["PRE_FILTERED_OUT"]);
+      // No application of any kind, and the reason names the window.
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO applications"))).toHaveLength(0);
+      // bind order: job_hash, to_state, timestamp, details (from_state is NULL)
+      const audit = statements.find((s) => s.sql.includes("INSERT INTO audit_log"));
+      expect(String(audit?.params[3])).toContain("24h");
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] TAILORED:"))).toBe(false);
+      expect(urls.some((u) => u.includes("boards-api.greenhouse.io"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("refuses to apply a posting the store has no date for", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, "");
+    try {
+      // A row stored before the window existed: its date cannot be proven, so
+      // it cannot be proven fresh either.
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-undated",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: SKILL_EVIDENCE.repeat(4),
+          source: "greenhouse:acme",
+          score: 100,
+          posted_at: "",
+        },
+      });
+      const q = memQueues();
+      await worker.queue(
+        { messages: [{ body: { stage: "tailor-apply", hash: "h-undated" } }] } as any,
+        queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef" }),
+      );
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO applications"))).toHaveLength(0);
+      const audit = statements.find((s) => s.sql.includes("INSERT INTO audit_log"));
+      expect(String(audit?.params[3])).toBe("no posting date");
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("refuses to apply a posting whose title is a reject role", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, "");
+    try {
+      // Freshly dated and still rejected: the board retitled the posting into a
+      // management role after it was stored.
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-mgr",
+          title: "Senior Manager, Application Security",
+          company: "Acme",
+          location: "Remote",
+          url: "https://boards.greenhouse.io/acme/jobs/123",
+          description: SKILL_EVIDENCE.repeat(4),
+          source: "greenhouse:acme",
+          score: 100,
+          posted_at: hoursAgo(3),
+        },
+      });
+      const q = memQueues();
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef", LIVE_APPLY: "true", APPROVE_GREENHOUSE: "true" });
+      await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash: "h-mgr" } }] } as any, env);
+      const states = statements.filter((s) => s.sql.includes("UPDATE jobs SET state")).map((s) => s.params[0]);
+      expect(states).toEqual(["PRE_FILTERED_OUT"]);
+      expect(statements.filter((s) => s.sql.includes("INSERT INTO applications"))).toHaveLength(0);
+      const audit = statements.find((s) => s.sql.includes("INSERT INTO audit_log"));
+      expect(String(audit?.params[3])).toBe("role gate: people-management:manager");
+      expect(texts.some((t) => t.includes("[worker] FILTERED:"))).toBe(true);
+      expect(texts.some((t) => t.includes("[worker] APPLICATION_ATTEMPT:"))).toBe(false);
     } finally {
       restore();
     }

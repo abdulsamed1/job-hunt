@@ -50,13 +50,13 @@ def test_classify_probe_inconclusive_is_warning_not_failure():
 
 def test_classify_probe_empty_but_clean_is_warning():
     mod = _load()
-    kind, _ = mod.classify_probe("x", 200, {"raw": 10, "fresh_12h": 0, "remote_fresh": 0})
+    kind, _ = mod.classify_probe("x", 200, {"raw": 10, "fresh_24h": 0, "remote_fresh": 0})
     assert kind == "warn"
 
 
 def test_classify_probe_yielding_is_ok():
     mod = _load()
-    kind, msg = mod.classify_probe("x", 200, {"raw": 10, "fresh_12h": 5, "remote_fresh": 3})
+    kind, msg = mod.classify_probe("x", 200, {"raw": 10, "fresh_24h": 5, "remote_fresh": 3})
     assert (kind, msg) == ("ok", "")
 
 
