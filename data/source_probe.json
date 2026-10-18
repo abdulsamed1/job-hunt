@@ -1,0 +1,3042 @@
+{
+  "Aave Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:55.688143+00:00",
+    "verdict": "live",
+    "yielded": 14
+  },
+  "Alchemy Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "AngelList Talent": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Arc (formerly Vettery)": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Bayt": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Binance Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "BitcoinJobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:45.307180+00:00",
+    "verdict": "live",
+    "yielded": 20
+  },
+  "Blockchain Developers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Blockchain Job Board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Blockchain Works": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Blocktribe": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Calyptus": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Chainlink Labs Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:09.688065+00:00",
+    "verdict": "live",
+    "yielded": 3
+  },
+  "Coinbase Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:11.392425+00:00",
+    "verdict": "live",
+    "yielded": 3
+  },
+  "ConsenSys Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Crypto Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:55.982154+00:00",
+    "verdict": "live",
+    "yielded": 120
+  },
+  "Crypto Recruit": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobHunt": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobLand": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobSearch": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:54.919353+00:00",
+    "verdict": "live",
+    "yielded": 10
+  },
+  "CryptoJobs.com": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:48.111185+00:00",
+    "verdict": "live",
+    "yielded": 13
+  },
+  "CryptoJobsDB": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobsDaily": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "CryptoJobsList": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:46.038877+00:00",
+    "verdict": "live",
+    "yielded": 25
+  },
+  "DAO Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "DailyRemote": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "DeFi Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:55.955905+00:00",
+    "verdict": "live",
+    "yielded": 34
+  },
+  "Degen Crypto Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Dice": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:12.203054+00:00",
+    "verdict": "live",
+    "yielded": 132
+  },
+  "Ethereum Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Eurojobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:10.660797+00:00",
+    "verdict": "live",
+    "yielded": 18
+  },
+  "FlexJobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Gitcoin": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Glassdoor": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "GulfTalent": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Gun.io": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "HackerRank Jobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Hired": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Indeed": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "JobStreet": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Jobbatical": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "JobsDB": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "JustRemote": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "NFT Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "NodeFlair": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "OpenSea Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Polygon Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Polygon Ecosystem Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "PompCryptoJobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "PowerToFly": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Remote \ud83d\udc8e Web3 Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Remote.co": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Remote3": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:53.614816+00:00",
+    "verdict": "live",
+    "yielded": 40
+  },
+  "RemoteLeaf": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:03.000420+00:00",
+    "verdict": "live",
+    "yielded": 52
+  },
+  "RemoteMore": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:59.954940+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "RemoteOK": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Remotive": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:09.098657+00:00",
+    "verdict": "live",
+    "yielded": 21
+  },
+  "Ripple Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:09.295313+00:00",
+    "verdict": "live",
+    "yielded": 9
+  },
+  "SmartContractJobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Solana Ecosystem Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:46.427500+00:00",
+    "verdict": "live",
+    "yielded": 20
+  },
+  "Solidity Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Stack Overflow Jobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Stellar Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Talent.io": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "TokyoDev": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:14.820607+00:00",
+    "verdict": "live",
+    "yielded": 97
+  },
+  "Ton Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Toptal": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Uniswap Careers": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Vanhack": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "WUZZUF": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:02.503591+00:00",
+    "verdict": "live",
+    "yielded": 12
+  },
+  "Web3 Army": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Web3 Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:57.195350+00:00",
+    "verdict": "live",
+    "yielded": 16
+  },
+  "Web3 Talent": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "Web3.career": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:47.390462+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "Web3internships": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:31:54.462825+00:00",
+    "verdict": "live",
+    "yielded": 40
+  },
+  "Wellfound (formerly AngelList)": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:00.726533+00:00",
+    "verdict": "live",
+    "yielded": 3
+  },
+  "YCombinator Jobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "acquia": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "adept": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "affirm": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "airbnb": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "airbyte": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "alan": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "alchemy": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "alchemy-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "algolia": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "alphasights": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "andela": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "anduril": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "anthropic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": "2026-10-18T21:31:45.287418+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "anyscale": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "appdynamics": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "aptos": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "aquatic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "arbeitnow": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": "2026-10-18T21:31:43.363837+00:00",
+    "verdict": "live",
+    "yielded": 123
+  },
+  "ark": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "articulate": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "assemblyai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "astronomer": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "atlassian": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "augment": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "auth0": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "automattic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "baseten": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "bayt-egypt-tech": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "bayt",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "bdjobs-bangladesh-tech": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "bdjobs",
+    "last_yield_at": "2026-10-18T21:31:10.205530+00:00",
+    "verdict": "live",
+    "yielded": 5
+  },
+  "belvedere": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "benchling": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "berachain": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "bitcoinjobs-feed": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "blizzard": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "box": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "braintrust": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "braze": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "brex": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "britecore": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "buffer": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "bun": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "calcom": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "calibre": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "canva": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "capchase": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "caremessage": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "carta": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "celo": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cerebras": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "chainalysis": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "characterai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "checkr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "chime": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "chroma": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "chronosphere": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "circleci": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "citadel": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "clerk": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "clickhouse": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "close": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cloudflare": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "coalition": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cockroachlabs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "coder": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cognition": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cohere": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "coinbase": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "coinbase-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "collabora": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "confluent": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "consensys": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "consensys-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "contentful": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "contentsquare": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cribl": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "crypto-jobs-feed": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cryptocurrencyjobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cryptojobslist-feed": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "feed",
+    "last_yield_at": "2026-10-18T21:32:14.680200+00:00",
+    "verdict": "live",
+    "yielded": 100
+  },
+  "cursor": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "cursor-ai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "customerio": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "d-matrix": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dagster": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dashlane": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "datacamp": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "datadog": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "datadog-eu": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "datadraw": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "datadrivers": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dbt-labs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "deepgram": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "deno": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "discord-sr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "doordash": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dropbox": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "drw": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dub": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "dynatrace": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "elastic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "elevenlabs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "envato": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "epic-games": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "etched": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "factory": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "fal-ai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "fastly": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "fauna": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "figma": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "five-rings": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "fivetran": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "flow-traders": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "flyio": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "freehire-remote-tech": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "freehire",
+    "last_yield_at": "2026-10-18T21:30:52.346928+00:00",
+    "verdict": "live",
+    "yielded": 11
+  },
+  "github": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "gitlab": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "gitpod": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "glean": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "godaddy": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "gohiring": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "grafana": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": "2026-10-18T21:31:33.049683+00:00",
+    "verdict": "live",
+    "yielded": 8
+  },
+  "groq": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "gusto": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "hashicorp": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "headlands": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "honeycomb": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "hopper": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "https://ethglobal.com/auth?useredirect=/jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "https://www.jobberman.com/jobs?q=blockchain": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:11.821981+00:00",
+    "verdict": "live",
+    "yielded": 5
+  },
+  "hudson-river": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "huggingface": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "hume": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "indeed-egypt-tech": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "indeed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "influxdata": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "instacart": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "intercom": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "jackson-river-togetherwork": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "jane-street": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "jasper": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "jobicy": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "jobspresso": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": "2026-10-18T21:31:58.944572+00:00",
+    "verdict": "live",
+    "yielded": 8
+  },
+  "jobspresso-feed": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": "2026-10-18T21:32:16.343973+00:00",
+    "verdict": "live",
+    "yielded": 8
+  },
+  "jump-trading": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "kinsta": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "kodify": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "recruitee",
+    "last_yield_at": "2026-10-18T21:31:53.962758+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "kraken": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "labelbox": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "langchain": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "launchdarkly": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "ledger": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "lightmatter": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "lightspeed": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "lightstep": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "linear": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "linkedin-sr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "linkedin_geo_recent": {
+    "attempts": 0,
+    "industry": "general",
+    "kind": "linkedin",
+    "last_yield_at": null,
+    "verdict": "flaky",
+    "yielded": 0
+  },
+  "litmus": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "liveperson": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "llamaindex": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "luma": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "lyft": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "magic-ai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "matter-labs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "matx": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "metalab": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "midjourney": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "millennium": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mindful": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "miro": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mistral": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mixmax": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "modal": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "modal-labs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "monad": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mongodb": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "movement": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mux": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "mysten": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "naukri-india-remote": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "naukri",
+    "last_yield_at": "2026-10-18T21:31:10.690385+00:00",
+    "verdict": "live",
+    "yielded": 2
+  },
+  "near": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "neon": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "netflix": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "netguru": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "workable",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "newrelic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "octoai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "offchain-labs": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "okta": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "openai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "opensea": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "opensea-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "openzeppelin": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "optimism": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "optiver": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "pagerduty": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "palantir": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "paradigm": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "percona": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "perplexity": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "personio-vivid": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "personio",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "pika": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "pinecone": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "pinterest": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "plaid": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "planetscale": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "platformsh": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "point72": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "polygon": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "poolside": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "posthog": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "postman": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "prefect": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "prezi": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "bamboohr",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "primer": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "prominentedge": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "qdrant": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "quora": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "railway": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "rain-ai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "ramp": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "recharge": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "recruitee-happeo": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "recruitee",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "recruitee-make": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "recruitee",
+    "last_yield_at": "2026-10-18T21:32:13.353942+00:00",
+    "verdict": "live",
+    "yielded": 2
+  },
+  "recruitee-radix": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "recruitee",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "reddit": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": "2026-10-18T21:30:53.135075+00:00",
+    "verdict": "live",
+    "yielded": 43
+  },
+  "remote3-feed": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "remoteok": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "remotive": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": "2026-10-18T21:31:41.697005+00:00",
+    "verdict": "live",
+    "yielded": 12
+  },
+  "render": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "renofi": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "replicate": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "replit": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "resend": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "retool": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "riot-games": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "ripple": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "ripple-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "robinhood": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "roblox-sr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "rocketchat": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "runway": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "saasglobal": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "teamtailor",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sambanova": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "samsara": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": "2026-10-18T21:31:25.798392+00:00",
+    "verdict": "live",
+    "yielded": 3
+  },
+  "scaleai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "scandit": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "scroll": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "securityscorecard": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sentry": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "slack-sr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sofi": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "solana": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "solana-ecosystem-index": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby-index",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sourcegraph": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "spotify": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "square-sr": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "starburst": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "starkware": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "stellar-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "streamnative": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "stripe": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "stripe-sr": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sumologic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "sunno": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "supabase": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "swissdevjobs": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "teamtailor-career": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "teamtailor",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "teamtailor-softwarefinder-na": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "teamtailor",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "temporal": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "tenstorrent": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "testgorilla": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "timescale": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "togetherai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "tokyodev-feed": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "tower-research": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "truelogic": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "turing": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "twilio": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": "2026-10-18T21:31:53.270490+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "twist": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "twitter-sr": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "two-sigma": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "ubisoft": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "udacity": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "uniswap": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "uniswap-board": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "unity": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "unreal": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "unstructured": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "untether-ai": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "useWeb3 Jobs": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "valve": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "vercel": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "verkada": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "visa": {
+    "attempts": 1,
+    "industry": "fintech",
+    "kind": "smartrecruiters",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "warp": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "weaviate": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "web3-career-jsonld": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:15.959612+00:00",
+    "verdict": "live",
+    "yielded": 1
+  },
+  "weights-and-biases": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "weworkremotely": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "weworkremotely-feed": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "wintermute": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "lever",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "wizeline": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "workingnomads": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "feed",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "zapier": {
+    "attempts": 1,
+    "industry": "software",
+    "kind": "ashby",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  }
+}

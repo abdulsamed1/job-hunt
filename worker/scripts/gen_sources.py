@@ -28,11 +28,10 @@ PYTHON_ONLY_ADAPTERS = {"bayt", "naukri", "web"}
 
 # Curated high-signal boards polled hourly; the rest run on the daily deep sweep.
 HOURLY_ORGS = {
-    "coinbase", "ripple", "consensys", "stellar", "uniswap", "opensea", "alchemy",
+    "anthropic", "grafanalabs", "reddit", "samsara", "twilio",
 }
 HOURLY_FEEDS = {
-    "remoteok", "remotive", "arbeitnow", "jobicy", "cryptojobslist", "crypto.jobs",
-    "weworkremotely", "remote3", "bitcoinjobs",
+    "arbeitnow", "cryptojobslist-feed", "jobspresso", "jobspresso-feed", "remotive",
 }
 
 
