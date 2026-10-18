@@ -374,7 +374,8 @@ def test_pre_filter_rejects_non_ic_roles(engine, candidate, title):
 
 
 @pytest.mark.parametrize("title", ["Lead Software Engineer", "Staff Engineer, Platform",
-                                   "Forward Deployed Engineer", "Senior Software Engineer"])
+                                   "Staff Engineers, Platform", "Forward Deployed Engineer",
+                                   "Senior Software Engineer"])
 def test_pre_filter_keeps_ic_titles(engine, candidate, title):
     job = JobPosting(
         source="test", title=title, company="Co",
@@ -395,3 +396,45 @@ def test_pre_filter_allows_ic_title_before_checking_negatives(engine, candidate)
     )
     passed, reason = engine.pre_filter(job, candidate)
     assert passed is True
+
+
+@pytest.mark.parametrize("title", ["Site Reliability", "Machine Learning"])
+def test_pre_filter_accepts_standalone_swe_phrases(engine, candidate, title):
+    job = JobPosting(
+        source="test", title=title, company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is True
+
+
+def test_pre_filter_crm_toggle(engine, candidate):
+    # Default (on): CRM role rejected as CRM.
+    job = JobPosting(
+        source="test", title="Senior Salesforce Developer", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed_on, reason_on = engine.pre_filter(job, candidate)
+    assert passed_on is False
+    assert "crm" in (reason_on or "").lower() or "salesforce" in (reason_on or "").lower()
+
+    # Toggle off: no longer rejected for CRM.
+    profile_off = candidate.model_copy(update={"reject_crm_roles": False})
+    passed_off, reason_off = engine.pre_filter(job, profile_off)
+    assert passed_off is False
+    assert "crm" not in (reason_off or "").lower()
+    assert "salesforce" not in (reason_off or "").lower()
+
+    # A CRM role that is otherwise SWE-shaped is admitted when the toggle is off.
+    job2 = JobPosting(
+        source="test", title="Salesforce Developer, Python", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    assert engine.pre_filter(job2, candidate)[0] is False
+    assert engine.pre_filter(job2, profile_off)[0] is True

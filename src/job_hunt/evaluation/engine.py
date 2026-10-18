@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 IC_ALLOW_PATTERNS = [
     re.compile(r"\blead\s+engineer\b", re.IGNORECASE),
     re.compile(r"\blead\s+software\s+engineer\b", re.IGNORECASE),
-    re.compile(r"\b(?:staff|principal|senior|sr\.?)\b.*\b(?:engineer|engineering)\b", re.IGNORECASE),
+    re.compile(r"\b(?:staff|principal|senior|sr\.?)\b.*\b(?:engineer|engineers|engineering)\b", re.IGNORECASE),
 ]
 
 # People-management words: when present the IC allow stands aside.
@@ -41,6 +41,7 @@ SWE_ROLE_PATTERNS = [
     re.compile(r"\binfrastructure\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bplatform\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bsite\s+reliability\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\bsite\s+reliability\b", re.IGNORECASE),
     re.compile(r"\bsre\b", re.IGNORECASE),
     re.compile(r"\bdistributed\s+systems\b", re.IGNORECASE),
     re.compile(r"\bforward\s+deployed\s+engineer\b", re.IGNORECASE),
@@ -49,6 +50,7 @@ SWE_ROLE_PATTERNS = [
     re.compile(r"\bdevops\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bml\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bmachine\s+learning\s+engineer\b", re.IGNORECASE),
+    re.compile(r"\bmachine\s+learning\b", re.IGNORECASE),
     re.compile(r"\bdata\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bpython\s+(?:engineer|developer)\b", re.IGNORECASE),
     re.compile(r"\bsoftware\b", re.IGNORECASE),
@@ -423,7 +425,7 @@ class EvaluationEngine:
                     return False, f"Blocked keyword in posting: {bk}"
 
         # IC allow list runs before the reject families (allow-first ordering).
-        reject_crm = getattr(profile, "reject_crm_roles", True)
+        reject_crm = profile.reject_crm_roles
         is_ic = (not any(p.search(title) for p in PEOPLE_MANAGEMENT_PATTERNS)) and any(
             p.search(title) for p in IC_ALLOW_PATTERNS
         )

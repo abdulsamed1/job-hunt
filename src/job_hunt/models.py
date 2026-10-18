@@ -163,6 +163,7 @@ class CandidateProfile(BaseModel):
     blocked_companies: List[str] = Field(default_factory=list)
     blocked_keywords: List[str] = Field(default_factory=list)
     preferred_keywords: List[str] = Field(default_factory=list)  # exception-wins over blocked
+    reject_crm_roles: bool = True
     open_to_remote: bool = True
     remote_only: bool = False
     target_locations: List[str] = Field(
