@@ -31,8 +31,8 @@ export function classifyHost(url: string): "ats" | "unverified" {
 }
 
 // Org-derived board URLs, built exactly the way discoverSource() builds them
-// (worker/src/index.ts). The discover-handler guard classifies these so an
-// org smuggled in via the queue can never redirect the fetch off-board.
+// (worker/src/stages/discover.ts). The discover-stage guard classifies these so
+// an org smuggled in via the queue can never redirect the fetch off-board.
 // NOTE: the Worker only routes greenhouse/lever/ashby/smartrecruiters by org;
 // there are no workday/workable/bamboohr board kinds here, so the kind list
 // below is intentionally unchanged.

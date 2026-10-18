@@ -57,6 +57,10 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
   LinkedIn guest shard (disabled via `LINKEDIN_ENABLED`)
 - `src/lib/` — hash, freshness, gates, deterministic scoring, honest Q&A mapping
 - `src/stages/pipeline.ts` — evaluate, tailor (pdf-lib PDF → R2), ATS apply
+- `src/stages/discover.ts` — the discover stage: source guard + fetch, the role
+  and duplicate gates, and the store/queue side of one source per message
+  (called by the queue handler; `queueGuardAllows`, `discoverSource` and
+  `linkedinEnabled` are re-exported from `index.ts`)
 - `src/state.ts` — D1 state machine (mirrors the SQLite lifecycle)
 - `src/sources.ts` — `SourceDef` type; `src/sources.generated.ts` — GENERATED, do not hand-edit
 - `src/index.ts` — cron dispatcher (hourly shard + daily deep), queue
@@ -140,7 +144,7 @@ measured, never asserted. Add a board only after `POST /probe` shows yield.
     impossible.
   - **Neither gate touches a posting the store has already decided.** Both act
     only on rows whose outcome is still open — `DISCOVERED` or `ELIGIBLE`
-    (`GATEABLE_STATES` in `index.ts`). A row already scored out, filtered or
+    (`GATEABLE_STATES` in `stages/discover.ts`). A row already scored out, filtered or
     suppressed has no opening left to protect and would lose the verdict its
     state records; a row already on its way to the employer (`TAILORED`,
     `SUBMITTED`, `APPLICATION_STARTED`) carries the honest history of the
