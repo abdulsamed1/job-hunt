@@ -30,7 +30,7 @@ sources:
   - Egypt
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: naukri
   name: naukri-india-remote
   url: https://www.naukri.com/
@@ -44,7 +44,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: indeed
   name: indeed-egypt-tech
   url: https://eg.indeed.com/
@@ -60,7 +60,7 @@ sources:
   country: Egypt
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: freehire
   name: freehire-remote-tech
   url: https://freehire.me/api/v1/agent/jobs/search
@@ -74,7 +74,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: bdjobs
   name: bdjobs-bangladesh-tech
   url: https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch
@@ -88,7 +88,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: stripe
   url: https://boards.greenhouse.io/stripe
@@ -1094,7 +1094,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: alphasights
   url: https://boards.greenhouse.io/alphasights
@@ -1106,7 +1106,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: andela
   url: https://jobs.ashbyhq.com/andela
@@ -1118,7 +1118,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: ark
   url: https://boards.greenhouse.io/ark
@@ -1130,7 +1130,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: articulate
   url: https://jobs.lever.co/articulate
@@ -1142,7 +1142,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: britecore
   url: https://jobs.lever.co/britecore
@@ -1154,7 +1154,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: buffer
   url: https://jobs.ashbyhq.com/buffer
@@ -1166,7 +1166,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: calibre
   url: https://jobs.ashbyhq.com/calibre
@@ -1178,7 +1178,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: capchase
   url: https://jobs.ashbyhq.com/capchase
@@ -1190,7 +1190,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: caremessage
   url: https://jobs.ashbyhq.com/caremessage
@@ -1202,7 +1202,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: close
   url: https://jobs.ashbyhq.com/close
@@ -1214,7 +1214,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: coalition
   url: https://boards.greenhouse.io/coalition
@@ -1226,7 +1226,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: collabora
   url: https://jobs.lever.co/collabora
@@ -1238,7 +1238,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: customerio
   url: https://boards.greenhouse.io/customerio
@@ -1250,7 +1250,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: dashlane
   url: https://boards.greenhouse.io/dashlane
@@ -1262,7 +1262,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: datacamp
   url: https://boards.greenhouse.io/datacamp
@@ -1274,7 +1274,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: fastly
   url: https://boards.greenhouse.io/fastly
@@ -1286,7 +1286,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: godaddy
   url: https://boards.greenhouse.io/godaddy
@@ -1298,7 +1298,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: gohiring
   url: https://boards.greenhouse.io/gohiring
@@ -1310,7 +1310,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: intercom
   url: https://boards.greenhouse.io/intercom
@@ -1322,7 +1322,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: kinsta
   url: https://jobs.lever.co/kinsta
@@ -1334,7 +1334,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: labelbox
   url: https://boards.greenhouse.io/labelbox
@@ -1346,7 +1346,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: lightspeed
   url: https://jobs.ashbyhq.com/lightspeed
@@ -1358,7 +1358,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: litmus
   url: https://jobs.ashbyhq.com/litmus
@@ -1370,7 +1370,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: liveperson
   url: https://boards.greenhouse.io/liveperson
@@ -1382,7 +1382,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: testgorilla
   url: https://jobs.ashbyhq.com/testgorilla
@@ -1394,7 +1394,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: zapier
   url: https://jobs.ashbyhq.com/zapier
@@ -1406,7 +1406,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: platformsh
   url: https://boards.greenhouse.io/platformsh
@@ -1418,7 +1418,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: securityscorecard
   url: https://boards.greenhouse.io/securityscorecard
@@ -1430,7 +1430,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: metalab
   url: https://boards.greenhouse.io/metalab
@@ -1442,7 +1442,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: okta
   url: https://boards.greenhouse.io/okta
@@ -1454,7 +1454,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: renofi
   url: https://jobs.lever.co/renofi
@@ -1466,7 +1466,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: scandit
   url: https://boards.greenhouse.io/scandit
@@ -1478,7 +1478,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: streamnative
   url: https://boards.greenhouse.io/streamnative
@@ -1490,7 +1490,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: turing
   url: https://boards.greenhouse.io/turing
@@ -1502,7 +1502,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: quora
   url: https://jobs.ashbyhq.com/quora
@@ -1514,7 +1514,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: rocketchat
   url: https://boards.greenhouse.io/rocketchat
@@ -1526,7 +1526,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: twilio
   url: https://boards.greenhouse.io/twilio
@@ -1538,7 +1538,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: mindful
   url: https://jobs.lever.co/mindful
@@ -1550,7 +1550,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: mux
   url: https://jobs.ashbyhq.com/mux
@@ -1562,7 +1562,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: percona
   url: https://jobs.ashbyhq.com/percona
@@ -1574,7 +1574,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: primer
   url: https://jobs.ashbyhq.com/primer
@@ -1586,7 +1586,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: recharge
   url: https://jobs.ashbyhq.com/recharge
@@ -1598,7 +1598,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: udacity
   url: https://boards.greenhouse.io/udacity
@@ -1610,7 +1610,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: wizeline
   url: https://boards.greenhouse.io/wizeline
@@ -1622,7 +1622,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: mixmax
   url: https://boards.greenhouse.io/mixmax
@@ -1634,7 +1634,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: openzeppelin
   url: https://boards.greenhouse.io/openzeppelin
@@ -1646,7 +1646,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: greenhouse
   name: jackson-river-togetherwork
   url: https://boards.greenhouse.io/togetherwork
@@ -1658,7 +1658,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: truelogic
   url: https://jobs.ashbyhq.com/truelogic
@@ -1670,7 +1670,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: ashby
   name: alan
   url: https://jobs.ashbyhq.com/alan
@@ -1682,7 +1682,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: envato
   url: https://jobs.lever.co/envato-2
@@ -1694,7 +1694,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: contentsquare
   url: https://jobs.lever.co/contentsquare
@@ -1706,7 +1706,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: lever
   name: prominentedge
   url: https://jobs.lever.co/prominentedge
@@ -1718,7 +1718,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: bamboohr
   name: prezi
   url: https://prezi.bamboohr.com/jobs/
@@ -1730,7 +1730,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: workable
   name: netguru
   url: https://apply.workable.com/netguru/
@@ -1742,7 +1742,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: recruitee
   name: kodify
   url: https://kodify.recruitee.com/api/offers/
@@ -1754,7 +1754,7 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24
 - adapter: teamtailor
   name: saasglobal
   url: https://saasglobal.teamtailor.com/jobs.rss
@@ -1766,4 +1766,4 @@ sources:
   - Remote
   max_pages_per_query: 2
   target_jobs_count: 40
-  hours_old: 72
+  hours_old: 24

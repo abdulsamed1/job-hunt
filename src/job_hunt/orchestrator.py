@@ -169,7 +169,7 @@ class PipelineOrchestrator:
         return await self._emit_event_async(event, job.title, job.company, detail, job.raw_url)
 
     async def run_discovery_stage(
-        self, max_sources: Optional[int] = None, hours_old: int = 12, remote_only: bool = False,
+        self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False,
         source_name: Optional[str] = None,
     ) -> int:
         """Stage 1 & 2: Discover jobs across all sources and deduplicate.
@@ -189,11 +189,19 @@ class PipelineOrchestrator:
             sources = [s for s in sources if not settings.is_linkedin_entry(s)]
         if max_sources:
             sources = sources[:max_sources]
+        # Clamp a caller-supplied window to the 24h ceiling (0 disables).
+        if hours_old and hours_old > 24:
+            hours_old = 24
         for entry in sources:
             if not isinstance(entry, dict):
                 continue
             if hours_old:
                 entry.setdefault("hours_old", hours_old)
+            # Clamp any per-source recency window to 24h; leave 0 (disabled) alone.
+            entry_hours = entry.get("hours_old")
+            if entry_hours:
+                if entry_hours > 24:
+                    entry["hours_old"] = 24
             if remote_only:
                 entry.setdefault("remote_only", True)
 
@@ -559,7 +567,7 @@ class PipelineOrchestrator:
             )
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 12, remote_only: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
