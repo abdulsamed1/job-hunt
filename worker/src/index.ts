@@ -56,7 +56,8 @@ export interface Env {
 const SOURCES: SourceDef[] = GENERATED_SOURCES;
 
 export function activeSources(env: Env): SourceDef[] {
-  return linkedinEnabled(env) ? SOURCES : SOURCES.filter((s) => s.kind !== "linkedin");
+  const base = SOURCES.filter((s) => s.status !== "dead");
+  return linkedinEnabled(env) ? base : base.filter((s) => s.kind !== "linkedin");
 }
 
 function profileFromEnv(env: Env): Profile & { fullName: string; email: string; phone: string; summary?: string } {

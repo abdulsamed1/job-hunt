@@ -56,10 +56,16 @@ def build() -> tuple[list[dict], list[dict], dict]:
     worker: list[dict] = []
     python_only: list[dict] = []
 
+    dead_count = 0
     for entry in entries:
         adapter = entry.get("adapter")
         name = entry.get("name")
         if not adapter or not name:
+            continue
+
+        status = entry.get("status") or "unknown"
+        if status == "dead":
+            dead_count += 1
             continue
 
         base = {"name": name, "url": entry.get("url") or ""}
@@ -96,13 +102,15 @@ def build() -> tuple[list[dict], list[dict], dict]:
             kind, org = adapter, ""
             cadence = "6h"
         elif adapter in PYTHON_ONLY_ADAPTERS:
-            python_only.append({"name": name, "adapter": adapter, "url": base["url"]})
+            python_only.append({"name": name, "adapter": adapter, "url": base["url"], "industry": entry.get("industry") or "general", "status": status, "hoursOld": entry.get("hours_old", 24) if "hours_old" in entry else 24})
             continue
         else:
-            python_only.append({"name": name, "adapter": str(adapter), "url": base["url"]})
+            python_only.append({"name": name, "adapter": str(adapter), "url": base["url"], "industry": entry.get("industry") or "general", "status": status, "hoursOld": entry.get("hours_old", 24) if "hours_old" in entry else 24})
             continue
 
-        record = {"kind": kind, "name": name, "cadence": cadence}
+        record = {"kind": kind, "name": name, "cadence": cadence,
+                  "industry": entry.get("industry") or "general",
+                  "status": status}
         if org:
             record["org"] = org
         if base["url"] and kind in {"rss", "linkedin", "indeed", "ashby-index", "freehire", "bdjobs",
@@ -121,12 +129,14 @@ def build() -> tuple[list[dict], list[dict], dict]:
             record["country"] = entry.get("country") or "Egypt"
         if kind == "ashby-index":
             record["maxOrgs"] = entry.get("max_orgs") or 8
+        record["hoursOld"] = entry.get("hours_old", 24) if "hours_old" in entry else 24
         worker.append(record)
 
     stats = {
         "yaml_total": len(entries),
         "worker_supported": len(worker),
         "python_only": len(python_only),
+        "dead": dead_count,
     }
     return worker, python_only, stats
 
@@ -154,6 +164,9 @@ def render(worker: list[dict], python_only: list[dict], stats: dict) -> str:
         "  name: string;",
         "  adapter: string;",
         "  url: string;",
+        "  industry?: string;",
+        "  status?: string;",
+        "  hoursOld?: number | null;",
         "}",
         "",
         "// Cannot run on Workers (TLS impersonation / RSA / browser). Stays on Python/Actions.",

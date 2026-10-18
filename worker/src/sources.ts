@@ -32,5 +32,7 @@ export interface SourceDef {
   maxOrgs?: number;
   country?: string;
   hoursOld?: number | null;
+  industry?: string;
+  status?: string;
   cadence: Cadence;
 }

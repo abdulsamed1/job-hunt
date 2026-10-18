@@ -41,9 +41,11 @@ def test_every_yaml_source_is_accounted_for():
     yaml_total = len(data.get("sources") or [])
     worker, python_only, stats = _load_generator().build()
     assert stats["yaml_total"] == yaml_total
-    # Nothing may be lost: every source runs on the Worker or is explicitly
-    # declared python-only (TLS impersonation / RSA / browser required).
-    assert len(worker) + len(python_only) == yaml_total
+    dead = sum(1 for e in (data.get("sources") or []) if (e or {}).get("status") == "dead")
+    # Nothing may be lost: every source runs on the Worker, is explicitly
+    # declared python-only (TLS impersonation / RSA / browser required), or is
+    # marked dead and excluded from both shards.
+    assert len(worker) + len(python_only) + dead == yaml_total
     assert len(worker) == len({s["name"] for s in worker}), "duplicate source names"
 
 
@@ -120,3 +122,46 @@ def test_generated_ts_is_committed_and_imported():
     assert 'from "./sources.generated.js"' in index
     # no leftover hardcoded table that would shadow the generated shard
     assert "const SOURCES: SourceDef[] = GENERATED_SOURCES;" in index
+
+
+def test_every_source_declares_an_industry():
+    data = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
+    valid = {"crypto", "software", "fintech", "general"}
+    for entry in data.get("sources") or []:
+        assert entry.get("industry") in valid, entry.get("name")
+
+
+def test_jobspy_sources_use_the_profile_vocabulary():
+    data = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
+    vocab = {"backend", "full stack", "software", "reactjs", "nodejs", "typescript", "javascript", "forward deployed engineer"}
+    jobspy_adapters = {"bayt", "naukri", "indeed", "freehire", "bdjobs"}
+    for entry in data.get("sources") or []:
+        if entry.get("adapter") in jobspy_adapters:
+            qs = {str(q).lower() for q in (entry.get("queries") or [])}
+            assert vocab.issubset(qs), entry.get("name")
+
+
+def test_no_source_typo_engineerk():
+    data = yaml.safe_load((ROOT / "config" / "sources.yaml").read_text()) or {}
+    for entry in data.get("sources") or []:
+        for q in entry.get("queries") or []:
+            assert "Engineerk" not in str(q)
+    assert "Engineerk" not in GENERATED_TS.read_text()
+
+
+def test_generated_entries_carry_industry_and_hours():
+    worker, python_only, _stats = _load_generator().build()
+    valid = {"crypto", "software", "fintech", "general"}
+    for record in worker:
+        assert "industry" in record
+        assert record["industry"] in valid
+        assert "hoursOld" in record
+    for record in python_only:
+        assert "industry" in record
+        assert record["industry"] in valid
+
+
+def test_dead_sources_are_excluded_from_shards():
+    worker, python_only, _stats = _load_generator().build()
+    for record in worker + python_only:
+        assert record.get("status") != "dead"
