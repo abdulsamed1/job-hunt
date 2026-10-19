@@ -102,9 +102,10 @@ Treat the config as intent, never as proof.
     smartrecruiters 1 (ubisoft), personio 1 (personio-vivid),
     workable 1 (netguru).
   - **JobSpy-pattern boards that yield (3)**: naukri (India, RSA token),
-    freehire, bdjobs (Bangladesh). `bayt` and `indeed` answer 404 (dead),
-    `glassdoor` answers 403 (flaky); ziprecruiter and google are not
-    configured.
+    freehire, bdjobs (Bangladesh). `bayt` and `indeed` record a clean zero
+    with no cause in the ledger (their adapters swallowed the failure; they
+    now raise, so the next probe records the real status), `glassdoor`
+    answers 403 (flaky); ziprecruiter and google are not configured.
   - **HTML-scraped `web` boards (25, python-only)**: Aave Careers, Coinbase
     Careers, Crypto Careers, CryptoJobs, CryptoJobs.com, CryptoJobsList,
     DeFi Jobs, Dice, Eurojobs, GulfTalent, Remote 💎 Web3 Jobs, Remote3,
@@ -112,7 +113,7 @@ Treat the config as intent, never as proof.
     WUZZUF, Web3 Jobs, Web3.career, Web3internships,
     Wellfound (formerly AngelList), chainlink-web, jobberman, remotive-web.
 - **Dead — do not re-add without re-probing**: the 404 ATS boards (github,
-  doordash and 100+ others), polygon.technology jobs, ethgigs,
+  doordash and 100+ others), polygon.technology jobs,
   consensys.net/careers URL, alchemy.com/jobs URL, and the clean-zero boards
   (Toptal, Hired, Arc (formerly Vettery), AngelList Talent, useWeb3 Jobs,
   YCombinator Jobs, CryptoJobsDaily, Degen Crypto Jobs, Gitcoin,

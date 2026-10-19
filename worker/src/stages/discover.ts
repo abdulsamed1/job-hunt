@@ -18,7 +18,7 @@ import { detectDegraded } from "../lib/health.js";
 import { filterRemoteList, HOURS_OLD, isRemoteish, parsePostedAt, partitionFresh } from "../lib/freshness.js";
 import { notifyEventOnce } from "../lib/notify.js";
 import { classifyRole } from "../lib/roles.js";
-import { bumpCounter, findKnownJobs, recordSourceHealth, setJobState, upsertJob, type Db } from "../state.js";
+import { bumpCounter, findKnownJobs, hashKey, recordSourceHealth, setJobState, upsertJob, type Db } from "../state.js";
 import type { SourceDef } from "../sources.js";
 import type { Env } from "../index.js";
 
@@ -237,7 +237,23 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     hash: canonicalHash(j.url),
     fp: roleFingerprint(j.company, j.title, j.location),
   }));
-  const datelessPostings = dateless.map((j) => ({
+  const datelessKept = dateless.slice(0, INTAKE_CAP);
+  const datelessHeldBack = dateless.length - datelessKept.length;
+  if (datelessHeldBack > 0) {
+    // The dateless bucket is capped like the fresh one: a board that dates
+    // nothing must not fill the store with rows that can never reach the
+    // feed. Dateless postings carry no date to order them by, so the cap
+    // keeps the first ones the board listed. The held-back postings are
+    // counted with the same intake counter: they are postings this board
+    // could not contribute, and that count is what says a board is being
+    // throttled.
+    try {
+      await bumpCounter(db, "intake_capped", datelessHeldBack);
+    } catch (e) {
+      console.log(`intake_capped counter failed: ${String(e).slice(0, 120)}`);
+    }
+  }
+  const datelessPostings = datelessKept.map((j) => ({
     job: j,
     hash: canonicalHash(j.url),
     fp: roleFingerprint(j.company, j.title, j.location),
@@ -271,7 +287,7 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
   // reports "materially improved" on every sweep and would count one posting
   // once per source per day.
   for (const { job: j, hash, fp } of datelessPostings) {
-    const own = known.get(hash);
+    const own = known.get(hashKey(hash));
     if (own && !GATEABLE_STATES.has(own.state)) continue;
     const row = {
       canonical_hash: hash, title: (j.title || "").slice(0, 200),
@@ -283,6 +299,12 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     // stored first, counted second: a counter failure must never cost the row.
     const outcome = { recorded: false };
     await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: NO_DATE_DETAIL, role_fingerprint: fp, outcome });
+    if (own) {
+      // Same demotion as the role gate: the jobs upsert never touches state,
+      // so a row that was already in the feed (a posting that lost its date
+      // between two sweeps) has to be moved out of it explicitly.
+      await setJobState(db, hash, "PRE_FILTERED_OUT", NO_DATE_DETAIL);
+    }
     if (outcome.recorded) {
       try {
         await bumpCounter(db, "dateless_dropped");
@@ -296,7 +318,7 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     // the authority on whether this posting is suppressed: a twin's
     // fingerprint can drift (the board edited the title) or lose its
     // owner, and neither may reopen the posting.
-    const own = known.get(hash);
+    const own = known.get(hashKey(hash));
     const ownerHash = [...(owners.get(fp) || [])].find((h) => h !== hash);
     const row = {
       canonical_hash: hash, title: j.title.slice(0, 200),
@@ -331,6 +353,14 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
       // the posting, nor the rest of this source's batch.
       const outcome = { recorded: false };
       await upsertJob(db, row, { state: "PRE_FILTERED_OUT", detail: reason, role_fingerprint: fp, outcome });
+      if (own) {
+        // The jobs upsert never touches state, so a posting that was already
+        // in the feed when the gate found it (every row that predates the
+        // deploy) has to be moved out of it explicitly — the same demotion
+        // the duplicate gate performs. Without it a manager posting stays in
+        // the actionable list and can still be applied to.
+        await setJobState(db, hash, "PRE_FILTERED_OUT", reason);
+      }
       // `recorded` (not the upsert's return value) is the first-time
       // signal: a re-discovered reject costs no count and no alert.
       if (outcome.recorded) {

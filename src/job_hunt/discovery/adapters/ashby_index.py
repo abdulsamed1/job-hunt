@@ -57,10 +57,11 @@ class AshbyIndexAdapter(DiscoveryAdapter):
                 headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"},
             )
         except Exception as exc:
-            logger.debug("Ashby index fetch failed for %s: %s", url, exc)
-            return []
-        if resp.status_code != 200:
-            return []
+            # Surface the failure: the registry isolates it per source, the
+            # probe records it as a flaky attempt instead of an empty board.
+            raise ValueError(f"Ashby index {url} could not be fetched: {exc}") from exc
+        # A non-success status is a FAILED attempt, not a clean zero.
+        resp.raise_for_status()
 
         orgs = self.extract_orgs(resp.text, url)[:max_orgs]
         logger.info("Ashby index %s: %d org boards", url, len(orgs))

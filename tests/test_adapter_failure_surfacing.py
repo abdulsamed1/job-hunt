@@ -19,9 +19,16 @@ from pathlib import Path
 import httpx
 import pytest
 
+from job_hunt.discovery.adapters.ashby_index import AshbyIndexAdapter
+from job_hunt.discovery.adapters.bamboohr import BambooHRAdapter
+from job_hunt.discovery.adapters.bayt import BaytAdapter
 from job_hunt.discovery.adapters.feed import FeedAdapter
+from job_hunt.discovery.adapters.indeed import IndeedAdapter
+from job_hunt.discovery.adapters.personio import PersonioAdapter
 from job_hunt.discovery.adapters.recruitee import RecruiteeAdapter
+from job_hunt.discovery.adapters.teamtailor import TeamtailorAdapter
 from job_hunt.discovery.adapters.web import UniversalWebAdapter
+from job_hunt.discovery.adapters.workable import WorkableAdapter
 from job_hunt.discovery.registry import SourceRegistry
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +46,11 @@ def _load_probe():
 
 def _client(handler):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def _no_sleep(_seconds):
+    """The retry backoff is real; a unit test must not wait for it."""
+    return None
 
 
 # --- feed ---------------------------------------------------------------
@@ -180,6 +192,226 @@ async def test_recruitee_adapter_raises_on_a_server_error():
             await RecruiteeAdapter().fetch(
                 {"name": "make", "url": "https://make.recruitee.com/api/offers/"}, client
             )
+
+
+# --- the seven adapters that used to swallow the failure ------------------
+#
+# A 403/5xx on one of these boards was recorded as a clean zero, which marks
+# the board dead and drops it from the Worker shard and the sweep. They must
+# raise instead, so the probe records a flaky attempt (re-probed next run).
+
+
+@pytest.mark.asyncio
+async def test_teamtailor_adapter_raises_on_a_server_error():
+    async def handler(request):
+        return httpx.Response(500, text="boom")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await TeamtailorAdapter().fetch(
+                {"name": "saasglobal", "url": "https://saasglobal.teamtailor.com/jobs"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_teamtailor_adapter_raises_when_the_feed_is_not_xml():
+    async def handler(request):
+        return httpx.Response(200, text="not xml at all")
+
+    async with _client(handler) as client:
+        with pytest.raises(ValueError, match="not parseable RSS/XML"):
+            await TeamtailorAdapter().fetch(
+                {"name": "saasglobal", "url": "https://saasglobal.teamtailor.com/jobs"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_workable_adapter_raises_on_a_server_error():
+    async def handler(request):
+        return httpx.Response(503, text="nope")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await WorkableAdapter().fetch(
+                {"name": "netguru", "url": "https://apply.workable.com/netguru/"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_workable_adapter_raises_when_the_body_is_not_json():
+    async def handler(request):
+        return httpx.Response(200, text="<html>nope</html>")
+
+    async with _client(handler) as client:
+        with pytest.raises(ValueError, match="did not return JSON"):
+            await WorkableAdapter().fetch(
+                {"name": "netguru", "url": "https://apply.workable.com/netguru/"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_personio_adapter_raises_on_a_server_error():
+    async def handler(request):
+        return httpx.Response(500, text="boom")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await PersonioAdapter().fetch(
+                {"name": "personio-vivid", "url": "https://vivid.jobs.personio.de/xml"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_bamboohr_adapter_raises_on_a_server_error():
+    async def handler(request):
+        return httpx.Response(403, text="forbidden")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await BambooHRAdapter().fetch(
+                {"name": "bamboohr-demo", "url": "https://demo.bamboohr.com/careers"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_ashby_index_adapter_raises_on_a_server_error():
+    async def handler(request):
+        return httpx.Response(500, text="boom")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await AshbyIndexAdapter().fetch(
+                {"name": "ashby-index", "url": "https://jobs.solana.com/"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_ashby_index_adapter_raises_on_a_transport_failure():
+    async def handler(request):
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    async with _client(handler) as client:
+        with pytest.raises(ValueError, match="could not be fetched"):
+            await AshbyIndexAdapter().fetch(
+                {"name": "ashby-index", "url": "https://jobs.solana.com/"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_indeed_adapter_raises_on_a_server_error(monkeypatch):
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+    async def handler(request):
+        return httpx.Response(500, text="boom")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await IndeedAdapter().fetch(
+                {"name": "indeed-egypt-tech", "queries": ["backend"],
+                 "locations": ["Cairo, Egypt"], "country": "EG"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_indeed_adapter_raises_when_the_payload_is_unexpected(monkeypatch):
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+
+    async def handler(request):
+        return httpx.Response(200, json={"nope": True})
+
+    async with _client(handler) as client:
+        with pytest.raises(ValueError, match="unexpected payload"):
+            await IndeedAdapter().fetch(
+                {"name": "indeed-egypt-tech", "queries": ["backend"],
+                 "locations": ["Cairo, Egypt"], "country": "EG"}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_bayt_adapter_raises_when_the_board_fails(monkeypatch):
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(
+        "job_hunt.discovery.adapters.bayt.fetch_text",
+        _raise_fetch_text(500),
+    )
+
+    async def handler(request):
+        return httpx.Response(200, text="unused")
+
+    async with _client(handler) as client:
+        with pytest.raises(ValueError, match="did not answer"):
+            await BaytAdapter().fetch(
+                {"name": "bayt-egypt-tech", "queries": ["backend"],
+                 "locations": ["Cairo, Egypt"]}, client
+            )
+
+
+@pytest.mark.asyncio
+async def test_bayt_adapter_raises_when_the_board_is_gone(monkeypatch):
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(
+        "job_hunt.discovery.adapters.bayt.fetch_text",
+        _raise_fetch_text(404),
+    )
+
+    async def handler(request):
+        return httpx.Response(200, text="unused")
+
+    async with _client(handler) as client:
+        with pytest.raises(httpx.HTTPStatusError) as exc:
+            await BaytAdapter().fetch(
+                {"name": "bayt-egypt-tech", "queries": ["backend"],
+                 "locations": ["Cairo, Egypt"]}, client
+            )
+    # The 404 carries its status, so the probe can tell "gone" from "failed".
+    assert exc.value.response.status_code == 404
+
+
+def _raise_fetch_text(status: int):
+    """A fetch_text stub that answers with a status and no body."""
+
+    async def fetch_text(url, params=None, headers=None, timeout=20, impersonate="chrome"):
+        return status, "<html></html>", url
+
+    return fetch_text
+
+
+@pytest.mark.asyncio
+async def test_discover_all_keeps_the_other_sources_when_a_tenant_board_fails(monkeypatch):
+    """One of the seven adapters that now raises must not abort the scan."""
+    payload = {
+        "jobs": [
+            {
+                "id": 11,
+                "title": "Backend Engineer",
+                "company": "Acme",
+                "url": "https://example.com/jobs/11",
+                "description": "Python role.",
+            }
+        ]
+    }
+
+    async def handler(request):
+        if request.url.path == "/feed":
+            return httpx.Response(200, json=payload)
+        return httpx.Response(500, text="boom")
+
+    sources = [
+        {"name": "broken-workable", "adapter": "workable",
+         "url": "https://apply.workable.com/netguru/"},
+        {"name": "good-feed", "adapter": "feed", "url": "https://example.com/feed"},
+    ]
+    registry = SourceRegistry()
+    original_client = httpx.AsyncClient
+
+    def factory(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+    postings = await registry.discover_all(sources=sources)
+
+    assert [p.title for p in postings] == ["Backend Engineer"]
 
 
 # --- the local scan path still tolerates one failing source --------------

@@ -279,7 +279,7 @@ describe("role fingerprint column", () => {
 // The dedupe lookup: one SELECT answering two IN lists, keyed by both
 // identifiers so the caller can tell "mine again" from "another board".
 function knownJobsDb(
-  rows: Array<{ canonical_hash: string; role_fingerprint: string; state: string }>,
+  rows: Array<{ canonical_hash: string; role_fingerprint: string; state: string; discovered_at?: string }>,
   queries: string[][],
 ) {
   const db = {
@@ -329,22 +329,41 @@ describe("findKnownJobs", () => {
     // the caller needs the row's canonical_hash to answer "me again". State and
     // discovered_at ride along: the caller decides which rows own a
     // requisition (still applicable, still recent).
-    expect(known.get("h1")).toEqual({
+    // The keys are namespaced: a canonical hash and a role fingerprint are
+    // both bare digests, so one kind must never resolve to the other.
+    expect(known.get("h:h1")).toEqual({
       canonical_hash: "h1", role_fingerprint: "fp1", state: "DISCOVERED", discovered_at: SEEN_AT,
     });
-    expect(known.get("fp2")).toEqual({
+    expect(known.get("f:fp2")).toEqual({
       canonical_hash: "h2", role_fingerprint: "fp2", state: "DUPLICATE", discovered_at: SEEN_AT,
     });
     // Nothing for identifiers the store does not carry.
-    expect(known.get("h-nope")).toBeUndefined();
-    expect(known.get("fp-nope")).toBeUndefined();
-    expect(known.get("fp3")).toBeUndefined();
+    expect(known.get("h:h-nope")).toBeUndefined();
+    expect(known.get("f:fp-nope")).toBeUndefined();
+    expect(known.get("f:fp3")).toBeUndefined();
     // One batched read per source invocation, not one per posting.
     expect(queries).toHaveLength(1);
     expect(queries[0][0]).toContain("SELECT canonical_hash, role_fingerprint");
     expect(queries[0][0]).toContain("discovered_at");
     expect(queries[0][0]).toContain("canonical_hash IN (");
     expect(queries[0][0]).toContain("OR role_fingerprint IN (");
+  });
+
+  it("keeps the two identifier kinds in separate key spaces", async () => {
+    // A row whose canonical_hash is "fp1" and whose fingerprint is "fp1" is
+    // the collision case: without a namespace the fingerprint lookup would
+    // answer with the hash's identity and the other way round.
+    const queries: string[][] = [];
+    const { findKnownJobs, hashKey, fingerprintKey } = await import("../src/state.js");
+    const known = await findKnownJobs(
+      knownJobsDb([{ canonical_hash: "fp1", role_fingerprint: "fp1", state: "DISCOVERED", discovered_at: SEEN_AT }], queries),
+      ["fp1"],
+      ["fp1"],
+    );
+    expect(known.get(hashKey("fp1"))?.canonical_hash).toBe("fp1");
+    expect(known.get(fingerprintKey("fp1"))?.role_fingerprint).toBe("fp1");
+    // The two keys are different keys.
+    expect(hashKey("fp1")).not.toBe(fingerprintKey("fp1"));
   });
 
   it("still reads a fingerprint-only call", async () => {
@@ -355,7 +374,7 @@ describe("findKnownJobs", () => {
     expect(queries).toHaveLength(1);
     expect(queries[0][0]).toContain("role_fingerprint IN (");
     expect(queries[0][0]).not.toContain("canonical_hash IN (");
-    expect(known.get("fp1")?.canonical_hash).toBe("h1");
+    expect(known.get("f:fp1")?.canonical_hash).toBe("h1");
   });
 
   it("chunks the two lists and de-duplicates their bindings", async () => {

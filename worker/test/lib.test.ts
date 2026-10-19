@@ -85,6 +85,33 @@ describe("roleFingerprint", () => {
     );
   });
 
+  it("collapses the legal company forms Python collapses", () => {
+    // The Worker is the runtime that applies, so it must collapse the same
+    // surface forms Python does (job_hunt.dedup.normalize_company).
+    expect(roleFingerprint("Acme, Inc.", "Backend Engineer", "Remote")).toBe(
+      roleFingerprint("Acme", "Backend Engineer", "Remote"),
+    );
+    expect(roleFingerprint("Acme Technologies", "Backend Engineer", "Remote")).toBe(
+      roleFingerprint("Acme", "Backend Engineer", "Remote"),
+    );
+    expect(roleFingerprint("Acme Ltd", "Backend Engineer", "Remote")).toBe(
+      roleFingerprint("Acme", "Backend Engineer", "Remote"),
+    );
+  });
+
+  it("collapses the role abbreviations Python collapses", () => {
+    // "Sr. Backend Engineer" and "Senior Backend Engineer" are one role
+    // (job_hunt.dedup.ROLE_TOKEN_EXPANSIONS).
+    expect(roleFingerprint("Acme", "Sr. Backend Engineer", "Remote")).toBe(
+      roleFingerprint("Acme", "Senior Backend Engineer", "Remote"),
+    );
+    // "swe" expands to "software engineer" — the same two words, so the
+    // fingerprint matches the spelled-out title.
+    expect(roleFingerprint("Acme", "Swe", "Remote")).toBe(
+      roleFingerprint("Acme", "Software Engineer", "Remote"),
+    );
+  });
+
   it("separates a different place, company or title", () => {
     const base = roleFingerprint("Acme", "Backend Engineer", "Remote");
     expect(roleFingerprint("Acme", "Backend Engineer", "Remote - Europe")).not.toBe(base);
@@ -386,9 +413,12 @@ describe("ashby index fan-out", () => {
 describe("generated source shard", () => {
   it("ships the full source set with hourly shard under the batch cap", async () => {
     const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
-    // Dead boards (status: dead) are excluded from the shard, so the live set is
-    // smaller than the configured 374. The floor is the measured live count minus
-    // margin; a drop below it means a mass regression or an over-aggressive probe.
+    // Dead boards (status: dead) are excluded from the shard, so the shipped
+    // set is smaller than the configured 374: 198 boards are not dead (149
+    // Worker-runnable + 49 python-only). The floor is that non-dead count minus
+    // margin; a drop below it means a mass regression or an over-aggressive
+    // probe. The measured *live* count is 170 (see AGENTS.md) and is not what
+    // these floors assert.
     expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBeGreaterThanOrEqual(180);
     expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(130);
     const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");

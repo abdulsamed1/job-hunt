@@ -62,11 +62,6 @@ function collectMatches(norm: string, prefix: string, rules: Rule[]): Match[] {
   return matches;
 }
 
-/** Any word of a family present. */
-function hasFamilyMatch(norm: string, rules: Rule[]): boolean {
-  return rules.some((rule) => rule.words.some((word) => hasWord(norm, word)));
-}
-
 /** Most specific match wins: the longest matched word, first listed on a tie. A
  *  titled specialist beats a generic label, so "Marketing Manager" is marketing
  *  and "Customer Success Manager" is customer success, while "Senior Manager,
@@ -79,11 +74,11 @@ function mostSpecific(matches: Match[]): Match | null {
   return best;
 }
 
-// (1) IC allow, checked first: seniority that marks individual-contributor work.
-// "lead engineer" is matched as written so "Team Lead, Backend Engineering" stays
-// a reject. A bare seniority marker only counts when the title also names
-// engineering work, and never once a people-management word is present — see
-// the IC branch in classifyRole.
+// (1) IC allow: seniority that marks individual-contributor work. It stands in
+// for the software allow-list, never for the reject families: "Senior Sales
+// Engineer" is a sales role and "Senior Engineering Manager" is a manager
+// role, whatever the seniority marker says. "lead engineer" is matched as
+// written so "Team Lead, Backend Engineering" stays a reject.
 const IC_PHRASES = ["lead engineer", "lead software engineer"];
 const SENIORITY = ["staff", "principal", "senior", "sr"];
 const ENGINEERING_NOUNS = ["engineer", "engineers", "engineering"];
@@ -131,7 +126,10 @@ const NON_ENGINEERING: Rule[] = [
   { slug: "driver", words: ["driver"] },
   { slug: "content writer", words: ["content writer"] },
   { slug: "designer", words: ["graphic designer"] },
-  { slug: "intern", words: ["intern"] },
+  // "intern" and "internship" are the same thing: a board that writes
+  // "Software Engineering Internship" must not slip past as a software role
+  // (Python rejects both, see evaluation/engine.py).
+  { slug: "intern", words: ["intern", "internship"] },
   { slug: "product", words: ["product manager"] },
 ];
 
@@ -147,7 +145,9 @@ const SOFTWARE_ALLOW: Rule[] = [
   { slug: "software", words: ["software", "software engineer", "software developer"] },
   { slug: "backend", words: ["backend"] },
   { slug: "frontend", words: ["frontend", "front end"] },
-  { slug: "full stack", words: ["full stack"] },
+  // "fullstack" is the same word as "full stack": Python's `\bfull\s*stack\b`
+  // accepts both spellings, so the Worker must too.
+  { slug: "full stack", words: ["full stack", "fullstack"] },
   { slug: "platform", words: ["platform engineer"] },
   { slug: "site reliability", words: ["site reliability", "sre"] },
   { slug: "devops", words: ["devops"] },
@@ -174,13 +174,12 @@ export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): Rol
   const norm = words.join(" ");
   const wordSet = new Set(words);
 
-  // The IC branch runs first, but management outranks seniority: "Senior
-  // Engineering Manager" and "Principal Engineering Manager" are manager roles,
-  // so a people-management word makes the IC branch stand aside.
-  if (!hasFamilyMatch(norm, PEOPLE_MANAGEMENT) && isIcRole(norm, wordSet)) {
-    return { verdict: "software", rule: "software:ic" };
-  }
-
+  // The reject families come first, and nothing overrides them. A revenue, CRM
+  // or non-engineering word beats any seniority marker ("Senior Sales
+  // Engineer" is a sales role, "Senior Marketing Engineer" is a marketing
+  // role), and a people-management word beats it too ("Senior Engineering
+  // Manager" is a manager role). The IC allow used to short-circuit ahead of
+  // these families, which let revenue titles into the feed.
   const rejects: Match[] = [];
   for (const family of REJECT_FAMILIES) rejects.push(...collectMatches(norm, family.prefix, family.rules));
   if (opts.rejectCrm !== false && hasWord(norm, CRM_ANCHOR) && hasAnyWord(wordSet, CRM_COMPANIONS)) {
@@ -188,6 +187,13 @@ export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): Rol
   }
   const rejected = mostSpecific(rejects);
   if (rejected) return { verdict: "reject", rule: rejected.rule };
+
+  // The IC allow stands in for the software allow-list below: a seniority
+  // marker plus an engineering noun is individual-contributor work even when
+  // the title names no technology ("Staff Engineer, Platform").
+  if (isIcRole(norm, wordSet)) {
+    return { verdict: "software", rule: "software:ic" };
+  }
 
   const allows = collectMatches(norm, "software", SOFTWARE_ALLOW);
   const technology = TECHNOLOGIES.find((t) => wordSet.has(t));

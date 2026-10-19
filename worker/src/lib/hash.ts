@@ -50,6 +50,79 @@ function words(raw: string): string[] {
   return raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
 }
 
+/** Company legal and generic suffixes (mirrors Python dedup.COMPANY_SUFFIXES).
+ *  "Acme, Inc." and "Acme" are the same employer, so the fingerprint must not
+ *  depend on which of the two the board wrote. */
+const COMPANY_SUFFIXES: RegExp[] = [
+  /\binc\.?\b/g,
+  /\bincorporated\b/g,
+  /\bllc\.?\b/g,
+  /\bltd\.?\b/g,
+  /\blimited\b/g,
+  /\bcorp\.?\b/g,
+  /\bcorporation\b/g,
+  /\bco\.?\b/g,
+  /\bcompany\b/g,
+  /\btechnologies\b/g,
+  /\btechnology\b/g,
+  /\bholdings\b/g,
+  /\bgmbh\b/g,
+  /\bag\b/g,
+  /\bsa\b/g,
+  /\bsas\b/g,
+  /\bplc\b/g,
+  /\bbv\b/g,
+];
+
+/** One employer's canonical name: lowercase, legal suffixes removed, and the
+ *  rest reduced to words. Mirrors Python's dedup.normalize_company. */
+export function normalizeCompany(raw: string): string {
+  let text = (raw || "").trim().toLowerCase();
+  for (const suffix of COMPANY_SUFFIXES) text = text.replace(suffix, "");
+  // Strip everything that is not a letter, a digit or a space (Python keeps
+  // underscores, so this does too).
+  return text.replace(/[^\p{L}\p{N}_\s]/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Role abbreviations and their expansions (mirrors Python
+ *  dedup.ROLE_TOKEN_EXPANSIONS). "Sr. Backend Engineer" and "Senior Backend
+ *  Engineer" are the same role. */
+const ROLE_TOKEN_EXPANSIONS: Record<string, string> = {
+  sr: "senior",
+  "sr.": "senior",
+  jr: "junior",
+  "jr.": "junior",
+  swe: "software engineer",
+  sw: "software",
+  eng: "engineer",
+  engr: "engineer",
+  dev: "developer",
+  mgr: "manager",
+  lead: "lead",
+  fde: "forward deployed engineer",
+  sre: "site reliability engineer",
+  infra: "infrastructure",
+  qa: "quality assurance",
+  ml: "machine learning",
+  ai: "artificial intelligence",
+  genai: "generative ai",
+};
+
+/** One posting's canonical role: lowercase, abbreviations expanded, noise
+ *  removed. Mirrors Python's dedup.normalize_role. */
+export function normalizeRole(raw: string): string {
+  let text = (raw || "").trim().toLowerCase();
+  // Keep the two technology names that are not plain words.
+  text = text.replace(/c\+\+/g, "__cpp__").replace(/c#/g, "__csharp__");
+  text = text.replace(/[^\p{L}\p{N}_\s]/gu, " ");
+  text = text.replace(/__cpp__/g, "c++").replace(/__csharp__/g, "c#");
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => ROLE_TOKEN_EXPANSIONS[token] ?? token)
+    .join(" ");
+}
+
 /** Locations that all name the same thing: work not tied to a place. One
  *  requisition reaches us spelled half a dozen ways ("Remote", "Remote, US",
  *  "Anywhere", "Work From Home"), so every all-remote location has to
@@ -77,9 +150,15 @@ export function normalizeLocation(raw: string): string {
  *  groups, where identity today is the canonical URL hash alone and the same
  *  requisition arrives under two jids or on two boards.
  *
+ *  The company and the title are normalized the way Python normalizes them
+ *  (legal suffixes dropped, role abbreviations expanded), so the Worker — the
+ *  runtime that actually applies — collapses the same surface forms Python
+ *  does: "Acme, Inc." and "Acme" are one employer, "Sr. Backend Engineer" and
+ *  "Senior Backend Engineer" are one role.
+ *
  *  Keeps the Worker's own fnv1a hash: only the normalization rules are shared
  *  with Python, because each runtime dedupes its own store and cross-runtime
  *  hash equality buys nothing. */
 export function roleFingerprint(company: string, title: string, location: string): string {
-  return fnv1a(`${words(company).join(" ")}|${words(title).join(" ")}|${normalizeLocation(location)}`);
+  return fnv1a(`${normalizeCompany(company)}|${normalizeRole(title)}|${normalizeLocation(location)}`);
 }

@@ -361,6 +361,12 @@ def test_disability_bare_program_fails(engine, candidate):
     "Head of Engineering",
     "Account Executive, EMEA",
     "Marketing Manager",
+    # A seniority marker never makes a revenue title a software role: these
+    # are sales and marketing jobs, whatever "Senior" says.
+    "Senior Sales Engineer",
+    "Staff Sales Engineer",
+    "Senior Marketing Engineer",
+    "Senior Customer Success Engineer",
 ])
 def test_pre_filter_rejects_non_ic_roles(engine, candidate, title):
     job = JobPosting(
@@ -387,15 +393,61 @@ def test_pre_filter_keeps_ic_titles(engine, candidate, title):
     assert passed is True
 
 
-def test_pre_filter_allows_ic_title_before_checking_negatives(engine, candidate):
+def test_pre_filter_keeps_an_ic_title_that_matches_no_reject_family(engine, candidate):
+    # The IC allow-list stands in for the positive SWE patterns: an individual
+    # contributor title needs no technology in it. It never stands in for the
+    # reject families (see the sales/marketing titles above).
     job = JobPosting(
-        source="test", title="Staff Engineer, Sales Tools", company="Co",
+        source="test", title="Staff Engineer, Payments Tools", company="Co",
         raw_url="https://example.com", canonical_url="https://example.com",
         canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
         location="Remote",
     )
     passed, reason = engine.pre_filter(job, candidate)
     assert passed is True
+
+
+@pytest.mark.parametrize("title", ["Software Engineering Internship",
+                                   "Backend Engineering Internship"])
+def test_pre_filter_rejects_internship_titles(engine, candidate, title):
+    # "Internship" is the same out-of-scope thing as "Intern": the Worker
+    # rejects both spellings too (worker/src/lib/roles.ts).
+    job = JobPosting(
+        source="test", title=title, company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is False
+
+
+def test_pre_filter_names_the_reject_rule_the_worker_names(engine, candidate):
+    # The reason carries the family and the slug, so both runtimes call the
+    # same rule by the same name (the Worker stores "role gate: revenue:sales").
+    job = JobPosting(
+        source="test", title="Senior Sales Engineer", company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+    passed, reason = engine.pre_filter(job, candidate)
+    assert passed is False
+    assert "revenue:sales" in (reason or "")
+
+
+def test_pre_filter_accepts_fullstack_titles(engine, candidate):
+    # "FullStack" and "Full-Stack" are "full stack" written as one word or with
+    # a hyphen: the Worker accepts every spelling, so this runtime must too.
+    for title in ("FullStack Engineer", "Full-Stack Engineer", "Full Stack Engineer"):
+        job = JobPosting(
+            source="test", title=title, company="Co",
+            raw_url="https://example.com", canonical_url="https://example.com",
+            canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+            location="Remote",
+        )
+        passed, reason = engine.pre_filter(job, candidate)
+        assert passed is True, title
 
 
 @pytest.mark.parametrize("title", ["Site Reliability", "Machine Learning"])

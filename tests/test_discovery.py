@@ -813,6 +813,9 @@ async def test_ashby_index_fans_out_to_org_boards():
         class R:
             status_code = 200
             text = html
+
+            def raise_for_status(self):
+                return None
         return R()
 
     seen_orgs = []

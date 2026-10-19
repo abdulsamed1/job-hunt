@@ -49,14 +49,19 @@ class BambooHRAdapter(DiscoveryAdapter):
 
         try:
             resp = await client.get(api_url, headers=headers, timeout=12.0, follow_redirects=True)
-            if resp.status_code != 200:
-                logger.debug("BambooHR API for %s returned status %d", tenant, resp.status_code)
-                return []
+            # A non-success status is a FAILED attempt, not a clean zero: the
+            # probe must see the error (flaky -> re-probed next run) instead of
+            # recording an empty board (dead -> dropped from the shard).
+            resp.raise_for_status()
 
             data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            # Surface the failure: the registry isolates it per source, the
+            # probe records it as a flaky attempt.
+            logger.debug("BambooHR API for %s failed: %s", tenant, exc)
+            raise
         except Exception as exc:
-            logger.debug("BambooHR fetch failed for %s: %s", tenant, exc)
-            return []
+            raise ValueError(f"BambooHR API for {tenant} did not return JSON: {exc}") from exc
 
         raw_jobs = data.get("result") or []
         company = entry.get("name") or tenant.title()

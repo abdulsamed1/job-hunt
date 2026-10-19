@@ -8,12 +8,11 @@ Exit codes: 0 ok, 1 nothing to do, 2 error.
 from __future__ import annotations
 
 import argparse
-import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = REPO_ROOT / "data" / "jobs.db"
@@ -32,102 +31,19 @@ def _load_models():
 
 
 # ---------------------------------------------------------------------------
-# Role classification (mirrors worker/src/lib/roles.ts reject families).
-# Only "reject" verdicts are actionable for the backfill; unknowns are left alone.
+# Role classification.
+#
+# The rules live in job_hunt.evaluation.engine (ROLE_REJECT_RULES), the same
+# table the runtime applies and the Worker mirrors. This script must not carry
+# a third copy: a stale copy demotes the wrong rows.
 # ---------------------------------------------------------------------------
 
-def _has_word(text: str, word: str) -> bool:
-    return f" {text} ".find(f" {word} ") >= 0
-
-
 def classify_role(title: Optional[str], reject_crm: bool = True) -> Optional[str]:
-    """Return a rule slug if the title is a reject, else None."""
+    """Return the rule slug if the title is a reject, else None."""
     if not title or not isinstance(title, str):
         return None
-    text = title.strip().lower()
-    # flatten punctuation to spaces, keep dots inside words
-    norm = re.sub(r"[^\w.\s]", " ", text)
-    norm = re.sub(r"\s+", " ", norm).strip()
-    words = norm.split()
-    word_set = set(words)
-    norm_spaced = " ".join(words)
-
-    # people-management words override IC allow
-    mgmt_words = {"manager", "team lead", "group lead", "head of", "director", "vp", "chief", "supervisor"}
-    has_mgmt = any(_has_word(norm_spaced, w) for w in mgmt_words)
-
-    # IC allow: lead engineer / seniority + engineering noun, only if no mgmt word
-    ic_phrases = ["lead engineer", "lead software engineer"]
-    seniority = {"staff", "principal", "senior", "sr"}
-    eng_nouns = {"engineer", "engineers", "engineering"}
-    is_ic = False
-    if not has_mgmt:
-        if any(_has_word(norm_spaced, p) for p in ic_phrases):
-            is_ic = True
-        elif (word_set & seniority) and (word_set & eng_nouns):
-            is_ic = True
-    if is_ic:
-        return None
-
-    # reject families: (family prefix, slug, list of words)
-    families: List[Tuple[str, List[Tuple[str, str]]]] = []
-    families.append(("people-management", [
-        ("manager", "manager"),
-        ("team lead", "team lead"),
-        ("group lead", "group lead"),
-        ("head of", "head of"),
-        ("director", "director"),
-        ("vp", "vp"),
-        ("chief", "chief"),
-        ("supervisor", "supervisor"),
-    ]))
-    families.append(("revenue", [
-        ("sales", "sales"),
-        ("sales development", "sales development"),
-        ("business development", "business development"),
-        ("account executive", "account executive"),
-        ("account manager", "account manager"),
-        ("marketing", "marketing"),
-        ("partner", "partner"),
-        ("customer success", "customer success"),
-        ("customer support", "customer support"),
-    ]))
-    families.append(("non-engineering", [
-        ("recruiter", "recruiter"),
-        ("talent acquisition", "talent acquisition"),
-        ("human resources", "human resources"),
-        ("accountant", "accountant"),
-        ("finance", "finance"),
-        ("legal", "legal"),
-        ("nurse", "nurse"),
-        ("medical", "medical"),
-        ("driver", "driver"),
-        ("content writer", "content writer"),
-        ("graphic designer", "graphic designer"),
-        ("intern", "intern"),
-        ("product manager", "product manager"),
-    ]))
-
-    matches: List[Tuple[int, str]] = []  # (word length, slug)
-    for family, rules in families:
-        for slug, word in rules:
-            if _has_word(norm_spaced, word):
-                matches.append((len(word), f"{family}:{slug}"))
-
-    # CRM
-    if reject_crm and _has_word(norm_spaced, "salesforce"):
-        companions = ("consultant", "architect", "administrator", "analyst", "developer")
-        if any(_has_word(norm_spaced, c) for c in companions):
-            matches.append((len("salesforce"), "crm:salesforce"))
-
-    if not matches:
-        return None
-    # most specific = longest matched word; on ties keep the first collected (worker parity)
-    best = None
-    for m in matches:
-        if best is None or m[0] > best[0]:
-            best = m
-    return best[1] if best is not None else None
+    from job_hunt.evaluation.engine import classify_role_reject
+    return classify_role_reject(title, reject_crm=reject_crm)
 
 
 # ---------------------------------------------------------------------------

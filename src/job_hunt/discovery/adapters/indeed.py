@@ -167,26 +167,35 @@ class IndeedAdapter(DiscoveryAdapter):
 
         postings: List[JobPosting] = []
         seen_keys = set()
-        for kw in queries:
-            if len(postings) >= target_count:
-                break
-            for loc in locations:
+        try:
+            for kw in queries:
                 if len(postings) >= target_count:
                     break
-                cursor: Optional[str] = None
-                for _ in range(max_pages):
-                    batch, cursor = await self._fetch_page(
-                        client, base_url, country_code, kw, loc, radius,
-                        cursor, hours_old, remote_only,
-                    )
-                    if batch is None:
+                for loc in locations:
+                    if len(postings) >= target_count:
                         break
-                    new = [p for p in batch if p.external_id not in seen_keys]
-                    seen_keys.update(p.external_id for p in new)
-                    postings.extend(new)
-                    if len(postings) >= target_count or not cursor:
-                        break
-                    await asyncio.sleep(random.uniform(1.0, 3.0))
+                    cursor: Optional[str] = None
+                    for _ in range(max_pages):
+                        batch, cursor = await self._fetch_page(
+                            client, base_url, country_code, kw, loc, radius,
+                            cursor, hours_old, remote_only,
+                        )
+                        new = [p for p in batch if p.external_id not in seen_keys]
+                        seen_keys.update(p.external_id for p in new)
+                        postings.extend(new)
+                        if len(postings) >= target_count or not cursor:
+                            break
+                        await asyncio.sleep(random.uniform(1.0, 3.0))
+        except Exception as exc:
+            if postings:
+                # The board answered with postings before it failed: those are
+                # real (liveness = yields at least one remote posting), so they
+                # are kept. A board that failed without answering anything
+                # re-raises, so the probe records a flaky attempt instead of an
+                # empty board.
+                logger.warning("Indeed discovery failed after %d postings: %s", len(postings), exc)
+                return postings[:target_count]
+            raise
 
         logger.info("Indeed discovery completed: %d jobs harvested.", len(postings))
         return postings[:target_count]
@@ -195,27 +204,32 @@ class IndeedAdapter(DiscoveryAdapter):
         self, client: httpx.AsyncClient, base_url: str, country_code: str,
         keyword: str, location: Optional[str], radius: int, cursor: Optional[str],
         hours_old: Optional[int], remote_only: bool,
-    ) -> tuple[Optional[List[JobPosting]], Optional[str]]:
+    ) -> tuple[List[JobPosting], Optional[str]]:
         query = self._build_query(keyword, location, radius, cursor, hours_old, remote_only)
         headers = dict(API_HEADERS)
         headers["indeed-co"] = country_code
+        last_error = "no attempt was made"
         for attempt in range(MAX_RETRIES):
             try:
                 resp = await client.post(API_URL, headers=headers, json={"query": query}, timeout=15.0)
             except Exception as exc:
                 logger.debug("Indeed request failed (attempt %d): %s", attempt + 1, exc)
+                last_error = f"{type(exc).__name__}: {exc}"
                 await asyncio.sleep(2.0 * (2 ** attempt))
                 continue
             if resp.status_code == 429:
+                last_error = "HTTP 429"
                 await asyncio.sleep(5.0 * (2 ** attempt))
                 continue
             if resp.status_code != 200:
-                logger.debug("Indeed status %d", resp.status_code)
-                return None, None
+                # A non-success status is a FAILED attempt, not a clean zero:
+                # the probe must see the error (flaky -> re-probed next run)
+                # instead of recording an empty board (dead -> dropped).
+                resp.raise_for_status()
             try:
                 search = resp.json()["data"]["jobSearch"]
-            except (ValueError, KeyError, TypeError):
-                return None, None
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ValueError(f"Indeed API returned an unexpected payload: {exc}") from exc
             postings: List[JobPosting] = []
             for item in search.get("results") or []:
                 try:
@@ -227,7 +241,8 @@ class IndeedAdapter(DiscoveryAdapter):
                     postings.append(posting)
             next_cursor = (search.get("pageInfo") or {}).get("nextCursor")
             return postings, next_cursor
-        return None, None
+        # Every attempt failed: surface it instead of reporting an empty board.
+        raise ValueError(f"Indeed API did not answer after {MAX_RETRIES} attempts: {last_error}")
 
     def _parse_job(self, job: Dict[str, Any], base_url: str) -> Optional[JobPosting]:
         key = job.get("key")

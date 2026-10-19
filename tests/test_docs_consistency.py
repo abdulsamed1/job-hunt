@@ -15,6 +15,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ["README.md", "AGENTS.md", "DESIGN.md", "worker/README.md"]
 
+# The documents that state source coverage. Each one must carry the measured
+# numbers itself: a correct document used to hide a wrong one, because the
+# guard concatenated every document and only asked whether a number appeared
+# somewhere.
+COVERAGE_DOCS = ["README.md", "AGENTS.md", "worker/README.md"]
+
 
 def _text(name: str) -> str:
     return (ROOT / name).read_text()
@@ -65,21 +71,44 @@ def test_source_counts_match_config_and_generator():
 
 
 def test_docs_state_the_measured_source_coverage():
-    """The docs must carry the numbers the probe actually measured."""
+    """The docs must carry the numbers the probe actually measured.
+
+    Per document, not across the concatenation: one correct document used to
+    mask a wrong one (README.md quoted 146 worker-runnable / 25 python-only /
+    203 dead while AGENTS.md carried the measured 149 / 49 / 176).
+    """
     cfg = (yaml.safe_load(_text("config/sources.yaml")) or {}).get("sources") or []
     ledger = json.loads(_text("data/source_probe.json"))
     live = sum(1 for v in ledger.values() if v.get("verdict") == "live")
     dead = sum(1 for v in ledger.values() if v.get("verdict") == "dead")
+    unknown = sum(1 for v in ledger.values() if v.get("verdict") not in ("live", "dead"))
     gen = _text("worker/src/sources.generated.ts")
     m = re.search(r"yaml_total=(\d+) worker_supported=(\d+) python_only=(\d+) hourly=(\d+)", gen)
     assert m, "generated file must carry the accounting header"
     total, worker, python_only, hourly = map(int, m.groups())
     assert total == len(cfg)
-    assert live + dead <= len(cfg)
+    assert live + dead + unknown <= len(cfg)
 
+    for name in COVERAGE_DOCS:
+        body = _text(name)
+        for label, n in (
+            ("configured", total),
+            ("worker-runnable", worker),
+            ("python-only", python_only),
+            ("live", live),
+            ("dead", dead),
+            ("unknown", unknown),
+        ):
+            # Word-boundary matching: "150" must not be satisfied by "150ms"
+            # and "27" must not be satisfied by "127.0.0.1".
+            assert re.search(rf"(?<![\w]){n}(?![\w])", body), (
+                f"{name} never states the {label} count {n}"
+            )
+
+    # The hourly shard size is stated where the shard is described, not in
+    # every document.
     docs = _all_docs()
-    for n in (total, worker, python_only, live, dead, hourly):
-        assert re.search(rf"(?<![\w]){n}(?![\w])", docs), f"docs never mention {n}"
+    assert re.search(rf"(?<![\w]){hourly}(?![\w])", docs), f"docs never mention {hourly}"
 
 
 def test_docs_document_the_liveness_rule():
@@ -129,6 +158,18 @@ def test_no_stale_counts():
     docs = _all_docs()
     for stale in ("298 Active", "62 passed", "201 Active", "FreeLLM Structured"):
         assert stale not in docs, f"stale documentation string: {stale}"
+    # Source counts that were measured and then replaced: the probe now
+    # measures 149 worker-runnable + 49 python-only + 176 dead, and 170 live /
+    # 176 dead / 28 unknown.
+    for stale_num in (146, 203):
+        assert not re.search(rf"(?<![\w]){stale_num}(?![\w])", docs), (
+            f"stale documentation count: {stale_num}"
+        )
+    # "25" is a live number (the hourly scout shard is 25 sources), so only the
+    # stale python-only count is forbidden in that shape.
+    assert not re.search(r"(?<![\w])25\s+[Pp]ython-only(?![\w])", docs), (
+        "stale documentation count: 25 Python-only"
+    )
 
 
 def test_docs_document_the_24h_window_and_role_gate():

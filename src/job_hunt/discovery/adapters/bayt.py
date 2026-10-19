@@ -125,58 +125,101 @@ class BaytAdapter(DiscoveryAdapter):
 
         postings: List[JobPosting] = []
         seen_ids = set()
-        for kw in queries:
-            if len(postings) >= target_count:
-                break
-            for loc in locations:
+        gone: Optional[httpx.HTTPStatusError] = None
+        try:
+            for kw in queries:
                 if len(postings) >= target_count:
                     break
-                country, city = parse_location(loc)
-                page = 1
-                while len(postings) < target_count and page <= max_pages:
-                    if page > 1:
-                        await asyncio.sleep(random.uniform(2.0, 5.0))
-                    url = self._search_url(kw, country, city, page, hours_old, remote_only)
-                    batch = await self._fetch_page(client, url, hours_old)
-                    if batch is None:  # HTTP-level failure: stop this query
+                for loc in locations:
+                    if len(postings) >= target_count:
                         break
-                    new = [p for p in batch if p.external_id not in seen_ids]
-                    if not new:
-                        break
-                    seen_ids.update(p.external_id for p in new)
-                    postings.extend(new)
-                    page += 1
+                    country, city = parse_location(loc)
+                    page = 1
+                    while len(postings) < target_count and page <= max_pages:
+                        if page > 1:
+                            await asyncio.sleep(random.uniform(2.0, 5.0))
+                        url = self._search_url(kw, country, city, page, hours_old, remote_only)
+                        try:
+                            batch = await self._fetch_page(client, url, hours_old)
+                        except httpx.HTTPStatusError as exc:
+                            if exc.response.status_code not in (404, 410):
+                                raise
+                            # This location does not exist any more. Another
+                            # location may still answer, so the search moves on
+                            # and the cause is remembered for the verdict.
+                            gone = exc
+                            break
+                        new = [p for p in batch if p.external_id not in seen_ids]
+                        if not new:
+                            break
+                        seen_ids.update(p.external_id for p in new)
+                        postings.extend(new)
+                        page += 1
+        except Exception as exc:
+            if postings:
+                # The board answered with postings before it failed: those are
+                # real (liveness = yields at least one remote posting), so they
+                # are kept. A board that failed without answering anything
+                # re-raises, so the probe records a flaky attempt instead of an
+                # empty board.
+                logger.warning("Bayt discovery failed after %d postings: %s", len(postings), exc)
+                return postings[:target_count]
+            raise
+
+        if not postings and gone is not None:
+            # Nothing was found and the board answered that the page is gone:
+            # surface it, so the probe records the board as dead with the
+            # cause, instead of an empty board with no cause.
+            raise gone
 
         logger.info("Bayt discovery completed: %d jobs harvested.", len(postings))
         return postings[:target_count]
 
     async def _fetch_page(
         self, client: httpx.AsyncClient, url: str, hours_old: Optional[int]
-    ) -> Optional[List[JobPosting]]:
+    ) -> List[JobPosting]:
         # Bayt's Cloudflare wall blocks plain httpx: use TLS impersonation.
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
         }
+        last_error = "no attempt was made"
         for attempt in range(MAX_RETRIES):
             try:
                 status, text, _ = await fetch_text(url, headers=headers, timeout=20)
             except Exception as exc:
                 logger.debug("Bayt request failed (attempt %d): %s", attempt + 1, exc)
+                last_error = f"{type(exc).__name__}: {exc}"
                 await asyncio.sleep(2.0 * (2 ** attempt))
                 continue
             if status == 429:
+                last_error = "HTTP 429"
                 await asyncio.sleep(5.0 * (2 ** attempt))
                 continue
-            if status == 404:
+            if status in (404, 410):
+                # The board answered "no such page": it is gone (or the
+                # location moved). That is a clean answer, not a failure, and
+                # the probe must see it -- a swallowed 404 would be recorded as
+                # an empty board with no cause. The HTTPStatusError carries the
+                # response, so the probe can tell "gone" from "failed".
                 logger.info("Bayt location not found, widening is manual: %s", url)
-                return []
+                request = httpx.Request("GET", url)
+                raise httpx.HTTPStatusError(
+                    f"Bayt answered HTTP {status} for {url}",
+                    request=request,
+                    response=httpx.Response(status, request=request),
+                )
             if status != 200:
-                logger.debug("Bayt status %d for %s", status, url)
-                return None
+                # A non-success status is a FAILED attempt, not a clean zero:
+                # the probe must see the error (flaky -> re-probed next run)
+                # instead of recording an empty board (dead -> dropped).
+                last_error = f"HTTP {status}"
+                await asyncio.sleep(2.0 * (2 ** attempt))
+                continue
             return self._parse_cards(text, hours_old)
-        return None
+        # Every attempt failed: surface it instead of reporting an empty board.
+        raise ValueError(f"Bayt did not answer after {MAX_RETRIES} attempts: {last_error}")
 
     def _parse_cards(self, html: str, hours_old: Optional[int]) -> List[JobPosting]:
         soup = BeautifulSoup(html, "html.parser")

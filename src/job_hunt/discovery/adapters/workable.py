@@ -50,14 +50,19 @@ class WorkableAdapter(DiscoveryAdapter):
 
         try:
             resp = await client.get(api_url, headers=headers, timeout=12.0, follow_redirects=True)
-            if resp.status_code != 200:
-                logger.debug("Workable API for %s returned status %d", slug, resp.status_code)
-                return []
+            # A non-success status is a FAILED attempt, not a clean zero: the
+            # probe must see the error (flaky -> re-probed next run) instead of
+            # recording an empty board (dead -> dropped from the shard).
+            resp.raise_for_status()
 
             data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            # Surface the failure: the registry isolates it per source, the
+            # probe records it as a flaky attempt.
+            logger.debug("Workable API for %s failed: %s", slug, exc)
+            raise
         except Exception as exc:
-            logger.debug("Workable fetch failed for %s: %s", slug, exc)
-            return []
+            raise ValueError(f"Workable API for {slug} did not return JSON: {exc}") from exc
 
         company = data.get("name") or entry.get("name") or slug.title()
         raw_jobs = data.get("jobs") or []

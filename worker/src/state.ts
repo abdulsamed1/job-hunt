@@ -288,6 +288,23 @@ export interface KnownJobIdentity {
   discovered_at: string;
 }
 
+/** The known-jobs map is keyed by two kinds of identifier, and both are bare
+ *  8-hex fnv1a digests: a canonical hash and a role fingerprint. Without a
+ *  namespace prefix a cross-kind collision would resolve one posting's
+ *  "own row" to another row's identity, so the kinds never share a key. */
+export const HASH_KEY_PREFIX = "h:";
+export const FINGERPRINT_KEY_PREFIX = "f:";
+
+/** Key for a canonical hash in the known-jobs map. */
+export function hashKey(canonicalHash: string): string {
+  return `${HASH_KEY_PREFIX}${canonicalHash}`;
+}
+
+/** Key for a role fingerprint in the known-jobs map. */
+export function fingerprintKey(roleFingerprint: string): string {
+  return `${FINGERPRINT_KEY_PREFIX}${roleFingerprint}`;
+}
+
 /** Which of these identifiers the store already carries, keyed by both
  *  identifiers and carrying each row's identity. One statement per chunk (never
  *  one per posting), which is what keeps a discover source inside the query
@@ -301,7 +318,9 @@ export interface KnownJobIdentity {
  *
  * Rows come back whatever their state and age: the caller, not this query,
  *  decides which rows own a requisition (still applicable, still recent) and
- *  which one the posting's own hash matched. */
+ *  which one the posting's own hash matched. The map is keyed by namespaced
+ *  identifiers (see hashKey / fingerprintKey): both kinds are bare digests, so
+ *  a shared key space could resolve one kind to the other. */
 export async function findKnownJobs(
   db: Db, hashes: string[], fingerprints: string[],
 ): Promise<Map<string, KnownJobIdentity>> {
@@ -333,8 +352,8 @@ export async function findKnownJobs(
           state: String(row.state ?? ""),
           discovered_at: String(row.discovered_at ?? ""),
         };
-        known.set(id.canonical_hash, id);
-        if (id.role_fingerprint) known.set(id.role_fingerprint, id);
+        known.set(hashKey(id.canonical_hash), id);
+        if (id.role_fingerprint) known.set(fingerprintKey(id.role_fingerprint), id);
       }
     }
   }

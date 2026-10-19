@@ -8,7 +8,7 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 ```
                 [374 Configured Sources & Job Boards]
-     (146 Worker-runnable + 25 Python-only + 203 dead; LinkedIn [disabled 2026-10-02],
+     (149 Worker-runnable + 49 Python-only + 176 dead; LinkedIn [disabled 2026-10-02],
       Greenhouse, Ashby,
       Lever, SmartRecruiters, RSS/JSON, Indeed, Bayt, Naukri, HTML scrape)
                                                 │
@@ -71,7 +71,7 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 - **Extensive ATS Coverage**: Native adapters for **LinkedIn** (disabled 2026-10-02, account ban), **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
 - **Dedicated LinkedIn Guest Scraper** (DISABLED — account ban 2026-10-02; `LINKEDIN_ENABLED=false`): Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Standing target when re-enabled: `backend` / `fullstack` / `software`, past-12h window (`f_TPR=r43200`), worldwide geo radius — ~60 fresh postings per run.
 - **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
-- **Coverage is measured, not assumed**: the live probe (`scripts/probe_sources.py`) measured every configured source on 2026-10-19 — **170 live**, **203 dead**, 1 unknown (LinkedIn, disabled). Liveness = the source yields at least one remote posting at any age; the 24h window gates the feed, not the source. The dead boards are the ones that answer 404/410 (GitHub, DoorDash and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone) and they are excluded from the generated shard. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
+- **Coverage is measured, not assumed**: the live probe (`scripts/probe_sources.py`) measured every configured source on 2026-10-19 — **170 live**, **176 dead**, **28 unknown** (27 boards that failed this attempt + LinkedIn, disabled). Liveness = the source yields at least one remote posting at any age; the 24h window gates the feed, not the source. The dead boards are the ones that answer 404/410 (GitHub, DoorDash and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone) and they are excluded from the generated shard, which leaves 198 boards for the local and CI sweep to fetch. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
 
 ## What the feed now guarantees
 
@@ -186,7 +186,7 @@ the laptop is off. See [`worker/README.md`](worker/README.md) for internals.
 
 | Stage | Cloudflare Worker | Python / Actions |
 |---|---|---|
-| Fetch + parse every live source | ✅ 146 worker-runnable | ✅ 374 configured (203 dead skipped) |
+| Fetch + parse every live source | ✅ 149 worker-runnable | ✅ 374 configured (176 dead skipped → 198 fetched) |
 | Deterministic evaluation | ✅ | ✅ |
 | Tailored PDF via `pdf-lib` | ✅ | ✅ (master + visible skill line) |
 | Direct ATS HTTP POST | ✅ per-board flags, OFF by default | ✅ |

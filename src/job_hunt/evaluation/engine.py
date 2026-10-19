@@ -4,39 +4,118 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import CandidateProfile, EvaluationResult, JobPosting
 
 logger = logging.getLogger(__name__)
 
-# IC allow list: seniority that marks individual-contributor work. Checked before
-# the reject families so "Lead Software Engineer" survives while "Team Lead" does not.
+# IC allow list: seniority that marks individual-contributor work. It stands in
+# for the positive SWE patterns below, never for the reject families:
+# "Senior Sales Engineer" is a sales role and "Senior Engineering Manager" is a
+# manager role, whatever the seniority marker says.
 IC_ALLOW_PATTERNS = [
     re.compile(r"\blead\s+engineer\b", re.IGNORECASE),
     re.compile(r"\blead\s+software\s+engineer\b", re.IGNORECASE),
     re.compile(r"\b(?:staff|principal|senior|sr\.?)\b.*\b(?:engineer|engineers|engineering)\b", re.IGNORECASE),
 ]
 
-# People-management words: when present the IC allow stands aside.
-PEOPLE_MANAGEMENT_PATTERNS = [
-    re.compile(r"\bmanager\b", re.IGNORECASE),
-    re.compile(r"\bteam\s+lead\b", re.IGNORECASE),
-    re.compile(r"\bgroup\s+lead\b", re.IGNORECASE),
-    re.compile(r"\bhead\s+of\b", re.IGNORECASE),
-    re.compile(r"\bdirector\b", re.IGNORECASE),
-    re.compile(r"\bvp\b", re.IGNORECASE),
-    re.compile(r"\bchief\b", re.IGNORECASE),
-    re.compile(r"\bsupervisor\b", re.IGNORECASE),
+
+class RoleRejectRule(NamedTuple):
+    """One reject rule: the family it belongs to, its slug and its pattern.
+
+    The family and slug mirror worker/src/lib/roles.ts, so both runtimes name
+    a rejected title the same way ("revenue:sales") and the backfill script can
+    reuse this table instead of carrying a third copy of the rules.
+    """
+
+    family: str
+    slug: str
+    #: Canonical matched word. Its length breaks specificity ties, exactly like
+    #: the Worker's "longest matched word wins".
+    word: str
+    pattern: "re.Pattern[str]"
+
+
+# Reject families, in the Worker's order. Negative role patterns (non-engineering
+# or out-of-scope roles), grouped by family to mirror worker/src/lib/roles.ts
+# (people-management, revenue, non-engineering).
+ROLE_REJECT_RULES: List[RoleRejectRule] = [
+    # people management
+    RoleRejectRule("people-management", "manager", "manager", re.compile(r"\bmanager\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "team lead", "team lead", re.compile(r"\bteam\s+lead\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "group lead", "group lead", re.compile(r"\bgroup\s+lead\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "head of", "head of", re.compile(r"\bhead\s+of\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "director", "director", re.compile(r"\bdirector\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "vp", "vp", re.compile(r"\bvp\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "chief", "chief", re.compile(r"\bchief\b", re.IGNORECASE)),
+    RoleRejectRule("people-management", "supervisor", "supervisor", re.compile(r"\bsupervisor\b", re.IGNORECASE)),
+    # revenue
+    RoleRejectRule("revenue", "sales", "sales", re.compile(r"\bsales\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "sales development", "sales development", re.compile(r"\bsales\s+development\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "business development", "business development", re.compile(r"\bbusiness\s+development\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "account executive", "account executive", re.compile(r"\baccount\s+executive\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "account manager", "account manager", re.compile(r"\baccount\s+manager\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "marketing", "marketing", re.compile(r"\bmarketing\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "partner", "partner", re.compile(r"\bpartner\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "customer success", "customer success", re.compile(r"\bcustomer\s+success\b", re.IGNORECASE)),
+    RoleRejectRule("revenue", "customer support", "customer support", re.compile(r"\bcustomer\s+support\b", re.IGNORECASE)),
+    # non-engineering
+    RoleRejectRule("non-engineering", "recruiter", "recruiter", re.compile(r"\brecruiter\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "talent acquisition", "talent acquisition", re.compile(r"\btalent\s+acquisition\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "human resources", "human resources", re.compile(r"\bhuman\s+resources\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "accountant", "accountant", re.compile(r"\baccountant\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "finance", "finance", re.compile(r"\bfinance\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "legal", "legal", re.compile(r"\blegal\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "medical", "medical", re.compile(r"\b(?:nurse|medical)\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "driver", "driver", re.compile(r"\bdriver\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "content writer", "content writer", re.compile(r"\bcontent\s+writer\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "graphic designer", "graphic designer", re.compile(r"\bgraphic\s+designer\b", re.IGNORECASE)),
+    # "intern" and "internship" are the same thing, and both are out of scope:
+    # the Worker rejects both too (see worker/src/lib/roles.ts).
+    RoleRejectRule("non-engineering", "intern", "intern", re.compile(r"\bintern(?:ship)?\b", re.IGNORECASE)),
+    RoleRejectRule("non-engineering", "product", "product manager", re.compile(r"\bproduct\s+manager\b", re.IGNORECASE)),
 ]
+
+# Negative patterns: non-engineering or out-of-scope roles. They live in
+# ROLE_REJECT_RULES above, grouped by family to mirror worker/src/lib/roles.ts
+# (people-management, revenue, non-engineering), so the backfill script can
+# reuse the same table instead of copying it.
+NEGATIVE_ROLE_PATTERNS = [rule.pattern for rule in ROLE_REJECT_RULES]
+
+# CRM implementation roles: Salesforce plus one companion word.
+CRM_ROLE_RULE = RoleRejectRule(
+    "crm", "salesforce", "salesforce", re.compile(r"\bsalesforce\b", re.IGNORECASE)
+)
+CRM_ROLE_COMPANIONS = ("consultant", "architect", "administrator", "analyst", "developer")
+
+
+def classify_role_reject(title: str, reject_crm: bool = True) -> Optional[str]:
+    """The reject rule a title matches ("revenue:sales"), or None.
+
+    Most specific match wins: the longest matched word, first listed on a tie
+    — the same rule the Worker applies (worker/src/lib/roles.ts). The reject
+    families always win over the IC allow-list: a senior sales engineer is a
+    sales role.
+    """
+    best: Optional[RoleRejectRule] = None
+    for rule in ROLE_REJECT_RULES:
+        if rule.pattern.search(title):
+            if best is None or len(rule.word) > len(best.word):
+                best = rule
+    if reject_crm and CRM_ROLE_RULE.pattern.search(title):
+        if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in CRM_ROLE_COMPANIONS):
+            if best is None or len(CRM_ROLE_RULE.word) > len(best.word):
+                best = CRM_ROLE_RULE
+    return f"{best.family}:{best.slug}" if best is not None else None
 
 # Positive role patterns for Software Engineer & related roles
 SWE_ROLE_PATTERNS = [
     re.compile(r"\bsoftware\s+(?:engineer|developer)\b", re.IGNORECASE),
     re.compile(r"\bbackend\s+(?:engineer|developer)\b", re.IGNORECASE),
     re.compile(r"\bfrontend\s+(?:engineer|developer)\b", re.IGNORECASE),
-    re.compile(r"\bfull\s*stack\s+(?:engineer|developer)\b", re.IGNORECASE),
+    re.compile(r"\bfull[\s-]*stack\s+(?:engineer|developer)\b", re.IGNORECASE),
     re.compile(r"\bsystems?\s+engineer\b", re.IGNORECASE),
     re.compile(r"\binfrastructure\s+engineer\b", re.IGNORECASE),
     re.compile(r"\bplatform\s+engineer\b", re.IGNORECASE),
@@ -57,7 +136,7 @@ SWE_ROLE_PATTERNS = [
     re.compile(r"\bbackend\b", re.IGNORECASE),
     re.compile(r"\bfrontend\b", re.IGNORECASE),
     re.compile(r"\bfront\s+end\b", re.IGNORECASE),
-    re.compile(r"\bfull\s+stack\b", re.IGNORECASE),
+    re.compile(r"\bfull[\s-]*stack\b", re.IGNORECASE),
     re.compile(r"\bdevops\b", re.IGNORECASE),
     re.compile(r"\binfrastructure\b", re.IGNORECASE),
     re.compile(r"\bmobile\b", re.IGNORECASE),
@@ -70,44 +149,6 @@ SWE_ROLE_PATTERNS = [
     re.compile(r"\bfirmware\b", re.IGNORECASE),
     re.compile(r"\b(?:nodejs|node\.js|typescript|react|reactjs|javascript|python|golang|rust|java)\b.*\b(?:engineer|developer|engineering)\b", re.IGNORECASE),
     re.compile(r"\b(?:engineer|developer|engineering)\b.*\b(?:nodejs|node\.js|typescript|react|reactjs|javascript|python|golang|rust|java)\b", re.IGNORECASE),
-]
-
-# Negative patterns: non-engineering or out-of-scope roles. Grouped by family to
-# mirror worker/src/lib/roles.ts (people-management, revenue, non-engineering).
-NEGATIVE_ROLE_PATTERNS = [
-    # people management
-    re.compile(r"\bmanager\b", re.IGNORECASE),
-    re.compile(r"\bteam\s+lead\b", re.IGNORECASE),
-    re.compile(r"\bgroup\s+lead\b", re.IGNORECASE),
-    re.compile(r"\bhead\s+of\b", re.IGNORECASE),
-    re.compile(r"\bdirector\b", re.IGNORECASE),
-    re.compile(r"\bvp\b", re.IGNORECASE),
-    re.compile(r"\bchief\b", re.IGNORECASE),
-    re.compile(r"\bsupervisor\b", re.IGNORECASE),
-    # revenue
-    re.compile(r"\bsales\b", re.IGNORECASE),
-    re.compile(r"\bsales\s+development\b", re.IGNORECASE),
-    re.compile(r"\bbusiness\s+development\b", re.IGNORECASE),
-    re.compile(r"\baccount\s+executive\b", re.IGNORECASE),
-    re.compile(r"\baccount\s+manager\b", re.IGNORECASE),
-    re.compile(r"\bmarketing\b", re.IGNORECASE),
-    re.compile(r"\bpartner\b", re.IGNORECASE),
-    re.compile(r"\bcustomer\s+success\b", re.IGNORECASE),
-    re.compile(r"\bcustomer\s+support\b", re.IGNORECASE),
-    # non-engineering
-    re.compile(r"\brecruiter\b", re.IGNORECASE),
-    re.compile(r"\btalent\s+acquisition\b", re.IGNORECASE),
-    re.compile(r"\bhuman\s+resources\b", re.IGNORECASE),
-    re.compile(r"\baccountant\b", re.IGNORECASE),
-    re.compile(r"\bfinance\b", re.IGNORECASE),
-    re.compile(r"\blegal\b", re.IGNORECASE),
-    re.compile(r"\bnurse\b", re.IGNORECASE),
-    re.compile(r"\bmedical\b", re.IGNORECASE),
-    re.compile(r"\bdriver\b", re.IGNORECASE),
-    re.compile(r"\bcontent\s+writer\b", re.IGNORECASE),
-    re.compile(r"\bgraphic\s+designer\b", re.IGNORECASE),
-    re.compile(r"\bintern(?:ship)?\b", re.IGNORECASE),
-    re.compile(r"\bproduct\s+manager\b", re.IGNORECASE),
 ]
 
 CLEARANCE_PATTERNS = [
@@ -424,28 +465,34 @@ class EvaluationEngine:
                 if bk and bk.lower() in desc_lower:
                     return False, f"Blocked keyword in posting: {bk}"
 
-        # IC allow list runs before the reject families (allow-first ordering).
+        # The reject families come first, and nothing overrides them: a revenue,
+        # CRM or non-engineering title is out of scope whatever its seniority
+        # marker says ("Senior Sales Engineer" is a sales role), and so is a
+        # people-management one ("Senior Engineering Manager" is a manager
+        # role). The IC allow-list only stands in for the positive SWE check
+        # below, where a seniority marker plus an engineering noun is
+        # individual-contributor work even without a technology in the title.
         reject_crm = profile.reject_crm_roles
-        is_ic = (not any(p.search(title) for p in PEOPLE_MANAGEMENT_PATTERNS)) and any(
-            p.search(title) for p in IC_ALLOW_PATTERNS
-        )
 
-        if not is_ic:
-            # Check negative role patterns
-            for neg_pat in NEGATIVE_ROLE_PATTERNS:
-                if neg_pat.search(title):
-                    return False, f"Title matches negative filter: {neg_pat.pattern}"
+        # Check negative role patterns. The reason names the family and the
+        # slug, so both runtimes call the same rule by the same name.
+        for rule in ROLE_REJECT_RULES:
+            if rule.pattern.search(title):
+                return False, f"Title matches negative filter: {rule.family}:{rule.slug}"
 
-            # CRM reject (only when reject_crm is on): salesforce + a companion.
-            if reject_crm and re.search(r"\bsalesforce\b", title, re.IGNORECASE):
-                companions = ("consultant", "architect", "administrator", "analyst", "developer")
-                if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in companions):
-                    return False, "Title matches negative filter: crm:salesforce"
+        # CRM reject (only when reject_crm is on): salesforce + a companion.
+        if reject_crm and re.search(r"\bsalesforce\b", title, re.IGNORECASE):
+            companions = ("consultant", "architect", "administrator", "analyst", "developer")
+            if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in companions):
+                return False, "Title matches negative filter: crm:salesforce"
 
-            # Check positive SWE role patterns
-            matched_swe = any(pos_pat.search(title) for pos_pat in SWE_ROLE_PATTERNS)
-            if not matched_swe:
-                return False, "Title does not match targeted Software Engineer roles"
+        # Check positive SWE role patterns. The IC allow-list stands in for
+        # them: "Staff Engineer, Platform" names no technology but is
+        # individual-contributor engineering work.
+        is_ic = any(p.search(title) for p in IC_ALLOW_PATTERNS)
+        matched_swe = any(pos_pat.search(title) for pos_pat in SWE_ROLE_PATTERNS)
+        if not matched_swe and not is_ic:
+            return False, "Title does not match targeted Software Engineer roles"
 
         # Check clearance requirements in description
         desc = job.description or ""

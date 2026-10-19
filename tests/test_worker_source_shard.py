@@ -51,9 +51,16 @@ def test_every_yaml_source_is_accounted_for():
 
 
 def test_worker_shard_covers_full_scale():
-    """Requirement: full coverage inside Cloudflare, not a 19-entry subset."""
+    """Requirement: full coverage inside Cloudflare, not a 19-entry subset.
+
+    The shard carries every board that is not dead: 149 today (374 configured
+    minus 176 dead minus 49 python-only). The floor is a real margin below
+    that number, so a mass regression (a probe that marks live boards dead, a
+    generator that drops a kind) fails here instead of quietly shrinking the
+    sweep.
+    """
     worker, _python_only, _stats = _load_generator().build()
-    assert len(worker) >= 15, f"only {len(worker)} worker sources"
+    assert len(worker) >= 100, f"only {len(worker)} worker sources"
 
 
 def test_ats_and_feed_sources_are_all_worker_runnable():

@@ -111,7 +111,7 @@ records the newest posting date (`last_yield_at`) next to the probe time
 |---|---|
 | `GET /health` | Job count **+ profile sanity**: `profile_skills`, `profile_languages`, `threshold`, `live_apply`, `notification_events` (ledger row count; `null` means the deployed schema predates the ledger — verify_deploy fails on it). An empty `verified_skills` silently rejects every job — check this first. |
 | `GET /recent` | `actionable` (tailored / submitted / human queue), `eligible`, `latest`. **Read `actionable`** — qualifying jobs leave the `ELIGIBLE` state once tailored, so `eligible` alone always looked empty. |
-| `GET /coverage` | Measured coverage from the `source_health` table, by kind. |
+| `GET /coverage` | Measured coverage from the `source_health` table, by kind. The feed-quality counters read the `jobs` table through a **window** (`discovered_at >= now - 1 day`) and a `LIMIT`: the table is cumulative history, so an unbounded read would grow with the store instead of with the feed. There is no aggregate fallback — the endpoint fails loudly rather than answering from columns the real D1 table does not have. |
 | `GET /sources` | Configured shard: total, python-only, hourly subset, by kind. |
 | `POST /run?deep=1` | Fan out the whole shard, one source per message, ≤50 per `sendBatch`. Omit `deep` for the hourly subset. |
 | `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_24h` / `remote_fresh`. Writes nothing. |
@@ -123,7 +123,7 @@ records the newest posting date (`last_yield_at`) next to the probe time
 - **Descriptions must be enriched.** ATS board *list* endpoints omit
   descriptions; scoring a title-only string rejects 100% of jobs for lack of
   evidence. `enrichDescriptions` fetches per-job content for the few jobs that
-   survive the 12h + remote filters (bounded to 12 to stay under the
+   survive the 24h + remote filters (bounded to 12 to stay under the
   50-subrequest ceiling). Greenhouse's `?content=true` on the *list* endpoint is
   rejected — it returns ~5.5 MB per board.
 - **`upsertJob` backfills, it does not skip.** `ON CONFLICT DO NOTHING` left
@@ -140,7 +140,16 @@ records the newest posting date (`last_yield_at`) next to the probe time
   (`lib/roles.ts`, pure CPU) buckets a title as software / reject / unknown in the
   discover loop *before* the row is stored, so a manager, sales or CRM posting is
   stored once as `PRE_FILTERED_OUT`, bumps `role_rejected` in the `counters` table
-  and alerts `FILTERED` instead of `SEEKING`. The gate reason is recorded in the
+  and alerts `FILTERED` instead of `SEEKING`. **The reject families come first and
+  nothing overrides them**: a revenue, CRM or non-engineering word beats any
+  seniority marker (`Senior Sales Engineer` is a sales role) and so does a
+  people-management word (`Senior Engineering Manager` is a manager role). The IC
+  allow-list (seniority + an engineering noun) only stands in for the software
+  allow-list, so `Staff Engineer, Platform` survives while `Senior Marketing
+  Engineer` does not. Python applies the same order (see
+  `src/job_hunt/evaluation/engine.py`, `ROLE_REJECT_RULES`), and the two runtimes
+  must not drift: `intern`/`internship` and `full stack`/`fullstack`/`full-stack`
+  are the same thing on both sides. The gate reason is recorded in the
   row's `evaluations.reasoning`, **once per posting** (`instr` guard): a
   re-discovery — a dateless posting's row counts as "improved" on every sweep —
   re-counts nothing, re-notifies nothing and cannot grow the reasoning. Callers
@@ -159,10 +168,16 @@ records the newest posting date (`last_yield_at`) next to the probe time
   `jobs.canonical_hash` is the URL alone, so the same opening arriving on two
   boards (or under two jids) used to become two applications. Every posting now
   also stores `jobs.role_fingerprint` — normalized company + role + place, with
-  every all-remote spelling collapsed to one token (`lib/hash.ts`) — and the
+  every all-remote spelling collapsed to one token (`lib/hash.ts`). The company
+  drops its legal suffix and the title expands its abbreviations, exactly like
+  Python's `dedup.py`, so `Acme, Inc.` and `Acme` are one employer and
+  `Sr. Backend Engineer` and `Senior Backend Engineer` are one role — and the
   discover stage resolves the whole source's fingerprints in **one** batched
   `findKnownJobs` read (two `IN` lists, chunked at 50 bindings) before storing
-  anything. A hit owned by a *different* canonical hash is stored as `DUPLICATE`
+  anything. The known-jobs map is keyed by namespaced identifiers (`h:` for a
+  canonical hash, `f:` for a fingerprint): both are bare 8-hex digests, so a
+  shared key space could resolve one kind to the other. A hit owned by a
+  *different* canonical hash is stored as `DUPLICATE`
   with `duplicate of <hash>` in `evaluations.reasoning`: no SEEKING, no
   evaluation, and it never reaches the apply queue from here on. The one hole
   left is disclosed deliberately: an apply message **already in flight** when the
@@ -178,7 +193,9 @@ records the newest posting date (`last_yield_at`) next to the probe time
     audit row written. `duplicate_suppressed` and the reason write ride that
     same transition, so a re-discovered twin costs neither a count nor a
     statement, and counting a suppression that was never performed is
-    impossible.
+    impossible. **Both gates demote**: the role gate moves a pre-existing row
+    to `PRE_FILTERED_OUT` and the dateless drop does the same, so a posting
+    that predates the gate cannot sit in `/recent`'s actionable list.
   - **Neither gate touches a posting the store has already decided.** Both act
     only on rows whose outcome is still open — `DISCOVERED` or `ELIGIBLE`
     (`GATEABLE_STATES` in `stages/discover.ts`). A row already scored out, filtered or

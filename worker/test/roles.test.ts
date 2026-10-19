@@ -20,6 +20,13 @@ const REJECTS: Array<[string, string]> = [
   ["Technical Recruiter", "non-engineering:recruiter"],
   ["Product Manager", "non-engineering:product"],
   ["Software Engineering Intern", "non-engineering:intern"],
+  // "Internship" is the same out-of-scope thing as "Intern".
+  ["Software Engineering Internship", "non-engineering:intern"],
+  // A seniority marker never makes a revenue title a software role.
+  ["Senior Sales Engineer", "revenue:sales"],
+  ["Staff Sales Engineer", "revenue:sales"],
+  ["Senior Marketing Engineer", "revenue:marketing"],
+  ["Senior Customer Success Engineer", "revenue:customer success"],
 ];
 
 // accepts (verdict "software")
@@ -27,6 +34,8 @@ const ACCEPTS = [
   "Senior Software Engineer, Query",
   "Backend Engineer, Payments",
   "Full Stack Engineer",
+  "FullStack Engineer", // "fullstack" is "full stack" written as one word
+  "Full-Stack Engineer", // and the hyphenated spelling is the same title
   "Lead Software Engineer", // IC allow must beat nothing; no reject word here
   "Staff Engineer, Platform",
   "Principal Engineer, Data",
@@ -70,12 +79,20 @@ describe("classifyRole", () => {
       rule: "unknown:none",
     });
   });
-  it("prefers the IC allow over a reject word, except management titles", () => {
+  it("keeps an IC title that matches no reject family, and rejects management titles", () => {
     expect(classifyRole("Lead Software Engineer").verdict).toBe("software");
     expect(classifyRole("Engineering Lead, Software").verdict).toBe("software");
-    expect(classifyRole("Staff Engineer, Sales Tools").verdict).toBe("software");
+    expect(classifyRole("Staff Engineer, Payments Tools").verdict).toBe("software");
     expect(classifyRole("Lead Engineering Manager").verdict).toBe("reject");
     expect(classifyRole("Team Lead, Backend Engineering").verdict).toBe("reject");
+  });
+  it("lets a revenue or non-engineering word beat the IC allow", () => {
+    // The IC allow stands in for the software allow-list, never for the reject
+    // families: a senior sales engineer is a sales role.
+    expect(classifyRole("Senior Sales Engineer")).toEqual({ verdict: "reject", rule: "revenue:sales" });
+    expect(classifyRole("Senior Marketing Engineer")).toEqual({ verdict: "reject", rule: "revenue:marketing" });
+    expect(classifyRole("Senior Engineering Manager")).toEqual({ verdict: "reject", rule: "people-management:manager" });
+    expect(classifyRole("Software Engineering Internship")).toEqual({ verdict: "reject", rule: "non-engineering:intern" });
   });
   it("returns unknown for titles with no signal", () => {
     expect(classifyRole("")).toEqual({ verdict: "unknown", rule: "unknown:none" });

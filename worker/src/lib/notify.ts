@@ -101,10 +101,13 @@ export function formatJobAlert(
   const title = (row.title || "Untitled role").slice(0, 120);
   const company = (row.company || "Unknown company").slice(0, 80);
   // Only the segments the row actually carries: a STAGE_FAILED alert that
-  // found no row must not render "· date unknown · date unknown".
+  // found no row must not render "· date unknown · date unknown", and a row
+  // the board never dated must not claim a date either. A date that is there
+  // but unreadable still says so — the point of the rendered age is that an
+  // unverifiable posting is visible as unverifiable.
   const head = [`[${tag}] ${name}: ${title} @ ${company}`];
   if (row.source) head.push(row.source.slice(0, 120));
-  head.push(formatPostedAge(row.posted_at));
+  if (row.posted_at) head.push(formatPostedAge(row.posted_at));
   const lines = [head.join(" · ")];
   if (detail) lines.push(detail.slice(0, 2000));
   if (row.url) lines.push(row.url.slice(0, 500));

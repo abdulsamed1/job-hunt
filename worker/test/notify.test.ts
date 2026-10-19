@@ -254,12 +254,22 @@ describe("formatJobAlert source and posted age", () => {
     expect(formatPostedAge("")).toBe("date unknown");
     expect(formatPostedAge(undefined)).toBe("date unknown");
     expect(formatPostedAge("sometime last week")).toBe("date unknown");
-    expect(formatJobAlert("worker", { ...ROW, source: "rss:x" }, "ELIGIBLE", "ok")).toContain("date unknown");
+    // A date that is there but unreadable stays visible as unreadable.
+    expect(formatJobAlert("worker", { ...ROW, source: "rss:x", posted_at: "sometime last week" }, "ELIGIBLE", "ok"))
+      .toContain("date unknown");
+  });
+
+  it("renders no age at all for a row the board never dated", () => {
+    // Nothing to render is not the same as "unknown": the row carries no date
+    // at all, so the alert says nothing about one.
+    const t = formatJobAlert("worker", { ...ROW, source: "rss:x" }, "ELIGIBLE", "ok");
+    expect(t).not.toContain("date unknown");
+    expect(t.split("\n")[0]).toBe("[worker] ELIGIBLE: Backend Engineer @ Acme · rss:x");
   });
 
   it("never leaves a dangling separator when the row carries no source", () => {
     expect(formatJobAlert("worker", { title: "T", company: "C" }, "FILTERED", "why").split("\n")[0])
-      .toBe("[worker] FILTERED: T @ C · date unknown");
+      .toBe("[worker] FILTERED: T @ C");
   });
 
   it("keeps the whole alert bounded with a source and an age", () => {

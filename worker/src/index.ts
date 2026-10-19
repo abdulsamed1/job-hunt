@@ -55,6 +55,11 @@ export interface Env {
 
 const SOURCES: SourceDef[] = GENERATED_SOURCES;
 
+/** How many job rows GET /coverage reads in its window. The window bounds the
+ *  query; this bounds the answer, so a store with a broken discovered_at
+ *  cannot make the endpoint read everything. */
+const COVERAGE_ROW_LIMIT = 2000;
+
 export function activeSources(env: Env): SourceDef[] {
   const base = SOURCES.filter((s) => s.status !== "dead");
   return linkedinEnabled(env) ? base : base.filter((s) => s.kind !== "linkedin");
@@ -134,7 +139,7 @@ export default {
           // A suppressed twin reads as absent: a message queued before the
           // dedupe gate landed can never be promoted into an application.
           const row: any = await db.prepare(
-            `SELECT canonical_hash, title, company, location, url, description, source FROM jobs
+            `SELECT canonical_hash, title, company, location, url, description, source, posted_at FROM jobs
              WHERE canonical_hash = ? AND state <> 'DUPLICATE'`,
           ).bind(m.hash).first();
           if (!row) continue;
@@ -372,26 +377,31 @@ export default {
       let datedFresh = 0;
       let proxyFresh = 0;
       const softwareCompanies = new Set<string>();
-      let jobRows: any[] = [];
-      try {
-        const jr: any = await db.prepare(`SELECT title, company, source, posted_at, state FROM jobs`).all();
-        jobRows = jr?.results || [];
-      } catch { jobRows = []; }
-      if (jobRows.length) {
-        for (const j of jobRows) {
-          const ts = parsePostedAt(j?.posted_at);
-          if (ts === null) continue;
-          if (ts < Date.now() - HOURS_OLD * 3600_000) continue;
-          const state = String(j?.state ?? "");
-          if (state === "PRE_FILTERED_OUT" || state === "DUPLICATE") continue;
-          if (String(j?.source ?? "").toLowerCase().startsWith("greenhouse:")) proxyFresh++;
-          else datedFresh++;
-          // live_software counts distinct companies with a software-verdict
-          // posting in the 24h window: re-classify each surviving row's title
-          // with the role gate rather than trusting any stored verdict.
-          if (j?.company && classifyRole(String(j?.title ?? ""), { rejectCrm }).verdict === "software") {
-            softwareCompanies.add(String(j.company));
-          }
+      // The jobs table is cumulative history, so the endpoint reads a window,
+      // not the whole table: the feed-quality counters describe the last day,
+      // and an unbounded SELECT over every row ever stored would grow with
+      // the store instead of with the feed. The LIMIT is the second guard: a
+      // store with a broken discovered_at would otherwise answer with
+      // everything.
+      const jr: any = await db.prepare(
+        `SELECT title, company, source, posted_at, state FROM jobs
+         WHERE discovered_at >= datetime('now', '-1 day')
+         ORDER BY discovered_at DESC LIMIT ?`,
+      ).bind(COVERAGE_ROW_LIMIT).all();
+      const jobRows: any[] = jr?.results || [];
+      for (const j of jobRows) {
+        const ts = parsePostedAt(j?.posted_at);
+        if (ts === null) continue;
+        if (ts < Date.now() - HOURS_OLD * 3600_000) continue;
+        const state = String(j?.state ?? "");
+        if (state === "PRE_FILTERED_OUT" || state === "DUPLICATE") continue;
+        if (String(j?.source ?? "").toLowerCase().startsWith("greenhouse:")) proxyFresh++;
+        else datedFresh++;
+        // live_software counts distinct companies with a software-verdict
+        // posting in the 24h window: re-classify each surviving row's title
+        // with the role gate rather than trusting any stored verdict.
+        if (j?.company && classifyRole(String(j?.title ?? ""), { rejectCrm }).verdict === "software") {
+          softwareCompanies.add(String(j.company));
         }
       }
       const counters: Record<string, number> = {
@@ -401,27 +411,7 @@ export default {
         const c: any = await db.prepare(`SELECT key, value FROM counters`).all();
         for (const r of c?.results || []) counters[String(r.key)] = Number(r.value ?? 0);
       } catch { /* table missing */ }
-      // Aggregate fallback when the store is not row-addressable (test doubles).
-      let liveSoftware = softwareCompanies.size;
-      if (jobRows.length === 0) {
-        try {
-          const agg: any = await db.prepare(
-            `SELECT dated_fresh, proxy_fresh, dateless_dropped, duplicate_suppressed, role_rejected, live_software FROM jobs`,
-          ).first();
-          if (agg) {
-            if (agg.dated_fresh != null) datedFresh = Number(agg.dated_fresh);
-            if (agg.proxy_fresh != null) proxyFresh = Number(agg.proxy_fresh);
-            if (agg.dateless_dropped != null) counters.dateless_dropped = Number(agg.dateless_dropped);
-            if (agg.duplicate_suppressed != null) counters.duplicate_suppressed = Number(agg.duplicate_suppressed);
-            if (agg.role_rejected != null) counters.role_rejected = Number(agg.role_rejected);
-            if (agg.live_software != null) liveSoftware = Number(agg.live_software);
-          }
-        } catch { /* not an aggregate view */ }
-        try {
-          const cs: any = await db.prepare(`SELECT COUNT(DISTINCT company) AS n FROM jobs`).first();
-          if (cs && liveSoftware === 0) liveSoftware = Number(cs.live_software ?? cs.n ?? cs.count ?? cs.distinct_companies ?? 0);
-        } catch { /* ignore */ }
-      }
+      const liveSoftware = softwareCompanies.size;
       return Response.json({
         configured_worker_sources: SOURCES.length,
         python_only_sources: PYTHON_ONLY_SOURCES.length,

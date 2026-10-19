@@ -123,17 +123,25 @@ describe("/coverage feed-quality counters", () => {
       { key: "duplicate_suppressed", value: 1 },
       { key: "dateless_dropped", value: 1 },
     ];
+    const queries: string[] = [];
+    const rows = (sql: string) => {
+      if (sql.includes("source_health")) return { results: [] };
+      if (sql.includes("FROM jobs")) return { results: jobs };
+      if (sql.includes("counters")) return { results: counters };
+      return { results: [] };
+    };
     const db = {
-      prepare: (sql: string) => ({
-        first: async () => (sql.includes("source_health") ? { configured: 5, yielding: 3, attempts: 10, last_seen: "x" } : { n: 0 }),
-        all: async () => {
-          if (sql.includes("source_health")) return { results: [] };
-          if (sql.includes("FROM jobs")) return { results: jobs };
-          if (sql.includes("counters")) return { results: counters };
-          return { results: [] };
-        },
-        bind: () => ({ first: async () => ({ n: 0 }), all: async () => ({ results: [] }) }),
-      }),
+      prepare: (sql: string) => {
+        queries.push(sql);
+        return {
+          first: async () => (sql.includes("source_health") ? { configured: 5, yielding: 3, attempts: 10, last_seen: "x" } : { n: 0 }),
+          all: async () => rows(sql),
+          bind: () => ({
+            first: async () => ({ n: 0 }),
+            all: async () => rows(sql),
+          }),
+        };
+      },
     };
     const mod = await import("../src/index.js");
     const res = await mod.default.fetch(new Request("https://worker/coverage"), { DB: db, THRESHOLD: "70" } as any);
@@ -144,5 +152,36 @@ describe("/coverage feed-quality counters", () => {
     expect(body.duplicate_suppressed).toBe(1);
     expect(body.role_rejected).toBe(1);
     expect(body.live_software).toBe(2);
+  });
+
+  it("reads the jobs table through a window and a limit, never in full", async () => {
+    // The jobs table is cumulative history: an unbounded SELECT would grow
+    // with the store instead of with the feed, and would report every company
+    // ever stored as live software.
+    const queries: string[] = [];
+    const db = {
+      prepare: (sql: string) => {
+        queries.push(sql);
+        return {
+          first: async () => (sql.includes("source_health") ? { configured: 0, yielding: 0, attempts: 0, last_seen: null } : { n: 0 }),
+          all: async () => ({ results: [] }),
+          bind: () => ({
+            first: async () => ({ n: 0 }),
+            all: async () => ({ results: [] }),
+          }),
+        };
+      },
+    };
+    const mod = await import("../src/index.js");
+    const res = await mod.default.fetch(new Request("https://worker/coverage"), { DB: db, THRESHOLD: "70" } as any);
+    expect(res.status).toBe(200);
+    const jobsQuery = queries.find((q) => q.includes("FROM jobs"));
+    expect(jobsQuery).toBeTruthy();
+    expect(jobsQuery).toContain("discovered_at >=");
+    expect(jobsQuery).toContain("LIMIT");
+    // No aggregate fallback: the endpoint must not answer from a view of
+    // columns the real D1 table does not have.
+    expect(queries.some((q) => q.includes("dated_fresh"))).toBe(false);
+    expect(queries.some((q) => q.includes("COUNT(DISTINCT company)"))).toBe(false);
   });
 });
