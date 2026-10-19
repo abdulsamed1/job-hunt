@@ -8,6 +8,7 @@ Exit codes: 0 ok, 1 nothing to do, 2 error.
 from __future__ import annotations
 
 import argparse
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -45,7 +46,6 @@ def classify_role(title: Optional[str], reject_crm: bool = True) -> Optional[str
         return None
     text = title.strip().lower()
     # flatten punctuation to spaces, keep dots inside words
-    import re
     norm = re.sub(r"[^\w.\s]", " ", text)
     norm = re.sub(r"\s+", " ", norm).strip()
     words = norm.split()
@@ -112,7 +112,7 @@ def classify_role(title: Optional[str], reject_crm: bool = True) -> Optional[str
     for family, rules in families:
         for slug, word in rules:
             if _has_word(norm_spaced, word):
-                matches.append((len(word), f"{family}:{slug.replace(' ', '-')}"))
+                matches.append((len(word), f"{family}:{slug}"))
 
     # CRM
     if reject_crm and _has_word(norm_spaced, "salesforce"):
@@ -122,9 +122,12 @@ def classify_role(title: Optional[str], reject_crm: bool = True) -> Optional[str
 
     if not matches:
         return None
-    # most specific = longest matched word
-    matches.sort(key=lambda m: m[0])
-    return matches[-1][1]
+    # most specific = longest matched word; on ties keep the first collected (worker parity)
+    best = None
+    for m in matches:
+        if best is None or m[0] > best[0]:
+            best = m
+    return best[1] if best is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +165,7 @@ def _hours_ago(posted_at: Any) -> Optional[int]:
     return int(round(secs / 3600.0))
 
 
-def plan_backfill(db_path: Path) -> Dict[str, Any]:
+def plan_backfill(db_path: Path, reject_crm: bool = True) -> Dict[str, Any]:
     JobState = _load_models()
     from job_hunt.discovery.freshness import is_fresh
     from job_hunt.dedup import compute_role_fingerprint
@@ -178,7 +181,7 @@ def plan_backfill(db_path: Path) -> Dict[str, Any]:
     role_count = 0
     fresh_count = 0
     for r in non_terminal:
-        rule = classify_role(r.get("title"))
+        rule = classify_role(r.get("title"), reject_crm=reject_crm)
         if rule is not None:
             reason = f"role gate: {rule}"
             demotions.append({"id": r["id"], "to_state": "PRE_FILTERED_OUT", "reason": reason})
@@ -194,7 +197,7 @@ def plan_backfill(db_path: Path) -> Dict[str, Any]:
                 source=r["source"], title=r["title"], company=r["company"],
                 raw_url=r["raw_url"], canonical_url=r["canonical_url"],
                 canonical_url_hash=r["canonical_url_hash"],
-                role_fingerprint=r["role_fingerprint"], content_hash=r["content_hash"],
+                role_fingerprint=r.get("role_fingerprint") or "", content_hash=r["content_hash"],
                 location=r.get("location"), posted_at=r.get("posted_at"),
             )
         except Exception:
@@ -209,26 +212,6 @@ def plan_backfill(db_path: Path) -> Dict[str, Any]:
             demotions.append({"id": r["id"], "to_state": "PRE_FILTERED_OUT", "reason": reason})
             demoted_ids.add(r["id"])
             fresh_count += 1
-
-    # duplicates: group non-terminal, non-demoted rows by (company, title)
-    dup_count = 0
-    groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
-    for r in non_terminal:
-        if r["id"] in demoted_ids:
-            continue
-        key = (str(r.get("company") or "").strip().lower(),
-               str(r.get("title") or "").strip().lower())
-        groups.setdefault(key, []).append(r)
-    for key, grp in groups.items():
-        if len(grp) <= 1:
-            continue
-        grp_sorted = sorted(grp, key=lambda x: x["id"])
-        owner = grp_sorted[0]
-        for r in grp_sorted[1:]:
-            reason = f"duplicate of {owner['id']}"
-            demotions.append({"id": r["id"], "to_state": "DUPLICATE", "reason": reason})
-            demoted_ids.add(r["id"])
-            dup_count += 1
 
     # fingerprints: non-terminal rows where computed differs
     fp_updates: List[Dict[str, Any]] = []
@@ -245,7 +228,6 @@ def plan_backfill(db_path: Path) -> Dict[str, Any]:
     return {
         "role": role_count,
         "freshness": fresh_count,
-        "duplicate": dup_count,
         "fingerprints": fp_count,
         "demotions": demotions,
         "fp_updates": fp_updates,
@@ -259,10 +241,9 @@ def _print_summary(plan: Dict[str, Any], apply: bool) -> None:
     print("-" * 40)
     print(f"{'demoted (role)':<28} {plan['role']}")
     print(f"{'demoted (freshness)':<28} {plan['freshness']}")
-    print(f"{'demoted (duplicate)':<28} {plan['duplicate']}")
     print(f"{'fingerprints backfilled':<28} {plan['fingerprints']}")
     print("-" * 40)
-    total = plan["role"] + plan["freshness"] + plan["duplicate"] + plan["fingerprints"]
+    total = plan["role"] + plan["freshness"] + plan["fingerprints"]
     print(f"{'total changes':<28} {total}")
 
 
@@ -272,6 +253,7 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--db", dest="db_path", default=None)
     ap.add_argument("--db-path", dest="db_path", default=None)
     ap.add_argument("--database", dest="db_path", default=None)
+    ap.add_argument("--no-reject-crm", action="store_true", help="disable CRM role rejection (parity with REJECT_CRM_ROLES=false)")
     args = ap.parse_args(argv)
 
     db_path = args.db_path
@@ -283,14 +265,14 @@ def main(argv: List[str] | None = None) -> int:
         if not db_path.exists():
             print(f"error: db not found: {db_path}")
             return 2
-        plan = plan_backfill(db_path)
+        plan = plan_backfill(db_path, reject_crm=not args.no_reject_crm)
     except Exception as e:
         print(f"error: {e}")
         return 2
 
     _print_summary(plan, args.apply)
 
-    total_changes = (plan["role"] + plan["freshness"] + plan["duplicate"] + plan["fingerprints"])
+    total_changes = (plan["role"] + plan["freshness"] + plan["fingerprints"])
     if not args.apply:
         return 0 if total_changes > 0 else 1
 
@@ -302,7 +284,6 @@ def main(argv: List[str] | None = None) -> int:
         # state transitions
         state_map = {
             "PRE_FILTERED_OUT": JobState.PRE_FILTERED_OUT,
-            "DUPLICATE": JobState.DUPLICATE,
         }
         for d in plan["demotions"]:
             try:
