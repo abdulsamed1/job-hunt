@@ -96,18 +96,34 @@ class SourceRegistry:
                 return adapter
         return None
 
-    def load_sources_file(self, path: str | Path = "config/sources.yaml") -> List[Dict[str, Any]]:
-        """Load source configuration list from YAML."""
+    def load_sources_file(
+        self, path: str | Path = "config/sources.yaml", include_dead: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Load source configuration list from YAML.
+
+        Sources marked ``status: dead`` (the measured probe verdict) are
+        skipped: they answer no jobs, so fetching them only burns the scan
+        budget. The probe itself passes ``include_dead=True`` so a recovered
+        board can still be revived.
+        """
         p = Path(path)
         if not p.exists():
             return []
         with open(p, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("sources", [])
-        return []
+            sources = data
+        elif isinstance(data, dict):
+            sources = data.get("sources", [])
+        else:
+            sources = []
+        if include_dead:
+            return sources
+        return [
+            s
+            for s in sources
+            if not (isinstance(s, dict) and str(s.get("status") or "").lower() == "dead")
+        ]
 
     async def _robots_verdict(self, url: str, client: httpx.AsyncClient) -> Optional[bool]:
         """Fail-closed robots triage: True = allowed, False = disallowed, None = unconfirmed."""
@@ -132,8 +148,15 @@ class SourceRegistry:
         entry: Dict[str, Any],
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
+        raise_on_error: bool = False,
     ) -> List[JobPosting]:
-        """Safely scan a single source with concurrency limiting and error isolation."""
+        """Safely scan a single source with concurrency limiting and error isolation.
+
+        With ``raise_on_error=True`` the adapter's exception is re-raised
+        instead of being swallowed into an empty list -- the probe needs that
+        to tell "the board answered with nothing" (dead) from "the board
+        failed" (flaky).
+        """
         adapter = self.resolve_adapter(entry)
         name = entry.get("name", "unknown")
         if not adapter:
@@ -160,6 +183,8 @@ class SourceRegistry:
                 return postings
             except Exception as exc:
                 logger.error("Failed to scan source [%s]: %s", name, exc)
+                if raise_on_error:
+                    raise
                 return []
 
     async def discover_all(

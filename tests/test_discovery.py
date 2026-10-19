@@ -863,6 +863,62 @@ def test_feed_parser_tolerates_preamble_junk():
     assert postings[0].company == "Acme"
 
 
+def test_feed_parser_survives_one_malformed_posting():
+    """One broken posting must not void the whole feed."""
+    from job_hunt.discovery.adapters.feed import FeedAdapter
+
+    xml_text = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        "<item><title>Broken Role</title>"
+        "<link>https://example.com/jobs/broken</link>"
+        "<description>Compensation: $103,913.30. - $120,000.00 per year</description>"
+        "</item>"
+        "<item><title>Backend Engineer</title>"
+        "<link>https://example.com/jobs/2</link>"
+        "<description>Python role.</description>"
+        "</item></channel></rss>"
+    )
+    adapter = FeedAdapter()
+    postings = adapter._parse_rss_xml(
+        xml_text, {"name": "weworkremotely-feed", "url": "https://example.com/feed"}
+    )
+    assert [p.title for p in postings] == ["Backend Engineer"]
+
+
+@pytest.mark.asyncio
+async def test_feed_adapter_maps_jobicy_field_aliases():
+    """jobicy sends jobTitle/companyName, not title/company."""
+    payload = {
+        "jobs": [
+            {
+                "id": 155839,
+                "jobTitle": "Staff Engineer - Mobile/Kotlin",
+                "companyName": "Fanatics",
+                "url": "https://jobicy.com/jobs/155839-staff-engineer-mobile-kotlin",
+                "jobGeo": "USA",
+                "pubDate": "2026-10-19T13:22:04+00:00",
+            }
+        ]
+    }
+
+    async def mock_handler(request):
+        return httpx.Response(200, json=payload)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = FeedAdapter()
+        postings = await adapter.fetch(
+            {"name": "jobicy", "url": "https://jobicy.com/api/v2/remote-jobs"}, client
+        )
+
+    assert len(postings) == 1
+    p = postings[0]
+    assert p.title == "Staff Engineer - Mobile/Kotlin"
+    assert p.company == "Fanatics"
+    assert p.canonical_url == "https://jobicy.com/jobs/155839-staff-engineer-mobile-kotlin"
+
+
 @pytest.mark.asyncio
 async def test_discovery_clamps_per_source_hours_old_to_24(tmp_path):
     from job_hunt.orchestrator import PipelineOrchestrator

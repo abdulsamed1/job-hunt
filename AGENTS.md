@@ -39,7 +39,7 @@ user's explicit approval.
 - Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
-## Discovery defaults (all 382 sources)
+## Discovery defaults (all 374 sources)
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
   Server-side where supported (Bayt/Naukri/Zip intervals, Indeed date filter;
   LinkedIn TPR unused while disabled); central `filter_recent` backstops the rest.
@@ -47,18 +47,32 @@ user's explicit approval.
 - Remote: `scan --remote-only` keeps remote-signalled + unknown-location
   postings, drops placed on-site ones. Helpers in `discovery/freshness.py`.
 
-## Board coverage (325 configured; probed live 2026-10-02)
+## Board coverage (374 configured; probed live 2026-10-19)
 
-Configured ≠ working. `config/sources.yaml` holds **382** entries, but a live
-probe of all 213 ATS boards showed only **81 return any jobs**; 132 org slugs
-are dead (greenhouse 48/106, ashby 30/47, lever 2/45, smartrecruiters 1/15).
-GitHub and DoorDash now 404 on Greenhouse while `figma` returns 200 — slug
-derivation is correct, those orgs migrated ATS. Under the 24h + remote filters
-**17 sources currently yield**. Treat the config as intent, never as proof.
+Configured ≠ working. `config/sources.yaml` holds **374** entries; the live
+probe (`scripts/probe_sources.py`) measured **170 live**, **203 dead** and
+**1 unknown** (LinkedIn, disabled). Treat the config as intent, never as proof.
 
-- **RSS feeds that yield**: cryptojobslist, crypto.jobs, weworkremotely,
-  tokyodev, remote3, bitcoinjobs, jobspresso (`/jobs/feed/`), RemoteOK,
-  Remotive, arbeitnow, jobicy, cryptocurrencyjobs.
+- **Liveness rule**: a source is live when it yields at least one **remote**
+  posting **at any age**. The 24h window gates the *feed*, not the source, and
+  the remote filter stays on because only remote roles are applicable to this
+  product. A board that answers 404/410 is **dead** (the org migrated ATS —
+  GitHub and DoorDash 404 on Greenhouse while `figma` returns 200, so slug
+  derivation is correct); a failed attempt (timeout, 5xx) is **flaky** →
+  `status: unknown`, never a stale `status: live`.
+- **Dead by adapter**: greenhouse 60, web 57, lever 44, ashby 19,
+  smartrecruiters 14, feed 4, recruitee 2, bayt/indeed/bamboohr 1 each.
+- **Live by industry**: software 117, crypto 27, general 19, fintech 7.
+- `status: dead` is honoured everywhere: the Worker generator excludes those
+  boards from the shard, and `SourceRegistry.load_sources_file` skips them
+  locally (the CI sweep stops spending budget on them). The probe itself
+  re-measures dead boards (`include_dead=True`) so a recovered board is
+  revived.
+
+- **RSS feeds that yield** (12 live): cryptojobslist-feed, cryptocurrencyjobs,
+  crypto-jobs-feed (crypto.jobs), remoteok, remotive, weworkremotely-feed,
+  arbeitnow, jobicy, jobspresso (`/jobs/feed/`), tokyodev-feed, remote3-feed,
+  Remotive.
 - **ATS boards that yield**: greenhouse (coinbase, ripple, consensys, stripe…),
   ashby (stellar, uniswap, opensea, alchemy + `ashby-index` for aggregators
   like solana jobs), lever, workable, workday, bamboohr, smartrecruiters.
@@ -79,8 +93,9 @@ derivation is correct, those orgs migrated ATS. Under the 24h + remote filters
 ## Worker source coverage is generated (never hand-kept)
 
 - `worker/scripts/gen_sources.py` emits `worker/src/sources.generated.ts` from
-  `config/sources.yaml`: **298 Worker-runnable + 84 explicitly python-only**
-  (bayt TLS impersonation, naukri RSA, `web` HTML scraping) = 372 accounted for.
+  `config/sources.yaml`: **146 Worker-runnable + 25 explicitly python-only**
+  (bayt TLS impersonation, naukri RSA, `web` HTML scraping) + **203 dead**
+  (excluded from both shards) = 374 accounted for.
 - `--check` mode fails on drift; `tests/test_worker_source_shard.py` enforces it
   in CI. **Never hand-edit `sources.generated.ts`** — edit `sources.yaml`.
 - Worker gotchas that cost real debugging time, documented in
@@ -156,13 +171,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
 ## Deployment (free tiers)
 
 - **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
-  382-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
+  374-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
   see LinkedIn status above; manual dispatch without `full` runs apply only).
   Live runs only via manual dispatch with `live`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
 - **Cloudflare Worker** (`worker/`, full pipeline, not just scout): live at
-  `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (18 sources)
-  + daily deep sweep (all 298) across RSS/JSON/ATS/tenant sources (LinkedIn-guest
+  `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (25 sources)
+  + daily deep sweep (all 146 Worker-runnable) across RSS/JSON/ATS/tenant
+  sources (LinkedIn-guest
   filtered out while disabled, see LinkedIn status above) →
   queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic
   evaluate → tailor (pdf-lib PDF → R2) → direct ATS HTTP POST applies
@@ -190,7 +206,10 @@ gives you structural context (callers, dependents, test coverage) that file sear
   `live_software` (distinct companies with a software-verdict posting in 24h).
   Probe a board: `uv run python scripts/probe_sources.py` (writes
   `data/source_probe.json`; `--apply` rewrites `status:` in
-  `config/sources.yaml`). Backfill existing violations (dry-run default):
+  `config/sources.yaml`). The probe measures liveness = the source yields at
+  least one remote posting at any age (the 24h window gates the feed, not the
+  source); it re-measures dead boards too, so a recovered board is revived
+  automatically. Backfill existing violations (dry-run default):
   `uv run python scripts/backfill_feed_quality.py` (add `--apply` to write).
   Off Workers, always: Playwright browser, LLM-heavy stages, Rezi mirroring,
   LinkedIn submits, CAPTCHA jobs (human-queued). On Workers: fetch/parse,

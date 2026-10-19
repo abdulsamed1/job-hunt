@@ -7,6 +7,7 @@ and no source silently dropped between Python and the Worker.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -113,7 +114,29 @@ def test_cadence_keeps_hourly_shard_small():
     """The hourly shard must stay far below the queue batch cap."""
     worker, _p, _s = _load_generator().build()
     hourly = [s for s in worker if s["cadence"] == "hourly"]
-    assert 0 < len(hourly) <= 40, len(hourly)
+    assert 0 < len(hourly) <= 25, len(hourly)
+
+
+def test_hourly_shard_is_industry_balanced():
+    """The hourly scout must not be crypto-dominated: <=2 crypto orgs, <=3 crypto feeds."""
+    worker, _p, _s = _load_generator().build()
+    hourly = [s for s in worker if s["cadence"] == "hourly"]
+    crypto_orgs = {s.get("org") for s in hourly if s.get("industry") == "crypto" and s.get("org")}
+    crypto_feeds = {s["name"] for s in hourly if s.get("industry") == "crypto" and s["kind"] == "rss"}
+    assert len(crypto_orgs) <= 2, crypto_orgs
+    assert len(crypto_feeds) <= 3, crypto_feeds
+
+
+def test_hourly_sources_are_live_in_the_probe_ledger():
+    """Every hourly source must be a measured-live board (no dead boards on the fast path)."""
+    ledger = json.loads((ROOT / "data" / "source_probe.json").read_text())
+    worker, _p, _s = _load_generator().build()
+    for s in worker:
+        if s["cadence"] != "hourly":
+            continue
+        entry = ledger.get(s["name"])
+        assert entry, f"{s['name']} is hourly but missing from the probe ledger"
+        assert entry.get("verdict") == "live", (s["name"], entry.get("verdict"))
 
 
 def test_generated_ts_is_committed_and_imported():

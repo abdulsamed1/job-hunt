@@ -20,24 +20,36 @@ python worker/scripts/gen_sources.py --check  # fail on drift (used by tests)
 
 | Split | Count | Why |
 |---|---|---|
-| Worker-runnable | **298** | greenhouse 106, ashby 47, lever 45, rss 17, smartrecruiters 15, linkedin (disabled), indeed, ashby-index, freehire, bdjobs, teamtailor 2, recruitee 3, personio 1, bamboohr, workable |
-| Python-only | **84** | Bayt (TLS impersonation), Naukri (RSA handshake), HTML scraping (`web`) |
-| Total in `sources.yaml` | **382** | every source accounted for, none silently dropped |
+| Worker-runnable | **146** | greenhouse 70, ashby 42, rss 12, lever 10, teamtailor 3, recruitee 2, smartrecruiters 1, linkedin (disabled), indeed, ashby-index, freehire, bdjobs, personio, workable |
+| Python-only | **25** | HTML scraping (`web` 24), Naukri (RSA handshake); Bayt (TLS impersonation) is currently dead |
+| Dead (excluded) | **203** | measured dead by the probe: boards that answer 404/410 or return nothing |
+| Total in `sources.yaml` | **374** | every source accounted for, none silently dropped |
 
-### Measured yield (live probe, 2026-10-02)
+### Measured yield (live probe, 2026-10-19)
 
-Configured is not the same as working. Probing all 213 ATS boards:
+Configured is not the same as working. The probe
+(`python scripts/probe_sources.py --apply`) measures every configured source
+and writes the verdict to `config/sources.yaml` and to
+`data/source_probe.json`:
 
-| Kind | Yielding | Note |
+| Verdict | Count | Note |
 |---|---|---|
-| greenhouse | 48 / 106 | GitHub, DoorDash and others migrated off Greenhouse (`figma` 200, `github` 404 — slug derivation is correct, the boards are gone) |
-| ashby | 30 / 47 | incl. `ashby-index` fan-out for aggregators like jobs.solana.com |
-| lever | 2 / 45 | Lever is effectively abandoned by these orgs |
-| smartrecruiters | 1 / 15 | effectively dead |
+| live | **170** | software 117, crypto 27, general 19, fintech 7 |
+| dead | **203** | greenhouse 60, web 57, lever 44, ashby 19, smartrecruiters 14 — the boards are gone (GitHub, DoorDash and others migrated off Greenhouse: `figma` returns 200, `github` 404s — slug derivation is correct) |
+| unknown | **1** | LinkedIn, disabled since the 2026-10-02 ban |
 
-Under the 24h + remote filters, **17 sources currently yield**. `GET /coverage`
-reports configured vs attempted vs yielding from D1 — coverage claims are
-measured, never asserted. Add a board only after `POST /probe` shows yield.
+**Liveness rule**: a source is live when it yields at least one **remote**
+posting **at any age** — the 24h window gates the *feed*, not the source, and
+the remote filter stays on because only remote roles are applicable. A board
+that answers 404/410 is dead; a failed attempt is flaky (`status: unknown`),
+never a stale `live`. `status: dead` boards are excluded from the generated
+shard, so the Worker never spends requests on them.
+
+The hourly scout shard is **25 sources** (software 11, general 6, crypto 5,
+fintech 3 — at most 2 crypto orgs and 3 crypto feeds), rebuilt from the same
+ledger. `GET /coverage` reports configured vs attempted vs yielding from D1 —
+coverage claims are measured, never asserted. Add a board only after
+`POST /probe` shows yield.
 
 ### Feed-quality guarantees
 
@@ -57,8 +69,10 @@ dropped before storage; dateless postings are stored for the record, counted in
 distinct companies with at least one software-verdict posting in the last 24h.
 The gate counters `role_rejected`, `duplicate_suppressed`, `dateless_dropped`
 are also exposed on `GET /health`. Status field per source: `live | dead |
-unknown`; `python worker/scripts/probe_sources.py --apply` rewrites status from
-measured yield (reviving recovered boards).
+unknown`; `python scripts/probe_sources.py --apply` (from the repo root)
+rewrites status from the measured yield (reviving recovered boards) and
+records the newest posting date (`last_yield_at`) next to the probe time
+(`probed_at`) in `data/source_probe.json`.
 
 ## Why this fits free tier (verified vs docs 2026-10-01)
 

@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -27,12 +27,14 @@ FEED_ADAPTERS = {"feed"}
 ORG_KINDS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
 FEED_KINDS = {"rss", "feed"}
 
-WINDOW_DAYS = 7
-YIELD_WINDOW_DAYS = 7
-MIN_ATTEMPTS = 1
-MIN_ATTEMPTS_FLOOR = 1
-ATTEMPTS_FLOOR = 1
-MIN_PROBE_ATTEMPTS = 1
+# The single source of truth for what "live" means. The Worker generator, the
+# config `status:` field and the docs all quote this rule.
+LIVENESS_RULE = (
+    "Liveness = the source yields at least one remote posting at any age. "
+    "The 24h window gates the feed, not the source, and the remote filter stays "
+    "on because only remote roles are applicable to this product. A failed "
+    "attempt is flaky (never dead); a board that answers 404/410 is dead."
+)
 
 
 def _name(probe: Any) -> str:
@@ -74,62 +76,63 @@ def _last_yield(probe: Any) -> Any:
     return getattr(probe, "last_yield_at", None)
 
 
-def _to_datetime(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if isinstance(value, (int, float)):
-        v = float(value)
-        if v > 1e12:
-            v = v / 1000.0
-        try:
-            return datetime.fromtimestamp(v, tz=timezone.utc)
-        except (ValueError, OSError, OverflowError):
-            return None
-    text = str(value).strip()
-    if not text:
-        return None
-    parsed = _freshness.parse_posted_at(text)
-    if parsed is not None:
-        return parsed
-    try:
-        cleaned = text.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(cleaned)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
+def _probed_at(probe: Any) -> Any:
+    if isinstance(probe, dict):
+        return probe.get("probed_at", None)
+    return getattr(probe, "probed_at", None)
+
+
+def _error(probe: Any) -> str:
+    if isinstance(probe, dict):
+        return str(probe.get("error", "") or "")
+    return str(getattr(probe, "error", "") or "")
+
+
+def _fatal(probe: Any) -> bool:
+    """True when the failure was the board answering that it is gone (404/410)."""
+    if isinstance(probe, dict):
+        return bool(probe.get("fatal", False))
+    return bool(getattr(probe, "fatal", False))
+
+
+def _is_gone(exc: BaseException) -> bool:
+    """True when the source answered "no such board" (HTTP 404/410).
+
+    That is a clean zero, not a failed attempt: the board is gone (the org
+    migrated ATS), which is exactly what `status: dead` means.
+    """
+    response = getattr(exc, "response", None)
+    if getattr(response, "status_code", None) in (404, 410):
+        return True
+    return getattr(getattr(exc, "request", None), "status_code", None) in (404, 410)
 
 
 def classify_verdict(
     attempts: int = 0,
     yielded: int = 0,
     last_yield_at: Any = None,
-    now: Optional[datetime] = None,
-    window_days: int = WINDOW_DAYS,
-    min_attempts: int = MIN_ATTEMPTS_FLOOR,
+    error: Any = None,
+    fatal: bool = False,
     **kwargs: Any,
 ) -> str:
-    if now is None:
-        now = datetime.now(timezone.utc)
-    if isinstance(now, str):
-        now = _to_datetime(now) or datetime.now(timezone.utc)
+    """Liveness = the source yields at least one remote posting at any age.
+
+    The 24h window gates the feed, not the source (a board that posts monthly
+    is still alive), and the remote filter stays on because only remote roles
+    are applicable to this product. ``last_yield_at`` is carried for the
+    operator (newest posting date) but never decides the verdict. A failed
+    attempt is ``flaky``, never ``dead``: a failure is not proof that the
+    board is gone. The one exception is a board that *answers* that it is gone
+    (HTTP 404/410, ``fatal=True``) -- that is a clean zero, not a failure.
+    """
+    if error and not fatal:
+        return "flaky"
     attempts = int(attempts or 0)
     yielded = int(yielded or 0)
-    last_dt = _to_datetime(last_yield_at)
-    recent = False
-    if last_dt is not None:
-        recent = (now - last_dt) <= timedelta(days=window_days)
-    # Liveness is about whether the source returns *any* jobs, not whether
-    # they were posted in the last 24h. The 24h window gates the *feed* (see
-    # freshness.ts), not the source: a board that posts monthly is still alive.
-    # Recency is reported separately (last_yield_at) so operators can see it,
-    # but it never marks a yielding source dead.
-    if yielded > 0 and attempts >= min_attempts:
-        return "live"
-    if yielded <= 0 and attempts >= min_attempts:
-        return "dead"
-    return "flaky"
+    if attempts < 1:
+        # Never probed (e.g. a disabled source): no evidence either way.
+        return "flaky"
+    return "live" if yielded > 0 else "dead"
 
 
 def verdict_for(probe: Any, **kwargs: Any) -> str:
@@ -137,6 +140,8 @@ def verdict_for(probe: Any, **kwargs: Any) -> str:
         attempts=_attempts(probe),
         yielded=_yielded(probe),
         last_yield_at=_last_yield(probe),
+        error=_error(probe),
+        fatal=_fatal(probe),
         **kwargs,
     )
 
@@ -154,6 +159,9 @@ class SourceProbe:
         attempts: int = 0,
         yielded: int = 0,
         last_yield_at: Any = None,
+        probed_at: Any = None,
+        error: str = "",
+        fatal: bool = False,
         verdict: str = "",
         adapter: str = "",
         url: str = "",
@@ -167,7 +175,14 @@ class SourceProbe:
         self.industry = industry
         self.attempts = attempts
         self.yielded = yielded
+        # Newest posting date seen (recency signal for the operator).
         self.last_yield_at = last_yield_at
+        # When the probe ran (never confused with the posting date).
+        self.probed_at = probed_at
+        # Set when the source raised: flaky, never dead.
+        self.error = str(error or "")
+        # A fatal failure (404/410) is the board answering that it is gone.
+        self.fatal = bool(fatal)
         self.verdict = verdict
         self.adapter = adapter
         self.url = url
@@ -186,7 +201,10 @@ class SourceProbe:
         if self.crypto is None:
             self.crypto = str(self.industry).lower() == "crypto"
         if not self.verdict:
-            self.verdict = classify_verdict(self.attempts, self.yielded, self.last_yield_at)
+            self.verdict = classify_verdict(
+                self.attempts, self.yielded, self.last_yield_at,
+                error=self.error, fatal=self.fatal,
+            )
         if self.verdict not in {"live", "dead", "flaky"}:
             lv = str(self.verdict).lower()
             if lv in {"live", "dead", "flaky"}:
@@ -282,6 +300,21 @@ def _serialize_last(value: Any) -> Any:
     return value
 
 
+def _newest_posted_at(postings: List[Any]) -> Optional[datetime]:
+    """Newest posting date among the yielded postings (unparseable ones skipped)."""
+    newest: Optional[datetime] = None
+    for p in postings or []:
+        raw = getattr(p, "posted_at", None)
+        if raw is None:
+            continue
+        parsed = _freshness.parse_posted_at(raw)
+        if parsed is None:
+            continue
+        if newest is None or parsed > newest:
+            newest = parsed
+    return newest
+
+
 def build_ledger(probes: List[Any]) -> Dict[str, Dict[str, Any]]:
     ledger: Dict[str, Dict[str, Any]] = {}
     for p in probes or []:
@@ -291,13 +324,20 @@ def build_ledger(probes: List[Any]) -> Dict[str, Dict[str, Any]]:
             "attempts": _attempts(p),
             "yielded": _yielded(p),
             "last_yield_at": _serialize_last(_last_yield(p)),
+            "probed_at": _serialize_last(_probed_at(p)),
             "verdict": verdict,
             "kind": _kind(p),
             "industry": _industry(p),
+            "error": _error(p),
+            "fatal": _fatal(p),
         }
         if not ledger[name]["verdict"]:
             ledger[name]["verdict"] = classify_verdict(
-                ledger[name]["attempts"], ledger[name]["yielded"], ledger[name]["last_yield_at"]
+                ledger[name]["attempts"],
+                ledger[name]["yielded"],
+                ledger[name]["last_yield_at"],
+                error=ledger[name]["error"],
+                fatal=ledger[name]["fatal"],
             )
     return ledger
 
@@ -355,6 +395,7 @@ def verdict_to_status(verdict: Any) -> str:
         return "live"
     if v == "dead":
         return "dead"
+    # flaky (errored) or unknown: never a stale "live".
     return "unknown"
 
 
@@ -421,31 +462,52 @@ def apply(*a, **kw):
     return apply_verdicts(*a, **kw)
 
 
-def _probe_one(entry, client, semaphore, hours_old, remote):
+def _probe_one(entry, client, semaphore, hours_old, remote, registry=None):
     async def _run():
-        registry = SourceRegistry()
-        async with semaphore:
-            postings = await registry.scan_source(entry, client, asyncio.Semaphore(10_000))
-        if remote:
-            postings = _freshness.filter_recent(postings, hours_old)
-            postings = _freshness.filter_remote(postings)
-        else:
-            postings = _freshness.filter_recent(postings, hours_old)
-        yielded = len(postings)
-        now = datetime.now(timezone.utc)
-        last = now if yielded > 0 else None
+        reg = registry or SourceRegistry()
+        probed_at = datetime.now(timezone.utc)
         adapter = entry.get("adapter", "")
-        probe = SourceProbe(
-            name=entry.get("name", ""),
+        name = entry.get("name", "")
+        industry = entry.get("industry", "general") or "general"
+        url = entry.get("url", "") or ""
+        try:
+            async with semaphore:
+                postings = await reg.scan_source(
+                    entry, client, asyncio.Semaphore(10_000), raise_on_error=True
+                )
+            # Liveness = remote postings at any age. The 24h window gates the
+            # feed, not the source, so it is off by default (hours_old=0).
+            postings = _freshness.filter_recent(postings, hours_old)
+            if remote:
+                postings = _freshness.filter_remote(postings)
+        except Exception as exc:
+            # A failed attempt is evidence of flakiness, never of a dead board.
+            # The one exception: the board answered that it is gone (404/410),
+            # which is a clean zero -- see _is_gone.
+            return SourceProbe(
+                name=name,
+                kind=adapter,
+                industry=industry,
+                attempts=1,
+                yielded=0,
+                last_yield_at=None,
+                probed_at=probed_at,
+                error=f"{type(exc).__name__}: {exc}"[:200],
+                fatal=_is_gone(exc),
+                adapter=adapter,
+                url=url,
+            )
+        return SourceProbe(
+            name=name,
             kind=adapter,
-            industry=entry.get("industry", "general") or "general",
+            industry=industry,
             attempts=1,
-            yielded=yielded,
-            last_yield_at=last,
+            yielded=len(postings),
+            last_yield_at=_newest_posted_at(postings),
+            probed_at=probed_at,
             adapter=adapter,
-            url=entry.get("url", "") or "",
+            url=url,
         )
-        return probe
 
     return _run()
 
@@ -455,7 +517,7 @@ async def _probe_all_async(
     sources_path=None,
     max_concurrency: int = 5,
     hours_old: int = 0,
-    remote: bool = False,
+    remote: bool = True,
     output=None,
     ledger_path=None,
     probe_path=None,
@@ -464,9 +526,12 @@ async def _probe_all_async(
     if sources is None:
         sp = Path(sources_path) if sources_path is not None else DEFAULT_SOURCES
         registry = SourceRegistry()
-        sources = registry.load_sources_file(sp)
+        # include_dead: the probe must re-measure dead boards too, otherwise a
+        # recovered board could never be revived.
+        sources = registry.load_sources_file(sp, include_dead=True)
     else:
         sp = Path(sources_path) if sources_path is not None else DEFAULT_SOURCES
+        registry = SourceRegistry()
 
     li_enabled = linkedin_enabled(sp)
     filtered = []
@@ -485,10 +550,11 @@ async def _probe_all_async(
             if kind == "skip":
                 skip_entries.append(e)
             else:
-                tasks.append(_probe_one(e, client, semaphore, hours_old, remote))
+                tasks.append(_probe_one(e, client, semaphore, hours_old, remote, registry=registry))
         results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
         for r in results:
             if isinstance(r, Exception):
+                # A task that could not even be built is still an attempt.
                 continue
             probes.append(r)
     for e in skip_entries:
@@ -500,6 +566,7 @@ async def _probe_all_async(
                 attempts=0,
                 yielded=0,
                 last_yield_at=None,
+                probed_at=datetime.now(timezone.utc),
                 adapter=e.get("adapter", ""),
                 url=e.get("url", "") or "",
             )
@@ -518,15 +585,43 @@ def probe_all(*args, **kwargs):
     return asyncio.run(_probe_all_async(**kwargs))
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Probe all configured sources.")
+def _build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description="Probe every configured source and record liveness in the ledger.",
+        epilog=(
+            "Liveness rule: a source is live when it yields at least one remote "
+            "posting at any age. The 24h window gates the feed, not the source, "
+            "and the remote filter stays on because only remote roles are "
+            "applicable. A failed attempt is flaky (never dead) and is written "
+            "to the sources config with status 'unknown'; a board that answers "
+            "404/410 is dead."
+        ),
+    )
     ap.add_argument("--sources", default=str(DEFAULT_SOURCES))
     ap.add_argument("--output", "--probe-path", "--ledger", dest="output", default=str(DEFAULT_LEDGER))
-    ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--hours-old", type=int, default=0)
+    ap.add_argument(
+        "--apply",
+        action="store_true",
+        help="rewrite status: in the sources config from the measured verdicts",
+    )
+    ap.add_argument(
+        "--hours-old",
+        type=int,
+        default=0,
+        help="recency window used while probing; 0 (default) means any age",
+    )
     ap.add_argument("--max-concurrency", type=int, default=5)
-    ap.add_argument("--no-remote", action="store_true")
+    ap.add_argument(
+        "--no-remote",
+        action="store_true",
+        help="diagnostic only: drop the remote filter (the shipped rule keeps it ON)",
+    )
     ap.add_argument("--sources-path", dest="sources_path", default=None)
+    return ap
+
+
+def main(argv=None) -> int:
+    ap = _build_parser()
     args = ap.parse_args(argv)
 
     sources_path = args.sources_path or args.sources
@@ -537,10 +632,13 @@ def main(argv=None) -> int:
         max_concurrency=args.max_concurrency,
         remote=not args.no_remote,
     )
-    print(f"{'name':40} {'kind':12} {'industry':10} {'attempts':>8} {'yielded':>7} {'verdict':>7}")
+    print(f"{'name':40} {'kind':12} {'industry':10} {'attempts':>8} {'yielded':>7} {'verdict':>7}  newest posting / error")
     for p in sorted(probes, key=lambda x: (_industry(x), _name(x))):
-        print(f"{_name(p):40} {_kind(p):12} {_industry(p):10} {_attempts(p):8} {_yielded(p):7} {getattr(p,'verdict',''):>7}")
+        newest = _serialize_last(_last_yield(p)) or "-"
+        note = f"{newest} {(_error(p))}".strip()
+        print(f"{_name(p):40} {_kind(p):12} {_industry(p):10} {_attempts(p):8} {_yielded(p):7} {getattr(p,'verdict',''):>7}  {note}")
     print(f"probed {len(probes)} sources -> {args.output}")
+    print(f"rule: {LIVENESS_RULE}")
 
     if args.apply:
         changed = apply_verdicts(probes=probes, sources_path=sources_path)

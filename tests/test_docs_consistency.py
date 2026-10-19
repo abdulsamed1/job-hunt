@@ -6,6 +6,7 @@ fixed in code but the README keeps promising the old behavior.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -58,7 +59,37 @@ def test_source_counts_match_config_and_generator():
     assert worker + python_only + dead == total, "sources must be fully accounted for"
     docs = _all_docs()
     for n in (total, worker, python_only):
-        assert str(n) in docs, f"docs never mention {n}"
+        # Word-boundary matching: "150" must not be satisfied by "150ms" and
+        # "27" must not be satisfied by "127.0.0.1".
+        assert re.search(rf"(?<![\w]){n}(?![\w])", docs), f"docs never mention {n}"
+
+
+def test_docs_state_the_measured_source_coverage():
+    """The docs must carry the numbers the probe actually measured."""
+    cfg = (yaml.safe_load(_text("config/sources.yaml")) or {}).get("sources") or []
+    ledger = json.loads(_text("data/source_probe.json"))
+    live = sum(1 for v in ledger.values() if v.get("verdict") == "live")
+    dead = sum(1 for v in ledger.values() if v.get("verdict") == "dead")
+    gen = _text("worker/src/sources.generated.ts")
+    m = re.search(r"yaml_total=(\d+) worker_supported=(\d+) python_only=(\d+) hourly=(\d+)", gen)
+    assert m, "generated file must carry the accounting header"
+    total, worker, python_only, hourly = map(int, m.groups())
+    assert total == len(cfg)
+    assert live + dead <= len(cfg)
+
+    docs = _all_docs()
+    for n in (total, worker, python_only, live, dead, hourly):
+        assert re.search(rf"(?<![\w]){n}(?![\w])", docs), f"docs never mention {n}"
+
+
+def test_docs_document_the_liveness_rule():
+    """The probe rule must be documented, not just implemented."""
+    docs = _all_docs()
+    low = " ".join(docs.lower().split())
+    assert "liveness" in low
+    assert "at any age" in low
+    assert "status: dead" in low or "status: `dead`" in low
+
 
 
 def test_documented_worker_endpoints_exist():

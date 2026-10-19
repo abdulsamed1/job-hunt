@@ -27,18 +27,20 @@ OUT_TS = ROOT / "worker" / "src" / "sources.generated.ts"
 PYTHON_ONLY_ADAPTERS = {"bayt", "naukri", "web"}
 
 # Curated high-signal boards polled hourly; the rest run on the daily deep sweep.
-# Rebuilt from the measured probe ledger (data/source_probe.json) with a hard cap of
-# 2 crypto orgs and 3 crypto feeds, so the 24x/day scout is industry-balanced instead
-# of crypto-dominated. Re-probe and regenerate whenever the ledger is refreshed.
+# Rebuilt from the measured probe ledger (data/source_probe.json): every name
+# below is a board the probe measured as live, ranked by remote yield at any
+# age, with a hard cap of 2 crypto orgs and 3 crypto feeds so the 24x/day
+# scout is industry-balanced instead of crypto-dominated. Re-probe and
+# regenerate whenever the ledger is refreshed.
 HOURLY_ORGS = {
+    "andurilindustries", "mongodb", "okta", "elastic", "cloudflare", "stripe",
+    "samsara", "brex", "gitlab", "anthropic", "affirm", "fivetran", "datadog",
+    "elevenlabs",
     "coinbase", "ripple",        # crypto, capped at 2
-    "andurilindustries", "mongodb", "okta", "elastic", "cloudflare", "stripe", "samsara",
-    "brex", "gitlab", "affirm", "anthropic", "fivetran", "datadog", "elevenlabs",
-    "figma", "twilio", "verkada", "truelogic", "grafanalabs", "reddit", "instacart", "lyft",
 }
 HOURLY_FEEDS = {
     "cryptojobslist-feed", "cryptocurrencyjobs", "crypto-jobs-feed",  # crypto, capped at 3
-    "arbeitnow", "remoteok", "jobspresso", "remotive",                # high-yield RSS
+    "remoteok", "weworkremotely-feed", "arbeitnow", "jobicy", "jobspresso", "remotive",
 }
 
 

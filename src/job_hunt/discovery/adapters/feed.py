@@ -63,9 +63,10 @@ class FeedAdapter(DiscoveryAdapter):
 
         postings: List[JobPosting] = []
         for j in jobs_raw:
-            title = (j.get("position") or j.get("title") or j.get("name") or "").strip()
-            company = (j.get("company") or j.get("company_name") or entry.get("name") or "").strip()
-            raw_url = j.get("url") or j.get("apply_url") or ""
+            title = (j.get("position") or j.get("title") or j.get("jobTitle") or j.get("name") or "").strip()
+            company = (j.get("company") or j.get("company_name") or j.get("companyName")
+                       or entry.get("name") or "").strip()
+            raw_url = j.get("url") or j.get("apply_url") or j.get("jobUrl") or ""
             if not title or not raw_url or not company:
                 continue
 
@@ -92,7 +93,7 @@ class FeedAdapter(DiscoveryAdapter):
                 salary_max=parsed[1] if parsed else None,
                 salary_currency=parsed[2] if parsed else None,
                 salary_source=parsed[3] if parsed else None,
-                posted_at=str(j.get("date") or j.get("epoch") or ""),
+                posted_at=str(j.get("date") or j.get("pubDate") or j.get("published") or j.get("epoch") or ""),
                 metadata={"tags": j.get("tags", [])},
             )
             postings.append(posting)
@@ -100,9 +101,13 @@ class FeedAdapter(DiscoveryAdapter):
         return postings
 
     def _parse_rss_xml(self, xml_text: str, entry: Dict[str, Any]) -> List[JobPosting]:
-        """Parse standard RSS/Atom XML feeds for job postings."""
+        """Parse standard RSS/Atom XML feeds for job postings.
+
+        Items are parsed independently: one malformed posting (e.g. a salary
+        string the free-text parser chokes on) is skipped instead of voiding
+        the whole feed.
+        """
         try:
-            import re as _re
             import xml.etree.ElementTree as ET
             # Feeds in the wild carry junk before the declaration (debug bars,
             # BOMs, whitespace). Slice from the first XML-looking token.
@@ -117,57 +122,65 @@ class FeedAdapter(DiscoveryAdapter):
             items = root.findall(".//item") or [
                 el for el in root.iter() if el.tag.endswith("item") or el.tag.endswith("entry")
             ]
-            postings: List[JobPosting] = []
-
-            for item in items:
-                title = ""
-                raw_url = ""
-                description = ""
-                company = entry.get("name", "Company")
-                posted_at = ""
-
-                for child in item:
-                    tag_lower = child.tag.lower()
-                    if tag_lower.endswith("title"):
-                        title = (child.text or "").strip()
-                    elif tag_lower.endswith("link"):
-                        raw_url = child.get("href") or (child.text or "").strip()
-                    elif tag_lower.endswith("description") or tag_lower.endswith("content") or tag_lower.endswith("summary"):
-                        description = (child.text or "").strip()
-                    elif tag_lower.endswith("creator") or tag_lower.endswith("author") or tag_lower.endswith("company"):
-                        company = (child.text or "").strip() or company
-                    elif tag_lower.endswith("pubdate") or tag_lower.endswith("updated") or tag_lower.endswith("published"):
-                        posted_at = (child.text or "").strip()
-
-                if not title or not raw_url:
-                    continue
-
-                canon_url = normalize_url(raw_url)
-                desc = description or title
-                # Backstop: feeds carry no structured compensation; try free-text parse.
-                parsed = parse_salary_text(desc)
-                posting = JobPosting(
-                    external_id=None,
-                    source=entry.get("name", "rss").lower(),
-                    source_name=company,
-                    title=title,
-                    company=company,
-                    raw_url=raw_url,
-                    canonical_url=canon_url,
-                    canonical_url_hash=canonical_url_hash(canon_url),
-                    role_fingerprint=compute_role_fingerprint(company, title, "Remote"),
-                    content_hash=content_hash(desc),
-                    location="Remote",
-                    description=desc,
-                    salary_min=parsed[0] if parsed else None,
-                    salary_max=parsed[1] if parsed else None,
-                    salary_currency=parsed[2] if parsed else None,
-                    salary_source=parsed[3] if parsed else None,
-                    posted_at=posted_at or None,
-                    metadata={"feed_format": "rss_xml"},
-                )
-                postings.append(posting)
-
-            return postings
         except Exception:
             return []
+
+        postings: List[JobPosting] = []
+        for item in items:
+            try:
+                posting = self._posting_from_rss_item(item, entry)
+            except Exception:
+                # A single broken posting must not void the whole feed.
+                continue
+            if posting is not None:
+                postings.append(posting)
+        return postings
+
+    def _posting_from_rss_item(self, item: Any, entry: Dict[str, Any]) -> JobPosting | None:
+        """Build one posting from an RSS/Atom item (None when unusable)."""
+        title = ""
+        raw_url = ""
+        description = ""
+        company = entry.get("name", "Company")
+        posted_at = ""
+
+        for child in item:
+            tag_lower = child.tag.lower()
+            if tag_lower.endswith("title"):
+                title = (child.text or "").strip()
+            elif tag_lower.endswith("link"):
+                raw_url = child.get("href") or (child.text or "").strip()
+            elif tag_lower.endswith("description") or tag_lower.endswith("content") or tag_lower.endswith("summary"):
+                description = (child.text or "").strip()
+            elif tag_lower.endswith("creator") or tag_lower.endswith("author") or tag_lower.endswith("company"):
+                company = (child.text or "").strip() or company
+            elif tag_lower.endswith("pubdate") or tag_lower.endswith("updated") or tag_lower.endswith("published"):
+                posted_at = (child.text or "").strip()
+
+        if not title or not raw_url:
+            return None
+
+        canon_url = normalize_url(raw_url)
+        desc = description or title
+        # Backstop: feeds carry no structured compensation; try free-text parse.
+        parsed = parse_salary_text(desc)
+        return JobPosting(
+            external_id=None,
+            source=entry.get("name", "rss").lower(),
+            source_name=company,
+            title=title,
+            company=company,
+            raw_url=raw_url,
+            canonical_url=canon_url,
+            canonical_url_hash=canonical_url_hash(canon_url),
+            role_fingerprint=compute_role_fingerprint(company, title, "Remote"),
+            content_hash=content_hash(desc),
+            location="Remote",
+            description=desc,
+            salary_min=parsed[0] if parsed else None,
+            salary_max=parsed[1] if parsed else None,
+            salary_currency=parsed[2] if parsed else None,
+            salary_source=parsed[3] if parsed else None,
+            posted_at=posted_at or None,
+            metadata={"feed_format": "rss_xml"},
+        )
