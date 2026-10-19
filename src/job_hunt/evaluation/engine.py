@@ -21,6 +21,38 @@ IC_ALLOW_PATTERNS = [
     re.compile(r"\b(?:staff|principal|senior|sr\.?)\b.*\b(?:engineer|engineers|engineering)\b", re.IGNORECASE),
 ]
 
+# Build roles: the words that name the job of building software. One
+# vocabulary for the whole module — the domain-word exemption below and the
+# positive software check both read it, so a title that names a build role is
+# treated the same way everywhere. The Worker keeps the same list
+# (worker/src/lib/roles.ts).
+BUILD_ROLE_WORDS = (
+    "engineer",
+    "engineers",
+    "engineering",
+    "developer",
+    "developers",
+    "devops",
+    "architect",
+    "programmer",
+    "sre",
+)
+BUILD_ROLE_PATTERN = re.compile(
+    r"\b(?:" + "|".join(BUILD_ROLE_WORDS) + r")\b", re.IGNORECASE
+)
+
+
+def names_build_role(title: str) -> bool:
+    """True when the title names an engineering build role.
+
+    A build role (engineer, developer, devops, architect, programmer, sre)
+    makes the title a software role, and it also stops a domain word from
+    rejecting it: "Full Stack Engineer - Finance" and "AI Engineer, Legal &
+    Compliance" are software jobs, "Senior Accountant" and "Legal Counsel"
+    are not.
+    """
+    return BUILD_ROLE_PATTERN.search(title or "") is not None
+
 
 class RoleRejectRule(NamedTuple):
     """One reject rule: the family it belongs to, its slug and its pattern.
@@ -36,6 +68,9 @@ class RoleRejectRule(NamedTuple):
     #: the Worker's "longest matched word wins".
     word: str
     pattern: "re.Pattern[str]"
+    #: A domain word names a field of work, not a build role: the rule fires
+    #: only when the title names no engineering build role.
+    domain_only: bool = False
 
 
 # Reject families, in the Worker's order. Negative role patterns (non-engineering
@@ -65,10 +100,13 @@ ROLE_REJECT_RULES: List[RoleRejectRule] = [
     RoleRejectRule("non-engineering", "recruiter", "recruiter", re.compile(r"\brecruiter\b", re.IGNORECASE)),
     RoleRejectRule("non-engineering", "talent acquisition", "talent acquisition", re.compile(r"\btalent\s+acquisition\b", re.IGNORECASE)),
     RoleRejectRule("non-engineering", "human resources", "human resources", re.compile(r"\bhuman\s+resources\b", re.IGNORECASE)),
-    RoleRejectRule("non-engineering", "accountant", "accountant", re.compile(r"\baccountant\b", re.IGNORECASE)),
-    RoleRejectRule("non-engineering", "finance", "finance", re.compile(r"\bfinance\b", re.IGNORECASE)),
-    RoleRejectRule("non-engineering", "legal", "legal", re.compile(r"\blegal\b", re.IGNORECASE)),
-    RoleRejectRule("non-engineering", "medical", "medical", re.compile(r"\b(?:nurse|medical)\b", re.IGNORECASE)),
+    # Domain words name a field of work, not a build role: they reject only
+    # when the title names no engineering build role ("Full Stack Engineer -
+    # Finance" is a software job, "Senior Accountant" is not).
+    RoleRejectRule("non-engineering", "accountant", "accountant", re.compile(r"\baccountant\b", re.IGNORECASE), domain_only=True),
+    RoleRejectRule("non-engineering", "finance", "finance", re.compile(r"\bfinance\b", re.IGNORECASE), domain_only=True),
+    RoleRejectRule("non-engineering", "legal", "legal", re.compile(r"\blegal\b", re.IGNORECASE), domain_only=True),
+    RoleRejectRule("non-engineering", "medical", "medical", re.compile(r"\b(?:nurse|medical)\b", re.IGNORECASE), domain_only=True),
     RoleRejectRule("non-engineering", "driver", "driver", re.compile(r"\bdriver\b", re.IGNORECASE)),
     RoleRejectRule("non-engineering", "content writer", "content writer", re.compile(r"\bcontent\s+writer\b", re.IGNORECASE)),
     RoleRejectRule("non-engineering", "graphic designer", "graphic designer", re.compile(r"\bgraphic\s+designer\b", re.IGNORECASE)),
@@ -82,6 +120,9 @@ ROLE_REJECT_RULES: List[RoleRejectRule] = [
 # ROLE_REJECT_RULES above, grouped by family to mirror worker/src/lib/roles.ts
 # (people-management, revenue, non-engineering), so the backfill script can
 # reuse the same table instead of copying it.
+# The domain-word rules (accountant, finance, legal, medical) are conditional:
+# they only fire when the title names no engineering build role, so they must
+# be applied through classify_role_reject, not through this flat list.
 NEGATIVE_ROLE_PATTERNS = [rule.pattern for rule in ROLE_REJECT_RULES]
 
 # CRM implementation roles: Salesforce plus one companion word.
@@ -97,10 +138,14 @@ def classify_role_reject(title: str, reject_crm: bool = True) -> Optional[str]:
     Most specific match wins: the longest matched word, first listed on a tie
     — the same rule the Worker applies (worker/src/lib/roles.ts). The reject
     families always win over the IC allow-list: a senior sales engineer is a
-    sales role.
+    sales role. A domain word (accountant, finance, legal, medical) is the one
+    exception: it fires only when the title names no engineering build role.
     """
     best: Optional[RoleRejectRule] = None
+    build_role = names_build_role(title)
     for rule in ROLE_REJECT_RULES:
+        if rule.domain_only and build_role:
+            continue
         if rule.pattern.search(title):
             if best is None or len(rule.word) > len(best.word):
                 best = rule
@@ -472,11 +517,17 @@ class EvaluationEngine:
         # role). The IC allow-list only stands in for the positive SWE check
         # below, where a seniority marker plus an engineering noun is
         # individual-contributor work even without a technology in the title.
+        # A domain word (accountant, finance, legal, medical) is the one
+        # exception: it fires only when the title names no engineering build
+        # role ("Full Stack Engineer - Finance" is a software job).
         reject_crm = profile.reject_crm_roles
+        build_role = names_build_role(title)
 
         # Check negative role patterns. The reason names the family and the
         # slug, so both runtimes call the same rule by the same name.
         for rule in ROLE_REJECT_RULES:
+            if rule.domain_only and build_role:
+                continue
             if rule.pattern.search(title):
                 return False, f"Title matches negative filter: {rule.family}:{rule.slug}"
 
@@ -488,10 +539,12 @@ class EvaluationEngine:
 
         # Check positive SWE role patterns. The IC allow-list stands in for
         # them: "Staff Engineer, Platform" names no technology but is
-        # individual-contributor engineering work.
+        # individual-contributor engineering work. So does a title that names
+        # an engineering build role ("AI Engineer"): a build role is a software
+        # role, and a domain word never disqualifies one.
         is_ic = any(p.search(title) for p in IC_ALLOW_PATTERNS)
         matched_swe = any(pos_pat.search(title) for pos_pat in SWE_ROLE_PATTERNS)
-        if not matched_swe and not is_ic:
+        if not matched_swe and not is_ic and not build_role:
             return False, "Title does not match targeted Software Engineer roles"
 
         # Check clearance requirements in description

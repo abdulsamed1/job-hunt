@@ -241,8 +241,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
   (`HOURS_OLD = 24` on the Worker; Python clamps per-source `hours_old` to 24).
   Dateless postings are stored for the record, counted as `dateless_dropped`,
   and never scored or applied. Role gate rejects leadership, BD, CRM and
-  non-engineering titles (counted in `role_rejected`). Dedupe by role
-  fingerprint (counted in `duplicate_suppressed`). `GET /coverage` reports
+  non-engineering titles (counted in `role_rejected`). A domain word
+  (`accountant`, `finance`, `legal`, `medical`/`nurse`) rejects only when the
+  title names **no** engineering build role (engineer, developer, devops,
+  architect, programmer, sre): "Full Stack Engineer - Finance" and "AI
+  Engineer, Legal & Compliance" are software jobs, "Senior Accountant" and
+  "Legal Counsel" are not. People-management and revenue titles are unaffected
+  ("Engineering Manager, Data Feeds", "Sales Engineer" stay rejects). Dedupe by
+  role fingerprint (counted in `duplicate_suppressed`). `GET /coverage` reports
   `dated_fresh`, `proxy_fresh` (greenhouse `updated_at` proxy),
   `dateless_dropped`, `duplicate_suppressed`, `role_rejected` and
   `live_software` (distinct companies with a software-verdict posting in 24h).

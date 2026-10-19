@@ -58,7 +58,10 @@ coverage claims are measured, never asserted. Add a board only after
 The feed is software-only and fresh. The role gate (`lib/roles.ts`, pure CPU)
 classifies every title as software / reject / unknown before a posting is stored;
 manager, sales, BD, CRM and non-engineering roles are stored once as
-`PRE_FILTERED_OUT` and counted in `role_rejected`. Duplicate requisitions
+`PRE_FILTERED_OUT` and counted in `role_rejected`. A domain word (`accountant`,
+`finance`, `legal`, `medical`/`nurse`) rejects only when the title names no
+engineering build role, so `Full Stack Engineer - Finance` stays a software
+role while `Senior Accountant` does not. Duplicate requisitions
 across boards collapse by role fingerprint and are counted in
 `duplicate_suppressed`. Postings older than the 24h window (`HOURS_OLD`) are
 dropped before storage; dateless postings are stored for the record, counted in
@@ -146,10 +149,20 @@ records the newest posting date (`last_yield_at`) next to the probe time
   people-management word (`Senior Engineering Manager` is a manager role). The IC
   allow-list (seniority + an engineering noun) only stands in for the software
   allow-list, so `Staff Engineer, Platform` survives while `Senior Marketing
-  Engineer` does not. Python applies the same order (see
-  `src/job_hunt/evaluation/engine.py`, `ROLE_REJECT_RULES`), and the two runtimes
-  must not drift: `intern`/`internship` and `full stack`/`fullstack`/`full-stack`
-  are the same thing on both sides. The gate reason is recorded in the
+  Engineer` does not. **A domain word is not a role on its own**: `accountant`,
+  `finance`, `legal` and `medical`/`nurse` reject only when the title names no
+  engineering build role (engineer, developer, devops, architect, programmer,
+  sre — the one `BUILD_ROLES` list the module uses). `Full Stack Engineer -
+  Finance`, `AI Engineer, Legal & Compliance` and `Medical Engineer` are
+  software jobs; `Senior Accountant` and `Legal Counsel` are not. People
+  management and revenue are untouched: `Engineering Manager, Data Feeds` stays
+  a manager role and `Sales Engineer` stays a sales role. Python applies the
+  same order and the same build-role vocabulary (see
+  `src/job_hunt/evaluation/engine.py`, `ROLE_REJECT_RULES`, `BUILD_ROLE_WORDS`),
+  and the two runtimes must not drift: `intern`/`internship` and `full
+  stack`/`fullstack`/`full-stack` are the same thing on both sides, and both
+  read the shared role-gate fixtures in `tests/fixtures/role_gate_cases.json`.
+  The gate reason is recorded in the
   row's `evaluations.reasoning`, **once per posting** (`instr` guard): a
   re-discovery — a dateless posting's row counts as "improved" on every sweep —
   re-counts nothing, re-notifies nothing and cannot grow the reasoning. Callers

@@ -149,16 +149,28 @@ New `worker/src/lib/roles.ts` exporting `classifyRole(title): { verdict: "softwa
   consultant|architect|administrator|analyst|developer` and the same for other CRM names.
 - **reject (non-engineering):** `recruiter`, `talent acquisition`, `human resources`, `accountant`,
   `finance`, `legal`, `nurse`, `medical`, `driver`, `content writer`, `graphic designer`, `intern`.
+  The **domain words** (`accountant`, `finance`, `legal`, `nurse`, `medical`) name a field of work,
+  not a role, so they fire **only when the title names no engineering build role** (`engineer`,
+  `developer`, `devops`, `architect`, `programmer`, `sre`): `Full Stack Engineer - Finance`,
+  `Staff Engineer, Revenue & Finance Automation`, `AI Engineer, Legal & Compliance` and
+  `Medical Engineer` are software jobs, while `Senior Accountant` and `Legal Counsel` are not.
+  People management and revenue are unaffected: `Engineering Manager, Data Feeds` stays a manager
+  role and `Sales Engineer` stays a sales role.
 - **software (accept):** the existing `SWE_ROLE_PATTERNS` list, plus `mobile|ios|android`, `qa|sdet|
   test engineer`, `security engineer`, `embedded|firmware`, `forward deployed engineer`, and language
   titles the profile targets (`nodejs|typescript|react|reactjs|javascript|python|golang|rust|java`
-  combined with engineer/developer).
+  combined with engineer/developer). A title that names an engineering build role is a software
+  role even when it names no technology and no speciality (`AI Engineer`), which is also what stops a
+  domain word from rejecting it.
 - **unknown:** everything else; capped below threshold (Decision 3).
 
 Rejections carry the matched rule into the job's reasoning so Telegram and `/recent` can say why.
 Python parity: add the leadership/BD/CRM patterns to `NEGATIVE_ROLE_PATTERNS` and reorder
 `pre_filter` so the positive IC allow-list is evaluated before the negatives (today negatives run
-first, at `engine.py:369`, which cannot express "lead engineer is fine, team lead is not").
+first, at `engine.py:369`, which cannot express "lead engineer is fine, team lead is not"). Both
+runtimes keep one build-role vocabulary (`BUILD_ROLES` in `worker/src/lib/roles.ts`,
+`BUILD_ROLE_WORDS` in `src/job_hunt/evaluation/engine.py`) and read the same role-gate fixtures
+(`tests/fixtures/role_gate_cases.json`), so the domain-word exemption cannot drift between them.
 
 ### 2. Freshness
 

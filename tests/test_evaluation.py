@@ -474,10 +474,12 @@ def test_pre_filter_crm_toggle(engine, candidate):
     assert passed_on is False
     assert "crm" in (reason_on or "").lower() or "salesforce" in (reason_on or "").lower()
 
-    # Toggle off: no longer rejected for CRM.
+    # Toggle off: no longer rejected for CRM. The title names the build role
+    # ("developer"), so the role gate now admits it — it is a software role,
+    # not a CRM reject (the Worker agrees, see worker/test/roles.test.ts).
     profile_off = candidate.model_copy(update={"reject_crm_roles": False})
     passed_off, reason_off = engine.pre_filter(job, profile_off)
-    assert passed_off is False
+    assert passed_off is True
     assert "crm" not in (reason_off or "").lower()
     assert "salesforce" not in (reason_off or "").lower()
 
@@ -490,3 +492,84 @@ def test_pre_filter_crm_toggle(engine, candidate):
     )
     assert engine.pre_filter(job2, candidate)[0] is False
     assert engine.pre_filter(job2, profile_off)[0] is True
+
+
+# A domain word (accountant, finance, legal, medical) names a field of work, not
+# a build role: it never disqualifies a title that names an engineering build
+# role. These are software jobs.
+DOMAIN_WORD_BUILD_ROLE_TITLES = [
+    "Full Stack Engineer - Finance",
+    "Staff Engineer, Revenue & Finance Automation",
+    "Forward Deployed Engineer, Finance [Office of the CTO]",
+    "AI Engineer, Legal & Compliance",
+    "Senior Data Engineer II, Finance",
+    "Finance Systems Engineer, Finance and Strategy",
+    "Medical Engineer",
+]
+
+DOMAIN_WORD_ALONE_TITLES = [
+    ("Senior Accountant", "non-engineering:accountant"),
+    ("Legal Counsel", "non-engineering:legal"),
+    ("Finance Analyst", "non-engineering:finance"),
+    ("Registered Nurse - ICU", "non-engineering:medical"),
+]
+
+
+def _role_job(title: str) -> JobPosting:
+    return JobPosting(
+        source="test", title=title, company="Co",
+        raw_url="https://example.com", canonical_url="https://example.com",
+        canonical_url_hash="h", role_fingerprint="rf", content_hash="c",
+        location="Remote",
+    )
+
+
+def test_pre_filter_keeps_a_domain_word_with_an_engineering_role(engine, candidate):
+    # "Full Stack Engineer - Finance" is a software job: the domain word names
+    # the team, not the role. The Worker classifies the same titles as
+    # software (see worker/test/roles.test.ts and the shared fixtures).
+    for title in DOMAIN_WORD_BUILD_ROLE_TITLES:
+        passed, reason = engine.pre_filter(_role_job(title), candidate)
+        assert passed is True, f"{title}: {reason}"
+
+
+def test_pre_filter_rejects_a_domain_word_without_an_engineering_role(engine, candidate):
+    # Without a build role the domain words still reject, and they are named by
+    # the same rule the Worker names.
+    for title, rule in DOMAIN_WORD_ALONE_TITLES:
+        passed, reason = engine.pre_filter(_role_job(title), candidate)
+        assert passed is False, title
+        assert rule in (reason or ""), f"{title}: {reason}"
+
+
+def test_pre_filter_leaves_management_and_revenue_titles_alone(engine, candidate):
+    # A build role does not rescue a people-management or a revenue title.
+    for title, rule in (
+        ("Compliance Manager, BSA/AML Program", "people-management:manager"),
+        ("Engineering Manager, Data Feeds", "people-management:manager"),
+        ("Sales Engineer", "revenue:sales"),
+    ):
+        passed, reason = engine.pre_filter(_role_job(title), candidate)
+        assert passed is False, title
+        assert rule in (reason or ""), f"{title}: {reason}"
+
+
+def test_role_gate_shared_fixtures(engine, candidate):
+    """Both runtimes read the same fixture list, so the role gate cannot drift.
+
+    "software" means the title is admitted by the role gate; "reject" means it
+    is rejected, by the rule both runtimes name.
+    """
+    import json
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures" / "role_gate_cases.json"
+    cases = json.loads(fixture.read_text())
+    assert cases, "shared role gate fixtures must not be empty"
+    for case in cases:
+        passed, reason = engine.pre_filter(_role_job(case["title"]), candidate)
+        if case["verdict"] == "software":
+            assert passed is True, f"{case['name']}: {reason}"
+        else:
+            assert passed is False, case["name"]
+            assert case["rule"] in (reason or ""), f"{case['name']}: {reason}"

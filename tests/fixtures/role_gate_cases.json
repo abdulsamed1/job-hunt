@@ -1,0 +1,97 @@
+[
+  {
+    "name": "domain_word_finance_with_engineering_role",
+    "title": "Full Stack Engineer - Finance",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_finance_with_seniority_and_engineering_role",
+    "title": "Staff Engineer, Revenue & Finance Automation",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_finance_with_forward_deployed_role",
+    "title": "Forward Deployed Engineer, Finance [Office of the CTO]",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_legal_with_engineering_role",
+    "title": "AI Engineer, Legal & Compliance",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_finance_with_data_engineering_role",
+    "title": "Senior Data Engineer II, Finance",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_finance_with_systems_engineering_role",
+    "title": "Finance Systems Engineer, Finance and Strategy",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_medical_with_engineering_role",
+    "title": "Medical Engineer",
+    "verdict": "software"
+  },
+  {
+    "name": "domain_word_accountant_alone",
+    "title": "Senior Accountant",
+    "verdict": "reject",
+    "rule": "non-engineering:accountant"
+  },
+  {
+    "name": "domain_word_legal_alone",
+    "title": "Legal Counsel",
+    "verdict": "reject",
+    "rule": "non-engineering:legal"
+  },
+  {
+    "name": "domain_word_finance_alone",
+    "title": "Finance Analyst",
+    "verdict": "reject",
+    "rule": "non-engineering:finance"
+  },
+  {
+    "name": "domain_word_medical_alone",
+    "title": "Registered Nurse - ICU",
+    "verdict": "reject",
+    "rule": "non-engineering:medical"
+  },
+  {
+    "name": "people_management_unchanged",
+    "title": "Compliance Manager, BSA/AML Program",
+    "verdict": "reject",
+    "rule": "people-management:manager"
+  },
+  {
+    "name": "people_management_with_engineering_noun_unchanged",
+    "title": "Engineering Manager, Data Feeds",
+    "verdict": "reject",
+    "rule": "people-management:manager"
+  },
+  {
+    "name": "revenue_unchanged",
+    "title": "Sales Engineer",
+    "verdict": "reject",
+    "rule": "revenue:sales"
+  },
+  {
+    "name": "revenue_with_seniority_unchanged",
+    "title": "Senior Sales Engineer",
+    "verdict": "reject",
+    "rule": "revenue:sales"
+  },
+  {
+    "name": "other_non_engineering_unchanged",
+    "title": "Technical Recruiter",
+    "verdict": "reject",
+    "rule": "non-engineering:recruiter"
+  },
+  {
+    "name": "intern_unchanged",
+    "title": "Software Engineering Internship",
+    "verdict": "reject",
+    "rule": "non-engineering:intern"
+  }
+]

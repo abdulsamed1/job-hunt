@@ -77,7 +77,11 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 - Only software-engineering roles are surfaced or applied to: the role gate
   rejects sales, BD, marketing, people-management and CRM-consulting titles
-  (stored as `PRE_FILTERED_OUT`, counted in `role_rejected`).
+  (stored as `PRE_FILTERED_OUT`, counted in `role_rejected`). A domain word
+  (`accountant`, `finance`, `legal`, `medical`) rejects only when the title
+  names no engineering build role, so `Full Stack Engineer - Finance` and
+  `AI Engineer, Legal & Compliance` stay in the feed while `Senior Accountant`
+  and `Legal Counsel` do not.
 - Every surfaced posting is within the last 24 hours by the best date its source
   provides; dateless postings are stored for the record, counted in
   `dateless_dropped`, and never scored or applied.

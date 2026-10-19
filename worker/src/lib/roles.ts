@@ -23,6 +23,11 @@ interface Rule {
   slug: string;
   /** Word-boundary matched forms of the rule, e.g. ["team lead", "group lead"]. */
   words: string[];
+  /** A domain word names a field of work, not a build role. The rule fires
+   *  only when the title names no engineering build role: "Full Stack
+   *  Engineer - Finance" and "AI Engineer, Legal & Compliance" are software
+   *  jobs, "Senior Accountant" and "Legal Counsel" are not. */
+  domainOnly?: boolean;
 }
 
 interface Match {
@@ -52,9 +57,11 @@ function hasAnyWord(wordSet: Set<string>, candidates: string[]): boolean {
   return candidates.some((w) => wordSet.has(w));
 }
 
-function collectMatches(norm: string, prefix: string, rules: Rule[]): Match[] {
+function collectMatches(norm: string, prefix: string, rules: Rule[], buildRole: boolean): Match[] {
   const matches: Match[] = [];
   for (const rule of rules) {
+    // A domain word never disqualifies an engineering build role.
+    if (rule.domainOnly && buildRole) continue;
     for (const word of rule.words) {
       if (hasWord(norm, word)) matches.push({ rule: `${prefix}:${rule.slug}`, word });
     }
@@ -119,10 +126,14 @@ const CRM_MATCH: Match = { rule: "crm:salesforce", word: CRM_ANCHOR };
 const NON_ENGINEERING: Rule[] = [
   { slug: "recruiter", words: ["recruiter", "talent acquisition"] },
   { slug: "human resources", words: ["human resources"] },
-  { slug: "accountant", words: ["accountant"] },
-  { slug: "finance", words: ["finance"] },
-  { slug: "legal", words: ["legal"] },
-  { slug: "medical", words: ["nurse", "medical"] },
+  // Domain words name a field of work, not a build role, so they reject only
+  // when the title names no engineering build role: "Full Stack Engineer -
+  // Finance" and "Medical Engineer" are software jobs, while "Senior
+  // Accountant" and "Legal Counsel" are not.
+  { slug: "accountant", words: ["accountant"], domainOnly: true },
+  { slug: "finance", words: ["finance"], domainOnly: true },
+  { slug: "legal", words: ["legal"], domainOnly: true },
+  { slug: "medical", words: ["nurse", "medical"], domainOnly: true },
   { slug: "driver", words: ["driver"] },
   { slug: "content writer", words: ["content writer"] },
   { slug: "designer", words: ["graphic designer"] },
@@ -167,12 +178,27 @@ const SOFTWARE_ALLOW: Rule[] = [
 const TECHNOLOGIES = [
   "nodejs", "node.js", "typescript", "react", "reactjs", "javascript", "python", "golang", "rust", "java",
 ];
-const BUILD_ROLES = ["engineer", "engineers", "engineering", "developer", "developers"];
+// Build roles: the words that name the job of building software. One
+// vocabulary for the whole module — the technology pairing, the domain-word
+// exemption and the software allow below all read it, so a title that names a
+// build role is treated the same way everywhere (Python keeps the same list,
+// see src/job_hunt/evaluation/engine.py).
+const BUILD_ROLES = [
+  "engineer", "engineers", "engineering", "developer", "developers",
+  "devops", "architect", "programmer", "sre",
+];
+
+/** True when the title names an engineering build role (engineer, developer,
+ *  devops, architect, programmer, sre). */
+function namesBuildRole(wordSet: Set<string>): boolean {
+  return hasAnyWord(wordSet, BUILD_ROLES);
+}
 
 export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): RoleClassification {
   const words = normalizeWords(title);
   const norm = words.join(" ");
   const wordSet = new Set(words);
+  const buildRole = namesBuildRole(wordSet);
 
   // The reject families come first, and nothing overrides them. A revenue, CRM
   // or non-engineering word beats any seniority marker ("Senior Sales
@@ -180,8 +206,13 @@ export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): Rol
   // role), and a people-management word beats it too ("Senior Engineering
   // Manager" is a manager role). The IC allow used to short-circuit ahead of
   // these families, which let revenue titles into the feed.
+  // The one exception is a domain word (accountant, finance, legal, medical):
+  // it names a field of work, not a build role, so it never fires when the
+  // title names an engineering build role.
   const rejects: Match[] = [];
-  for (const family of REJECT_FAMILIES) rejects.push(...collectMatches(norm, family.prefix, family.rules));
+  for (const family of REJECT_FAMILIES) {
+    rejects.push(...collectMatches(norm, family.prefix, family.rules, buildRole));
+  }
   if (opts.rejectCrm !== false && hasWord(norm, CRM_ANCHOR) && hasAnyWord(wordSet, CRM_COMPANIONS)) {
     rejects.push(CRM_MATCH);
   }
@@ -195,11 +226,17 @@ export function classifyRole(title: string, opts: ClassifyRoleOptions = {}): Rol
     return { verdict: "software", rule: "software:ic" };
   }
 
-  const allows = collectMatches(norm, "software", SOFTWARE_ALLOW);
+  const allows = collectMatches(norm, "software", SOFTWARE_ALLOW, buildRole);
   const technology = TECHNOLOGIES.find((t) => wordSet.has(t));
-  if (technology && hasAnyWord(wordSet, BUILD_ROLES)) allows.push({ rule: "software:stack", word: technology });
+  if (technology && buildRole) allows.push({ rule: "software:stack", word: technology });
   const allowed = mostSpecific(allows);
   if (allowed) return { verdict: "software", rule: allowed.rule };
+
+  // A title that names an engineering build role is a software role even when
+  // it names no technology and no allow-listed speciality: "AI Engineer" and
+  // "Medical Engineer" are build roles, and a domain word never disqualifies
+  // one.
+  if (buildRole) return { verdict: "software", rule: "software:build role" };
 
   return { verdict: "unknown", rule: "unknown:none" };
 }
