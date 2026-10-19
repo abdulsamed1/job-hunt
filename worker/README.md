@@ -35,9 +35,30 @@ Configured is not the same as working. Probing all 213 ATS boards:
 | lever | 2 / 45 | Lever is effectively abandoned by these orgs |
 | smartrecruiters | 1 / 15 | effectively dead |
 
-Under the 12h + remote filters, **17 sources currently yield**. `GET /coverage`
+Under the 24h + remote filters, **17 sources currently yield**. `GET /coverage`
 reports configured vs attempted vs yielding from D1 — coverage claims are
 measured, never asserted. Add a board only after `POST /probe` shows yield.
+
+### Feed-quality guarantees
+
+The feed is software-only and fresh. The role gate (`lib/roles.ts`, pure CPU)
+classifies every title as software / reject / unknown before a posting is stored;
+manager, sales, BD, CRM and non-engineering roles are stored once as
+`PRE_FILTERED_OUT` and counted in `role_rejected`. Duplicate requisitions
+across boards collapse by role fingerprint and are counted in
+`duplicate_suppressed`. Postings older than the 24h window (`HOURS_OLD`) are
+dropped before storage; dateless postings are stored for the record, counted in
+`dateless_dropped`, and never scored or applied.
+
+`GET /coverage` distinguishes dated freshness from proxy freshness:
+`dated_fresh` counts postings with a real posting date inside 24h, while
+`proxy_fresh` counts greenhouse-family rows whose `posted_at` came from
+`updated_at` (a proxy, not a true posting date). `live_software` reports
+distinct companies with at least one software-verdict posting in the last 24h.
+The gate counters `role_rejected`, `duplicate_suppressed`, `dateless_dropped`
+are also exposed on `GET /health`. Status field per source: `live | dead |
+unknown`; `python worker/scripts/probe_sources.py --apply` rewrites status from
+measured yield (reviving recovered boards).
 
 ## Why this fits free tier (verified vs docs 2026-10-01)
 

@@ -73,6 +73,21 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 - **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
 - **Coverage is measured, not assumed**: Probing all 213 configured ATS boards live on 2026-10-02 showed only **81 return any jobs**; 132 org slugs are dead (GitHub, DoorDash, Canva and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone). SmartRecruiters is 1/15, Lever 2/45. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
 
+## What the feed now guarantees
+
+- Only software-engineering roles are surfaced or applied to: the role gate
+  rejects sales, BD, marketing, people-management and CRM-consulting titles
+  (stored as `PRE_FILTERED_OUT`, counted in `role_rejected`).
+- Every surfaced posting is within the last 24 hours by the best date its source
+  provides; dateless postings are stored for the record, counted in
+  `dateless_dropped`, and never scored or applied.
+- One requisition produces at most one application and one notification, across
+  boards, via the role fingerprint (counted in `duplicate_suppressed`).
+- `GET /coverage` distinguishes `dated_fresh` (real posting date within 24h) from
+  `proxy_fresh` (greenhouse rows whose `posted_at` came from `updated_at`), and
+  reports `live_software` (distinct companies with a software-verdict posting in
+  the last 24h) plus the gate counters.
+
 ### 2. Multi-Signal Deduplication & Provenance
 - **Canonical URL Normalization**: Strips RFC 3986 tracking parameters (`utm_*`, `gh_src`, `ref`, `source`, `fbclid`).
 - **Role Identity Fingerprinting**: Normalizes corporate legal variants (`Stripe, Inc.` $\to$ `stripe`), cleans title synonyms, and hashes normalized job location.

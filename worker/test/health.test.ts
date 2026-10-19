@@ -81,3 +81,68 @@ describe("/health master resume pointer", () => {
     expect(body.master_resume_sha).toBeNull();
   });
 });
+
+describe("/health feed-quality counters", () => {
+  it("exposes role_rejected, duplicate_suppressed and dateless_dropped", async () => {
+    const db = {
+      prepare: (sql: string) => ({
+        first: async () => (sql.includes("notification_events") ? { n: 0 } : { n: 7 }),
+        all: async () => (sql.includes("counters")
+          ? { results: [
+              { key: "role_rejected", value: 2 },
+              { key: "duplicate_suppressed", value: 3 },
+              { key: "dateless_dropped", value: 4 },
+              { key: "intake_capped", value: 5 },
+            ] }
+          : { results: [] }),
+        bind: () => ({ first: async () => ({ n: 7 }), all: async () => ({ results: [] }) }),
+      }),
+    };
+    const mod = await import("../src/index.js");
+    const res = await mod.default.fetch(new Request("https://worker/health"), { DB: db, THRESHOLD: "70" } as any);
+    const body: any = await res.json();
+    expect(body.role_rejected).toBe(2);
+    expect(body.duplicate_suppressed).toBe(3);
+    expect(body.dateless_dropped).toBe(4);
+    expect(body.intake_capped).toBe(5);
+  });
+});
+
+describe("/coverage feed-quality counters", () => {
+  it("reports the feed-quality counters and dated vs proxy freshness", async () => {
+    const now = new Date().toISOString();
+    const jobs = [
+      { title: "Backend Engineer", company: "Acme", source: "lever:acme", posted_at: now, state: "DISCOVERED" },
+      { title: "Frontend Engineer", company: "Beta", source: "greenhouse:beta", posted_at: now, state: "DISCOVERED" },
+      { title: "Manager", company: "Gamma", source: "rss:x", posted_at: "", state: "PRE_FILTERED_OUT" },
+      { title: "Dup", company: "Delta", source: "rss:y", posted_at: now, state: "DUPLICATE" },
+      { title: "Rejected", company: "Epsilon", source: "rss:z", posted_at: now, state: "PRE_FILTERED_OUT" },
+    ];
+    const counters = [
+      { key: "role_rejected", value: 1 },
+      { key: "duplicate_suppressed", value: 1 },
+      { key: "dateless_dropped", value: 1 },
+    ];
+    const db = {
+      prepare: (sql: string) => ({
+        first: async () => (sql.includes("source_health") ? { configured: 5, yielding: 3, attempts: 10, last_seen: "x" } : { n: 0 }),
+        all: async () => {
+          if (sql.includes("source_health")) return { results: [] };
+          if (sql.includes("FROM jobs")) return { results: jobs };
+          if (sql.includes("counters")) return { results: counters };
+          return { results: [] };
+        },
+        bind: () => ({ first: async () => ({ n: 0 }), all: async () => ({ results: [] }) }),
+      }),
+    };
+    const mod = await import("../src/index.js");
+    const res = await mod.default.fetch(new Request("https://worker/coverage"), { DB: db, THRESHOLD: "70" } as any);
+    const body: any = await res.json();
+    expect(body.dated_fresh).toBe(1);
+    expect(body.proxy_fresh).toBe(1);
+    expect(body.dateless_dropped).toBe(1);
+    expect(body.duplicate_suppressed).toBe(1);
+    expect(body.role_rejected).toBe(1);
+    expect(body.live_software).toBe(2);
+  });
+});

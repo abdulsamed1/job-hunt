@@ -178,6 +178,20 @@ gives you structural context (callers, dependents, test coverage) that file sear
   Morning check: Telegram alert, or `GET /recent` → **`actionable`** (not
   `eligible`, which empties out once jobs are tailored); `GET /coverage` for
   honest source numbers.
+
+  Feed-quality guarantees (24h window): recency window is 24 hours everywhere
+  (`HOURS_OLD = 24` on the Worker; Python clamps per-source `hours_old` to 24).
+  Dateless postings are stored for the record, counted as `dateless_dropped`,
+  and never scored or applied. Role gate rejects leadership, BD, CRM and
+  non-engineering titles (counted in `role_rejected`). Dedupe by role
+  fingerprint (counted in `duplicate_suppressed`). `GET /coverage` reports
+  `dated_fresh`, `proxy_fresh` (greenhouse `updated_at` proxy),
+  `dateless_dropped`, `duplicate_suppressed`, `role_rejected` and
+  `live_software` (distinct companies with a software-verdict posting in 24h).
+  Probe a board: `uv run python scripts/probe_sources.py` (writes
+  `data/source_probe.json`; `--apply` rewrites `status:` in
+  `config/sources.yaml`). Backfill existing violations (dry-run default):
+  `uv run python scripts/backfill_feed_quality.py` (add `--apply` to write).
   Off Workers, always: Playwright browser, LLM-heavy stages, Rezi mirroring,
   LinkedIn submits, CAPTCHA jobs (human-queued). On Workers: fetch/parse,
   deterministic eval, pdf-lib PDFs, direct ATS POSTs (approved per-board).

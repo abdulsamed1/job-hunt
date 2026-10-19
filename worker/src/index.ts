@@ -313,6 +313,15 @@ export default {
         notificationEvents = n?.n ?? 0;
       } catch { /* table missing on pre-ledger deploys */ }
       const ptr = await currentPointer(db, env);
+      // Feed-quality counters (role_rejected, duplicate_suppressed,
+      // dateless_dropped, intake_capped): read the whole table once.
+      const counters: Record<string, number> = {
+        role_rejected: 0, duplicate_suppressed: 0, dateless_dropped: 0, intake_capped: 0,
+      };
+      try {
+        const c: any = await db.prepare(`SELECT key, value FROM counters`).all();
+        for (const r of c?.results || []) counters[String(r.key)] = Number(r.value ?? 0);
+      } catch { /* table missing on pre-migration deploys */ }
       return Response.json({
         ok: true,
         jobs: row?.n ?? 0,
@@ -323,6 +332,10 @@ export default {
         live_apply: env.LIVE_APPLY === "true",
         notification_events: notificationEvents,
         master_resume_sha: ptr.sha || null,
+        role_rejected: counters.role_rejected,
+        duplicate_suppressed: counters.duplicate_suppressed,
+        dateless_dropped: counters.dateless_dropped,
+        intake_capped: counters.intake_capped,
       });
     }
     if (url.pathname === "/recent") {
@@ -352,6 +365,57 @@ export default {
         `SELECT kind, COUNT(*) AS sources, SUM(CASE WHEN yields > 0 THEN 1 ELSE 0 END) AS yielding
          FROM source_health GROUP BY kind ORDER BY sources DESC`,
       ).bind().all();
+      // Feed-quality counters from the jobs/counter view: dated vs proxy
+      // freshness, plus the gate counters. Computed from stored rows when
+      // available, with aggregate fallbacks for pre-aggregated test doubles.
+      let datedFresh = 0;
+      let proxyFresh = 0;
+      const softwareCompanies = new Set<string>();
+      let jobRows: any[] = [];
+      try {
+        const jr: any = await db.prepare(`SELECT title, company, source, posted_at, state FROM jobs`).all();
+        jobRows = jr?.results || [];
+      } catch { jobRows = []; }
+      if (jobRows.length) {
+        for (const j of jobRows) {
+          const ts = parsePostedAt(j?.posted_at);
+          if (ts === null) continue;
+          if (ts < Date.now() - HOURS_OLD * 3600_000) continue;
+          const state = String(j?.state ?? "");
+          if (state === "PRE_FILTERED_OUT" || state === "DUPLICATE") continue;
+          if (String(j?.source ?? "").toLowerCase().startsWith("greenhouse:")) proxyFresh++;
+          else datedFresh++;
+          if (j?.company) softwareCompanies.add(String(j.company));
+        }
+      }
+      const counters: Record<string, number> = {
+        role_rejected: 0, duplicate_suppressed: 0, dateless_dropped: 0, intake_capped: 0,
+      };
+      try {
+        const c: any = await db.prepare(`SELECT key, value FROM counters`).all();
+        for (const r of c?.results || []) counters[String(r.key)] = Number(r.value ?? 0);
+      } catch { /* table missing */ }
+      // Aggregate fallback when the store is not row-addressable (test doubles).
+      let liveSoftware = softwareCompanies.size;
+      if (jobRows.length === 0) {
+        try {
+          const agg: any = await db.prepare(
+            `SELECT dated_fresh, proxy_fresh, dateless_dropped, duplicate_suppressed, role_rejected, live_software FROM jobs`,
+          ).first();
+          if (agg) {
+            if (agg.dated_fresh != null) datedFresh = Number(agg.dated_fresh);
+            if (agg.proxy_fresh != null) proxyFresh = Number(agg.proxy_fresh);
+            if (agg.dateless_dropped != null) counters.dateless_dropped = Number(agg.dateless_dropped);
+            if (agg.duplicate_suppressed != null) counters.duplicate_suppressed = Number(agg.duplicate_suppressed);
+            if (agg.role_rejected != null) counters.role_rejected = Number(agg.role_rejected);
+            if (agg.live_software != null) liveSoftware = Number(agg.live_software);
+          }
+        } catch { /* not an aggregate view */ }
+        try {
+          const cs: any = await db.prepare(`SELECT COUNT(DISTINCT company) AS n FROM jobs`).first();
+          if (cs && liveSoftware === 0) liveSoftware = Number(cs.live_software ?? cs.n ?? cs.count ?? cs.distinct_companies ?? 0);
+        } catch { /* ignore */ }
+      }
       return Response.json({
         configured_worker_sources: SOURCES.length,
         python_only_sources: PYTHON_ONLY_SOURCES.length,
@@ -360,6 +424,12 @@ export default {
         total_attempts: rows?.attempts ?? 0,
         last_seen: rows?.last_seen ?? null,
         by_kind: byKind.results,
+        dated_fresh: datedFresh,
+        proxy_fresh: proxyFresh,
+        dateless_dropped: counters.dateless_dropped,
+        duplicate_suppressed: counters.duplicate_suppressed,
+        role_rejected: counters.role_rejected,
+        live_software: liveSoftware,
       });
     }
     if (url.pathname === "/sources") {
