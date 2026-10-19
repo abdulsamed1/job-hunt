@@ -135,11 +135,14 @@ New `worker/src/lib/roles.ts` exporting `classifyRole(title): { verdict: "softwa
 "unknown", rule?: string }`, used by both the discover path and `scoreJob`:
 
 - **reject (people-management):** `manager`, `team lead`, `group lead`, `head of`, `director`, `vp`,
-  `chief`, `supervisor`, `engineering manager`, `delivery manager`. IC ladder allowed first:
-  `lead engineer`, `lead software engineer`; bare seniority markers (`staff`, `principal`, `senior`,
-  `sr`) count as IC only when the title also names `engineer` or `engineering`, so `Senior Manager,
-  Application Security` and `Senior Salesforce Developer` stay rejects. When several reject words match
-  one title, the longest match names the rule, so the reported reason is the most specific one.
+  `chief`, `supervisor`, `engineering manager`, `delivery manager`. **The reject families are
+  evaluated first and always win** — the IC ladder (`lead engineer`, `lead software engineer`; bare
+  `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or
+  `engineering`) replaces the *positive software check* only, so it can no longer rescue a title that
+  matches any reject family. `Senior Manager, Application Security`, `Senior Salesforce Developer`,
+  `Senior Engineering Manager` and `Senior Sales Engineer` all stay rejects. When several reject
+  words match one title, the longest match names the rule, so the reported reason is the most
+  specific one.
 - **reject (revenue/BD):** `sales`, `business development`, `account executive`, `account manager`,
   `sales development`, `marketing`, `partner(ships)`, `customer success`, `customer support`.
 - **reject (CRM/platform administration, gated by `REJECT_CRM_ROLES`):** `salesforce

@@ -161,13 +161,14 @@ Expected: FAIL — cannot resolve `../src/lib/roles.js`.
 
 - [ ] **Step 3: Implement `classifyRole` in `worker/src/lib/roles.ts`**
 
-Evaluation order is fixed and is the point of the ordering test: normalize the title (lowercase,
-collapse whitespace, strip punctuation for matching), then (1) IC allow list, (2) reject families,
-(3) software allow list, (4) unknown. Never reorder these.
+Evaluation order is fixed: normalize the title (lowercase, collapse whitespace, strip punctuation for
+matching), then (1) reject families — which always win, (2) the IC allow list, which replaces the
+positive software check, (3) unknown. Never reorder these: an earlier draft checked the IC allow
+first, which let a seniority marker rescue a sales or marketing title.
 
 | Family | Matching words (title text, word-boundary matched) |
 |---|---|
-| IC allow (checked first) | `lead engineer`, `lead software engineer`; bare `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or `engineering` **and no people-management word matches** (otherwise `Senior Manager…`, `Senior Salesforce Developer` and `Senior Engineering Manager` would each be rescued by a seniority marker) |
+| IC allow (replaces the positive software check; never overrides a reject family) | `lead engineer`, `lead software engineer`; bare `staff`, `principal`, `senior`, `sr` count as IC only when the title also names `engineer` or `engineering` (otherwise `Senior Manager…`, `Senior Salesforce Developer` and `Senior Engineering Manager` would each be rescued by a seniority marker) |
 | people-management reject | `manager`, `team lead`, `group lead`, `head of`, `director`, `vp`, `chief`, `supervisor` |
 | revenue reject | `sales`, `sales development`, `business development`, `account executive`, `account manager`, `marketing`, `partner`, `customer success`, `customer support` |
 | CRM reject (only when `rejectCrm !== false`) | `salesforce`, plus any of `consultant`, `architect`, `administrator`, `analyst`, `developer` in the same title |
