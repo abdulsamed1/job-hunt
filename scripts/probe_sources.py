@@ -120,15 +120,14 @@ def classify_verdict(
     recent = False
     if last_dt is not None:
         recent = (now - last_dt) <= timedelta(days=window_days)
-    if yielded > 0 and recent:
+    # Liveness is about whether the source returns *any* jobs, not whether
+    # they were posted in the last 24h. The 24h window gates the *feed* (see
+    # freshness.ts), not the source: a board that posts monthly is still alive.
+    # Recency is reported separately (last_yield_at) so operators can see it,
+    # but it never marks a yielding source dead.
+    if yielded > 0 and attempts >= min_attempts:
         return "live"
-    if attempts >= min_attempts and yielded <= 0:
-        return "dead"
-    if yielded > 0 and not recent:
-        if attempts >= min_attempts:
-            return "dead"
-        return "flaky"
-    if attempts >= min_attempts and yielded <= 0:
+    if yielded <= 0 and attempts >= min_attempts:
         return "dead"
     return "flaky"
 
@@ -455,8 +454,8 @@ async def _probe_all_async(
     sources=None,
     sources_path=None,
     max_concurrency: int = 5,
-    hours_old: int = 24,
-    remote: bool = True,
+    hours_old: int = 0,
+    remote: bool = False,
     output=None,
     ledger_path=None,
     probe_path=None,
@@ -524,7 +523,7 @@ def main(argv=None) -> int:
     ap.add_argument("--sources", default=str(DEFAULT_SOURCES))
     ap.add_argument("--output", "--probe-path", "--ledger", dest="output", default=str(DEFAULT_LEDGER))
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--hours-old", type=int, default=24)
+    ap.add_argument("--hours-old", type=int, default=0)
     ap.add_argument("--max-concurrency", type=int, default=5)
     ap.add_argument("--no-remote", action="store_true")
     ap.add_argument("--sources-path", dest="sources_path", default=None)

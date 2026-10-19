@@ -3,7 +3,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:55.688143+00:00",
+    "last_yield_at": "2026-10-19T15:48:03.673664+00:00",
     "verdict": "live",
     "yielded": 14
   },
@@ -51,9 +51,9 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:45.307180+00:00",
-    "verdict": "live",
-    "yielded": 20
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
   },
   "Blockchain Developers": {
     "attempts": 1,
@@ -99,7 +99,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:11.392425+00:00",
+    "last_yield_at": "2026-10-19T15:48:25.964184+00:00",
     "verdict": "live",
     "yielded": 3
   },
@@ -115,7 +115,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:55.982154+00:00",
+    "last_yield_at": "2026-10-19T15:48:01.881500+00:00",
     "verdict": "live",
     "yielded": 120
   },
@@ -155,7 +155,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:54.919353+00:00",
+    "last_yield_at": "2026-10-19T15:47:58.588311+00:00",
     "verdict": "live",
     "yielded": 10
   },
@@ -163,7 +163,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:48.111185+00:00",
+    "last_yield_at": "2026-10-19T15:47:57.028163+00:00",
     "verdict": "live",
     "yielded": 13
   },
@@ -187,9 +187,9 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:46.038877+00:00",
+    "last_yield_at": "2026-10-19T15:47:57.291958+00:00",
     "verdict": "live",
-    "yielded": 25
+    "yielded": 24
   },
   "DAO Jobs": {
     "attempts": 1,
@@ -211,7 +211,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:55.955905+00:00",
+    "last_yield_at": "2026-10-19T15:47:58.651292+00:00",
     "verdict": "live",
     "yielded": 34
   },
@@ -227,7 +227,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:12.203054+00:00",
+    "last_yield_at": "2026-10-19T15:48:16.689980+00:00",
     "verdict": "live",
     "yielded": 132
   },
@@ -243,7 +243,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:10.660797+00:00",
+    "last_yield_at": "2026-10-19T15:48:23.946993+00:00",
     "verdict": "live",
     "yielded": 18
   },
@@ -355,9 +355,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:25.041200+00:00",
+    "verdict": "live",
+    "yielded": 17
   },
   "OpenSea Careers": {
     "attempts": 1,
@@ -403,9 +403,9 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:05.013989+00:00",
+    "verdict": "live",
+    "yielded": 15
   },
   "Remote.co": {
     "attempts": 1,
@@ -419,7 +419,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:53.614816+00:00",
+    "last_yield_at": "2026-10-19T15:47:59.028462+00:00",
     "verdict": "live",
     "yielded": 40
   },
@@ -427,7 +427,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:03.000420+00:00",
+    "last_yield_at": "2026-10-19T15:48:12.579473+00:00",
     "verdict": "live",
     "yielded": 52
   },
@@ -435,7 +435,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:59.954940+00:00",
+    "last_yield_at": "2026-10-19T15:48:12.917616+00:00",
     "verdict": "live",
     "yielded": 1
   },
@@ -451,7 +451,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:32:09.098657+00:00",
+    "last_yield_at": "2026-10-19T15:48:10.295410+00:00",
     "verdict": "live",
     "yielded": 12
   },
@@ -459,7 +459,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:09.295313+00:00",
+    "last_yield_at": "2026-10-19T15:48:25.595261+00:00",
     "verdict": "live",
     "yielded": 9
   },
@@ -475,7 +475,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:46.427500+00:00",
+    "last_yield_at": "2026-10-19T15:47:58.082929+00:00",
     "verdict": "live",
     "yielded": 20
   },
@@ -515,9 +515,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:14.820607+00:00",
+    "last_yield_at": "2026-10-19T15:48:24.794146+00:00",
     "verdict": "live",
-    "yielded": 97
+    "yielded": 96
   },
   "Ton Jobs": {
     "attempts": 1,
@@ -555,9 +555,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:02.503591+00:00",
+    "last_yield_at": "2026-10-19T15:48:22.196457+00:00",
     "verdict": "live",
-    "yielded": 12
+    "yielded": 13
   },
   "Web3 Army": {
     "attempts": 1,
@@ -571,7 +571,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:57.195350+00:00",
+    "last_yield_at": "2026-10-19T15:48:01.924014+00:00",
     "verdict": "live",
     "yielded": 16
   },
@@ -587,15 +587,15 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:47.390462+00:00",
+    "last_yield_at": "2026-10-19T15:47:58.053003+00:00",
     "verdict": "live",
-    "yielded": 1
+    "yielded": 14
   },
   "Web3internships": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:31:54.462825+00:00",
+    "last_yield_at": "2026-10-19T15:47:57.920232+00:00",
     "verdict": "live",
     "yielded": 40
   },
@@ -603,7 +603,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:00.726533+00:00",
+    "last_yield_at": "2026-10-19T15:48:05.762717+00:00",
     "verdict": "live",
     "yielded": 3
   },
@@ -619,9 +619,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:30.513224+00:00",
+    "verdict": "live",
+    "yielded": 5
   },
   "adept": {
     "attempts": 1,
@@ -635,17 +635,17 @@
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:18.269202+00:00",
+    "verdict": "live",
+    "yielded": 215
   },
   "airbnb": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:08.479831+00:00",
+    "verdict": "live",
+    "yielded": 110
   },
   "airbyte": {
     "attempts": 1,
@@ -659,25 +659,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:39.803388+00:00",
+    "verdict": "live",
+    "yielded": 111
   },
   "alchemy": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:44.910087+00:00",
+    "verdict": "live",
+    "yielded": 22
   },
   "alchemy-board": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.494253+00:00",
+    "verdict": "live",
+    "yielded": 22
   },
   "algolia": {
     "attempts": 1,
@@ -691,33 +691,33 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:30.877060+00:00",
+    "verdict": "live",
+    "yielded": 53
   },
   "andela": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:30.895642+00:00",
+    "verdict": "live",
+    "yielded": 16
   },
   "anduril": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:48.329020+00:00",
+    "verdict": "live",
+    "yielded": 565
   },
   "anthropic": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": "2026-10-18T21:31:45.287418+00:00",
+    "last_yield_at": "2026-10-19T15:47:30.022673+00:00",
     "verdict": "live",
-    "yielded": 1
+    "yielded": 215
   },
   "anyscale": {
     "attempts": 1,
@@ -755,9 +755,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:31:43.363837+00:00",
+    "last_yield_at": "2026-10-19T15:47:56.103988+00:00",
     "verdict": "live",
-    "yielded": 123
+    "yielded": 88
   },
   "ark": {
     "attempts": 1,
@@ -827,9 +827,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.877876+00:00",
+    "verdict": "live",
+    "yielded": 99
   },
   "bayt-egypt-tech": {
     "attempts": 1,
@@ -843,9 +843,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "bdjobs",
-    "last_yield_at": "2026-10-18T21:31:10.205530+00:00",
+    "last_yield_at": "2026-10-19T15:47:33.114566+00:00",
     "verdict": "live",
-    "yielded": 5
+    "yielded": 8
   },
   "belvedere": {
     "attempts": 1,
@@ -891,17 +891,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:12.482631+00:00",
+    "verdict": "live",
+    "yielded": 37
   },
   "braintrust": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.079617+00:00",
+    "verdict": "live",
+    "yielded": 16
   },
   "braze": {
     "attempts": 1,
@@ -915,25 +915,25 @@
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:20.889890+00:00",
+    "verdict": "live",
+    "yielded": 252
   },
   "britecore": {
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:32.680800+00:00",
+    "verdict": "live",
+    "yielded": 8
   },
   "buffer": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:31.278237+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "bun": {
     "attempts": 1,
@@ -971,25 +971,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:31.633866+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "caremessage": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:31.970195+00:00",
+    "verdict": "live",
+    "yielded": 7
   },
   "carta": {
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:21.605154+00:00",
+    "verdict": "live",
+    "yielded": 8
   },
   "celo": {
     "attempts": 1,
@@ -1003,9 +1003,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.983608+00:00",
+    "verdict": "live",
+    "yielded": 99
   },
   "chainalysis": {
     "attempts": 1,
@@ -1027,7 +1027,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:09.688065+00:00",
+    "last_yield_at": "2026-10-19T15:48:25.120857+00:00",
     "verdict": "live",
     "yielded": 3
   },
@@ -1043,17 +1043,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:21.545570+00:00",
+    "verdict": "live",
+    "yielded": 42
   },
   "chime": {
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:19.216610+00:00",
+    "verdict": "live",
+    "yielded": 71
   },
   "chroma": {
     "attempts": 1,
@@ -1075,9 +1075,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:33.867927+00:00",
+    "verdict": "live",
+    "yielded": 15
   },
   "citadel": {
     "attempts": 1,
@@ -1091,9 +1091,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:51.790522+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "clickhouse": {
     "attempts": 1,
@@ -1107,33 +1107,33 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:31.983342+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "cloudflare": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:10.459356+00:00",
+    "verdict": "live",
+    "yielded": 282
   },
   "coalition": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:32.587565+00:00",
+    "verdict": "live",
+    "yielded": 44
   },
   "cockroachlabs": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:15.450037+00:00",
+    "verdict": "live",
+    "yielded": 16
   },
   "coder": {
     "attempts": 1,
@@ -1147,9 +1147,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.775551+00:00",
+    "verdict": "live",
+    "yielded": 34
   },
   "cohere": {
     "attempts": 1,
@@ -1163,25 +1163,25 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:18.069818+00:00",
+    "verdict": "live",
+    "yielded": 226
   },
   "coinbase-board": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.825305+00:00",
+    "verdict": "live",
+    "yielded": 226
   },
   "collabora": {
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.337306+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "confluent": {
     "attempts": 1,
@@ -1195,17 +1195,17 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:43.613465+00:00",
+    "verdict": "live",
+    "yielded": 9
   },
   "consensys-board": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.866226+00:00",
+    "verdict": "live",
+    "yielded": 9
   },
   "contentful": {
     "attempts": 1,
@@ -1219,39 +1219,39 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:42.344567+00:00",
+    "verdict": "live",
+    "yielded": 15
   },
   "cribl": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:37.856382+00:00",
+    "verdict": "live",
+    "yielded": 71
   },
   "crypto-jobs-feed": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "feed",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:26.935166+00:00",
+    "verdict": "live",
+    "yielded": 50
   },
   "cryptocurrencyjobs": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "feed",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:57.481382+00:00",
+    "verdict": "live",
+    "yielded": 52
   },
   "cryptojobslist-feed": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:32:14.680200+00:00",
+    "last_yield_at": "2026-10-19T15:48:26.987743+00:00",
     "verdict": "live",
     "yielded": 100
   },
@@ -1267,17 +1267,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.672093+00:00",
+    "verdict": "live",
+    "yielded": 70
   },
   "customerio": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.029727+00:00",
+    "verdict": "live",
+    "yielded": 27
   },
   "d-matrix": {
     "attempts": 1,
@@ -1299,25 +1299,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.157149+00:00",
+    "verdict": "live",
+    "yielded": 16
   },
   "datacamp": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.855087+00:00",
+    "verdict": "live",
+    "yielded": 30
   },
   "datadog": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:08.271459+00:00",
+    "verdict": "live",
+    "yielded": 168
   },
   "datadog-eu": {
     "attempts": 1,
@@ -1355,9 +1355,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.616665+00:00",
+    "verdict": "live",
+    "yielded": 87
   },
   "deno": {
     "attempts": 1,
@@ -1387,9 +1387,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:11.434768+00:00",
+    "verdict": "live",
+    "yielded": 18
   },
   "drw": {
     "attempts": 1,
@@ -1419,25 +1419,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:15.192666+00:00",
+    "verdict": "live",
+    "yielded": 383
   },
   "elevenlabs": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.185559+00:00",
+    "verdict": "live",
+    "yielded": 153
   },
   "envato": {
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:40.354000+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "epic-games": {
     "attempts": 1,
@@ -1451,17 +1451,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:54.434795+00:00",
+    "verdict": "live",
+    "yielded": 22
   },
   "factory": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.712320+00:00",
+    "verdict": "live",
+    "yielded": 13
   },
   "fal-ai": {
     "attempts": 1,
@@ -1475,9 +1475,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.626416+00:00",
+    "verdict": "live",
+    "yielded": 39
   },
   "fauna": {
     "attempts": 1,
@@ -1491,9 +1491,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:06.722890+00:00",
+    "verdict": "live",
+    "yielded": 140
   },
   "five-rings": {
     "attempts": 1,
@@ -1507,9 +1507,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:35.938336+00:00",
+    "verdict": "live",
+    "yielded": 177
   },
   "flow-traders": {
     "attempts": 1,
@@ -1531,9 +1531,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "freehire",
-    "last_yield_at": "2026-10-18T21:30:52.346928+00:00",
+    "last_yield_at": "2026-10-19T15:47:03.437990+00:00",
     "verdict": "live",
-    "yielded": 11
+    "yielded": 8
   },
   "github": {
     "attempts": 1,
@@ -1547,9 +1547,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:10.798243+00:00",
+    "verdict": "live",
+    "yielded": 228
   },
   "gitpod": {
     "attempts": 1,
@@ -1563,33 +1563,33 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:28.184330+00:00",
+    "verdict": "live",
+    "yielded": 62
   },
   "godaddy": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.778288+00:00",
+    "verdict": "live",
+    "yielded": 31
   },
   "gohiring": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:33.971001+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "grafana": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": "2026-10-18T21:31:33.049683+00:00",
+    "last_yield_at": "2026-10-19T15:47:39.200424+00:00",
     "verdict": "live",
-    "yielded": 8
+    "yielded": 124
   },
   "groq": {
     "attempts": 1,
@@ -1603,9 +1603,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:19.357360+00:00",
+    "verdict": "live",
+    "yielded": 103
   },
   "hashicorp": {
     "attempts": 1,
@@ -1627,9 +1627,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:38.695381+00:00",
+    "verdict": "live",
+    "yielded": 25
   },
   "hopper": {
     "attempts": 1,
@@ -1651,7 +1651,7 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:11.821981+00:00",
+    "last_yield_at": "2026-10-19T15:48:25.281053+00:00",
     "verdict": "live",
     "yielded": 5
   },
@@ -1699,25 +1699,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:16.214488+00:00",
+    "verdict": "live",
+    "yielded": 122
   },
   "intercom": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:34.720533+00:00",
+    "verdict": "live",
+    "yielded": 106
   },
   "jackson-river-togetherwork": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:39.184829+00:00",
+    "verdict": "live",
+    "yielded": 15
   },
   "jane-street": {
     "attempts": 1,
@@ -1747,17 +1747,17 @@
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:31:58.944572+00:00",
+    "last_yield_at": "2026-10-19T15:48:09.996298+00:00",
     "verdict": "live",
-    "yielded": 8
+    "yielded": 20
   },
   "jobspresso-feed": {
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:32:16.343973+00:00",
+    "last_yield_at": "2026-10-19T15:48:27.460315+00:00",
     "verdict": "live",
-    "yielded": 8
+    "yielded": 20
   },
   "jump-trading": {
     "attempts": 1,
@@ -1771,15 +1771,15 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:34.221892+00:00",
+    "verdict": "live",
+    "yielded": 3
   },
   "kodify": {
     "attempts": 1,
     "industry": "software",
     "kind": "recruitee",
-    "last_yield_at": "2026-10-18T21:31:53.962758+00:00",
+    "last_yield_at": "2026-10-19T15:48:41.176879+00:00",
     "verdict": "live",
     "yielded": 1
   },
@@ -1795,25 +1795,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:34.313246+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "langchain": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.264116+00:00",
+    "verdict": "live",
+    "yielded": 44
   },
   "launchdarkly": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:33.635081+00:00",
+    "verdict": "live",
+    "yielded": 37
   },
   "ledger": {
     "attempts": 1,
@@ -1835,9 +1835,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:34.731912+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "lightstep": {
     "attempts": 1,
@@ -1851,9 +1851,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:51.396330+00:00",
+    "verdict": "live",
+    "yielded": 29
   },
   "linkedin-sr": {
     "attempts": 1,
@@ -1875,25 +1875,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.012235+00:00",
+    "verdict": "live",
+    "yielded": 30
   },
   "liveperson": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.069727+00:00",
+    "verdict": "live",
+    "yielded": 3
   },
   "llamaindex": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.116753+00:00",
+    "verdict": "live",
+    "yielded": 5
   },
   "luma": {
     "attempts": 1,
@@ -1907,9 +1907,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:16.378095+00:00",
+    "verdict": "live",
+    "yielded": 139
   },
   "magic-ai": {
     "attempts": 1,
@@ -1931,25 +1931,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:54.469152+00:00",
+    "verdict": "live",
+    "yielded": 42
   },
   "metalab": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.630887+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "midjourney": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.027685+00:00",
+    "verdict": "live",
+    "yielded": 11
   },
   "millennium": {
     "attempts": 1,
@@ -1963,9 +1963,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:51.391192+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "miro": {
     "attempts": 1,
@@ -1987,9 +1987,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:38.781203+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "modal": {
     "attempts": 1,
@@ -2019,9 +2019,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:13.437852+00:00",
+    "verdict": "live",
+    "yielded": 399
   },
   "movement": {
     "attempts": 1,
@@ -2035,9 +2035,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:37.513050+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "mysten": {
     "attempts": 1,
@@ -2051,9 +2051,9 @@
     "attempts": 1,
     "industry": "general",
     "kind": "naukri",
-    "last_yield_at": "2026-10-18T21:31:10.690385+00:00",
+    "last_yield_at": "2026-10-19T15:47:09.404858+00:00",
     "verdict": "live",
-    "yielded": 2
+    "yielded": 40
   },
   "near": {
     "attempts": 1,
@@ -2083,17 +2083,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "workable",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:40.879675+00:00",
+    "verdict": "live",
+    "yielded": 25
   },
   "newrelic": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:37.572602+00:00",
+    "verdict": "live",
+    "yielded": 54
   },
   "octoai": {
     "attempts": 1,
@@ -2107,17 +2107,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:49.451378+00:00",
+    "verdict": "live",
+    "yielded": 10
   },
   "okta": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:36.601937+00:00",
+    "verdict": "live",
+    "yielded": 385
   },
   "openai": {
     "attempts": 1,
@@ -2147,9 +2147,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:39.085328+00:00",
+    "verdict": "live",
+    "yielded": 5
   },
   "optimism": {
     "attempts": 1,
@@ -2171,9 +2171,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:34.194070+00:00",
+    "verdict": "live",
+    "yielded": 20
   },
   "palantir": {
     "attempts": 1,
@@ -2195,9 +2195,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:37.993257+00:00",
+    "verdict": "live",
+    "yielded": 16
   },
   "perplexity": {
     "attempts": 1,
@@ -2211,17 +2211,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "personio",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:30.770083+00:00",
+    "verdict": "live",
+    "yielded": 14
   },
   "pika": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.041422+00:00",
+    "verdict": "live",
+    "yielded": 13
   },
   "pinecone": {
     "attempts": 1,
@@ -2235,9 +2235,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:11.848913+00:00",
+    "verdict": "live",
+    "yielded": 96
   },
   "plaid": {
     "attempts": 1,
@@ -2251,17 +2251,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:34.883197+00:00",
+    "verdict": "live",
+    "yielded": 7
   },
   "platformsh": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.393488+00:00",
+    "verdict": "live",
+    "yielded": 9
   },
   "point72": {
     "attempts": 1,
@@ -2283,17 +2283,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.009246+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "posthog": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:51.609266+00:00",
+    "verdict": "live",
+    "yielded": 10
   },
   "postman": {
     "attempts": 1,
@@ -2323,17 +2323,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:38.196619+00:00",
+    "verdict": "live",
+    "yielded": 13
   },
   "prominentedge": {
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:41.112883+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "qdrant": {
     "attempts": 1,
@@ -2347,9 +2347,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:36.964258+00:00",
+    "verdict": "live",
+    "yielded": 8
   },
   "railway": {
     "attempts": 1,
@@ -2363,9 +2363,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:54.577900+00:00",
+    "verdict": "live",
+    "yielded": 38
   },
   "ramp": {
     "attempts": 1,
@@ -2379,9 +2379,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:38.401152+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "recruitee-happeo": {
     "attempts": 1,
@@ -2395,9 +2395,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "recruitee",
-    "last_yield_at": "2026-10-18T21:32:13.353942+00:00",
+    "last_yield_at": "2026-10-19T15:48:29.624094+00:00",
     "verdict": "live",
-    "yielded": 2
+    "yielded": 3
   },
   "recruitee-radix": {
     "attempts": 1,
@@ -2411,31 +2411,31 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": "2026-10-18T21:30:53.135075+00:00",
+    "last_yield_at": "2026-10-19T15:47:11.697787+00:00",
     "verdict": "live",
-    "yielded": 43
+    "yielded": 124
   },
   "remote3-feed": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "feed",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:27.177775+00:00",
+    "verdict": "live",
+    "yielded": 8
   },
   "remoteok": {
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:56.356918+00:00",
+    "verdict": "live",
+    "yielded": 91
   },
   "remotive": {
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": "2026-10-18T21:31:41.697005+00:00",
+    "last_yield_at": "2026-10-19T15:47:55.695487+00:00",
     "verdict": "live",
     "yielded": 12
   },
@@ -2443,7 +2443,7 @@
     "attempts": 1,
     "industry": "general",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:09.098657+00:00",
+    "last_yield_at": "2026-10-19T15:48:26.509248+00:00",
     "verdict": "live",
     "yielded": 21
   },
@@ -2459,9 +2459,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:36.611187+00:00",
+    "verdict": "live",
+    "yielded": 2
   },
   "replicate": {
     "attempts": 1,
@@ -2483,9 +2483,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:51.676896+00:00",
+    "verdict": "live",
+    "yielded": 14
   },
   "retool": {
     "attempts": 1,
@@ -2507,25 +2507,25 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:43.597916+00:00",
+    "verdict": "live",
+    "yielded": 103
   },
   "ripple-board": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.211460+00:00",
+    "verdict": "live",
+    "yielded": 103
   },
   "robinhood": {
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:18.450258+00:00",
+    "verdict": "live",
+    "yielded": 38
   },
   "roblox-sr": {
     "attempts": 1,
@@ -2539,9 +2539,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:37.070507+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "runway": {
     "attempts": 1,
@@ -2555,9 +2555,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "teamtailor",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:41.701104+00:00",
+    "verdict": "live",
+    "yielded": 5
   },
   "sambanova": {
     "attempts": 1,
@@ -2571,25 +2571,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": "2026-10-18T21:31:25.798392+00:00",
+    "last_yield_at": "2026-10-19T15:47:24.902569+00:00",
     "verdict": "live",
-    "yielded": 3
+    "yielded": 264
   },
   "scaleai": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:24.123317+00:00",
+    "verdict": "live",
+    "yielded": 57
   },
   "scandit": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:36.011648+00:00",
+    "verdict": "live",
+    "yielded": 12
   },
   "scroll": {
     "attempts": 1,
@@ -2603,9 +2603,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.425308+00:00",
+    "verdict": "live",
+    "yielded": 12
   },
   "sentry": {
     "attempts": 1,
@@ -2627,9 +2627,9 @@
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:19.934441+00:00",
+    "verdict": "live",
+    "yielded": 48
   },
   "solana": {
     "attempts": 1,
@@ -2643,9 +2643,9 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby-index",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:40.227848+00:00",
+    "verdict": "live",
+    "yielded": 71
   },
   "sourcegraph": {
     "attempts": 1,
@@ -2659,9 +2659,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "lever",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:48.577567+00:00",
+    "verdict": "live",
+    "yielded": 9
   },
   "square-sr": {
     "attempts": 1,
@@ -2691,25 +2691,25 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.855119+00:00",
+    "verdict": "live",
+    "yielded": 24
   },
   "streamnative": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:36.612233+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "stripe": {
     "attempts": 1,
     "industry": "fintech",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:06.086798+00:00",
+    "verdict": "live",
+    "yielded": 279
   },
   "stripe-sr": {
     "attempts": 1,
@@ -2723,25 +2723,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:36.661063+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "sunno": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:52.603955+00:00",
+    "verdict": "live",
+    "yielded": 13
   },
   "supabase": {
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:51.666332+00:00",
+    "verdict": "live",
+    "yielded": 53
   },
   "swissdevjobs": {
     "attempts": 1,
@@ -2755,17 +2755,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "teamtailor",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:29.322888+00:00",
+    "verdict": "live",
+    "yielded": 10
   },
   "teamtailor-softwarefinder-na": {
     "attempts": 1,
     "industry": "software",
     "kind": "teamtailor",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:30.133561+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "temporal": {
     "attempts": 1,
@@ -2787,9 +2787,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.024951+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "timescale": {
     "attempts": 1,
@@ -2803,17 +2803,17 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:30.585840+00:00",
+    "verdict": "live",
+    "yielded": 45
   },
   "tokyodev-feed": {
     "attempts": 1,
     "industry": "general",
     "kind": "feed",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:27.432617+00:00",
+    "verdict": "live",
+    "yielded": 10
   },
   "tower-research": {
     "attempts": 1,
@@ -2827,25 +2827,25 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:39.679149+00:00",
+    "verdict": "live",
+    "yielded": 128
   },
   "turing": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:37.753630+00:00",
+    "verdict": "live",
+    "yielded": 14
   },
   "twilio": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": "2026-10-18T21:31:53.270490+00:00",
+    "last_yield_at": "2026-10-19T15:48:37.974569+00:00",
     "verdict": "live",
-    "yielded": 1
+    "yielded": 132
   },
   "twist": {
     "attempts": 1,
@@ -2875,33 +2875,33 @@
     "attempts": 1,
     "industry": "software",
     "kind": "smartrecruiters",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:55.001021+00:00",
+    "verdict": "live",
+    "yielded": 1
   },
   "udacity": {
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:38.741152+00:00",
+    "verdict": "live",
+    "yielded": 24
   },
   "uniswap": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:44.805953+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "uniswap-board": {
     "attempts": 1,
     "industry": "crypto",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:28.358102+00:00",
+    "verdict": "live",
+    "yielded": 6
   },
   "unity": {
     "attempts": 1,
@@ -2923,9 +2923,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:53.362402+00:00",
+    "verdict": "live",
+    "yielded": 5
   },
   "untether-ai": {
     "attempts": 1,
@@ -2963,9 +2963,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:24.502133+00:00",
+    "verdict": "live",
+    "yielded": 129
   },
   "visa": {
     "attempts": 1,
@@ -2979,9 +2979,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:47:39.215320+00:00",
+    "verdict": "live",
+    "yielded": 4
   },
   "weaviate": {
     "attempts": 1,
@@ -2995,9 +2995,9 @@
     "attempts": 1,
     "industry": "crypto",
     "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:15.959612+00:00",
+    "last_yield_at": "2026-10-19T15:48:30.158294+00:00",
     "verdict": "live",
-    "yielded": 1
+    "yielded": 14
   },
   "weights-and-biases": {
     "attempts": 1,
@@ -3035,9 +3035,9 @@
     "attempts": 1,
     "industry": "software",
     "kind": "greenhouse",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:39.310258+00:00",
+    "verdict": "live",
+    "yielded": 21
   },
   "workingnomads": {
     "attempts": 1,
@@ -3051,8 +3051,8 @@
     "attempts": 1,
     "industry": "software",
     "kind": "ashby",
-    "last_yield_at": null,
-    "verdict": "dead",
-    "yielded": 0
+    "last_yield_at": "2026-10-19T15:48:35.301269+00:00",
+    "verdict": "live",
+    "yielded": 11
   }
 }

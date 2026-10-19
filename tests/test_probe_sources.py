@@ -33,16 +33,20 @@ def test_probe_ledger_is_name_keyed_with_verdicts(tmp_path):
         assert v["verdict"] in {"live", "dead", "flaky"}
 
 
-def test_verdict_is_live_only_with_yield_in_the_window():
+def test_verdict_live_iff_yielded():
     mod = _load()
     now = datetime.now(timezone.utc)
     live = mod.SourceProbe(name="a", kind="rss", industry="general", attempts=1, yielded=1, last_yield_at=now)
     assert live.verdict == "live"
+    # A source that returned jobs is live regardless of how long ago they were posted:
+    # liveness is about whether the source answers, not about feed freshness.
     stale = mod.SourceProbe(name="b", kind="rss", industry="general", attempts=1, yielded=1,
                             last_yield_at=now - timedelta(days=8))
-    assert stale.verdict != "live"
+    assert stale.verdict == "live"
     none = mod.SourceProbe(name="c", kind="rss", industry="general", attempts=0, yielded=0, last_yield_at=None)
     assert none.verdict != "live"
+    flaky = mod.SourceProbe(name="d", kind="rss", industry="general", attempts=0, yielded=1, last_yield_at=now)
+    assert flaky.verdict == "flaky"
 
 
 def test_suggest_hourly_caps_crypto_orgs_and_feeds():

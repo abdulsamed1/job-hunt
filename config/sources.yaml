@@ -120,27 +120,27 @@ sources:
   name: stripe
   url: https://boards.greenhouse.io/stripe
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: figma
   url: https://boards.greenhouse.io/figma
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: datadog
   url: https://boards.greenhouse.io/datadog
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: airbnb
   url: https://boards.greenhouse.io/airbnb
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: cloudflare
   url: https://boards.greenhouse.io/cloudflare
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: github
   url: https://boards.greenhouse.io/github
@@ -150,12 +150,12 @@ sources:
   name: gitlab
   url: https://boards.greenhouse.io/gitlab
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: pinterest
   url: https://boards.greenhouse.io/pinterest
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: doordash
   url: https://boards.greenhouse.io/doordash
@@ -170,12 +170,12 @@ sources:
   name: dropbox
   url: https://boards.greenhouse.io/dropbox
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: box
   url: https://boards.greenhouse.io/boxinc
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: twist
   url: https://boards.greenhouse.io/twist
@@ -190,12 +190,12 @@ sources:
   name: mongodb
   url: https://boards.greenhouse.io/mongodb
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: elastic
   url: https://boards.greenhouse.io/elastic
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: confluent
   url: https://boards.greenhouse.io/confluent
@@ -205,37 +205,37 @@ sources:
   name: cockroachlabs
   url: https://boards.greenhouse.io/cockroachlabs
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: instacart
   url: https://boards.greenhouse.io/instacart
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: lyft
   url: https://boards.greenhouse.io/lyft
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: affirm
   url: https://boards.greenhouse.io/affirm
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: robinhood
   url: https://boards.greenhouse.io/robinhood
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: coinbase
   url: https://boards.greenhouse.io/coinbase
   industry: crypto
-  status: dead
+  status: live
 - adapter: greenhouse
   name: gusto
   url: https://boards.greenhouse.io/gusto
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: plaid
   url: https://boards.greenhouse.io/plaid
@@ -245,17 +245,17 @@ sources:
   name: chime
   url: https://boards.greenhouse.io/chime
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: sofi
   url: https://boards.greenhouse.io/sofi
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: brex
   url: https://boards.greenhouse.io/brex
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: ramp
   url: https://boards.greenhouse.io/ramp
@@ -265,12 +265,12 @@ sources:
   name: carta
   url: https://boards.greenhouse.io/carta
   industry: fintech
-  status: dead
+  status: live
 - adapter: greenhouse
   name: checkr
   url: https://boards.greenhouse.io/checkr
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: benchling
   url: https://boards.greenhouse.io/benchling
@@ -285,17 +285,17 @@ sources:
   name: scaleai
   url: https://boards.greenhouse.io/scaleai
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: verkada
   url: https://boards.greenhouse.io/verkada
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: anduril
   url: https://boards.greenhouse.io/andurilindustries
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: palantir
   url: https://boards.greenhouse.io/palantirtechnologies
@@ -330,7 +330,7 @@ sources:
   name: glean
   url: https://boards.greenhouse.io/gleanwork
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: characterai
   url: https://boards.greenhouse.io/characterai
@@ -345,7 +345,7 @@ sources:
   name: togetherai
   url: https://boards.greenhouse.io/togetherai
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: adept
   url: https://boards.greenhouse.io/adeptai
@@ -425,7 +425,7 @@ sources:
   name: launchdarkly
   url: https://boards.greenhouse.io/launchdarkly
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: postman
   url: https://boards.greenhouse.io/postman
@@ -435,12 +435,12 @@ sources:
   name: pagerduty
   url: https://boards.greenhouse.io/pagerduty
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: circleci
   url: https://boards.greenhouse.io/circleci
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: dbt-labs
   url: https://boards.greenhouse.io/dbtlabs
@@ -450,7 +450,7 @@ sources:
   name: fivetran
   url: https://boards.greenhouse.io/fivetran
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: starburst
   url: https://boards.greenhouse.io/starburstdata
@@ -475,7 +475,7 @@ sources:
   name: planetscale
   url: https://boards.greenhouse.io/planetscale
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: neon
   url: https://boards.greenhouse.io/neon
@@ -545,7 +545,7 @@ sources:
   name: sumologic
   url: https://boards.greenhouse.io/sumologic
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: dynatrace
   url: https://boards.greenhouse.io/dynatrace
@@ -555,7 +555,7 @@ sources:
   name: newrelic
   url: https://boards.greenhouse.io/newrelic
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: appdynamics
   url: https://boards.greenhouse.io/appdynamics
@@ -565,7 +565,7 @@ sources:
   name: cribl
   url: https://boards.greenhouse.io/cribl
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: chronosphere
   url: https://boards.greenhouse.io/chronosphere
@@ -575,7 +575,7 @@ sources:
   name: honeycomb
   url: https://boards.greenhouse.io/honeycomb
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: lightstep
   url: https://boards.greenhouse.io/lightstep
@@ -615,7 +615,7 @@ sources:
   name: warp
   url: https://boards.greenhouse.io/warp
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: canva
   url: https://jobs.lever.co/canva
@@ -630,7 +630,7 @@ sources:
   name: spotify
   url: https://jobs.lever.co/spotify
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: atlassian
   url: https://jobs.lever.co/atlassian
@@ -680,7 +680,7 @@ sources:
   name: ripple
   url: https://boards.greenhouse.io/ripple
   industry: crypto
-  status: dead
+  status: live
 - adapter: lever
   name: ledger
   url: https://jobs.lever.co/ledger
@@ -690,7 +690,7 @@ sources:
   name: consensys
   url: https://boards.greenhouse.io/consensys
   industry: crypto
-  status: dead
+  status: live
 - adapter: lever
   name: chainalysis
   url: https://jobs.lever.co/chainalysis
@@ -700,7 +700,7 @@ sources:
   name: alchemy
   url: https://jobs.ashbyhq.com/alchemy
   industry: crypto
-  status: dead
+  status: live
 - adapter: ashby
   name: opensea
   url: https://jobs.ashbyhq.com/opensea
@@ -710,7 +710,7 @@ sources:
   name: uniswap
   url: https://jobs.ashbyhq.com/uniswap
   industry: crypto
-  status: dead
+  status: live
 - adapter: lever
   name: polygon
   url: https://jobs.lever.co/polygon
@@ -750,7 +750,7 @@ sources:
   name: offchain-labs
   url: https://jobs.lever.co/offchainlabs
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: optimism
   url: https://jobs.lever.co/optimism
@@ -870,7 +870,7 @@ sources:
   name: linear
   url: https://jobs.ashbyhq.com/linear
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: retool
   url: https://jobs.ashbyhq.com/retool
@@ -880,7 +880,7 @@ sources:
   name: supabase
   url: https://jobs.ashbyhq.com/supabase
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: vercel
   url: https://jobs.ashbyhq.com/vercel
@@ -890,17 +890,17 @@ sources:
   name: posthog
   url: https://jobs.ashbyhq.com/posthog
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: resend
   url: https://jobs.ashbyhq.com/resend
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: clerk
   url: https://jobs.ashbyhq.com/clerk
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: calcom
   url: https://jobs.ashbyhq.com/cal
@@ -915,17 +915,17 @@ sources:
   name: midjourney
   url: https://jobs.ashbyhq.com/midjourney
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: elevenlabs
   url: https://jobs.ashbyhq.com/elevenlabs
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: pika
   url: https://jobs.ashbyhq.com/pika
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: luma
   url: https://jobs.ashbyhq.com/luma
@@ -935,12 +935,12 @@ sources:
   name: sunno
   url: https://jobs.ashbyhq.com/suno
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: cursor-ai
   url: https://jobs.ashbyhq.com/cursor
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: augment
   url: https://jobs.ashbyhq.com/augment
@@ -950,12 +950,12 @@ sources:
   name: cognition
   url: https://jobs.ashbyhq.com/cognition
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: factory
   url: https://jobs.ashbyhq.com/factory
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: magic-ai
   url: https://jobs.ashbyhq.com/magic
@@ -965,7 +965,7 @@ sources:
   name: poolside
   url: https://jobs.ashbyhq.com/poolside
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: hume
   url: https://jobs.ashbyhq.com/hume
@@ -975,27 +975,27 @@ sources:
   name: braintrust
   url: https://jobs.ashbyhq.com/braintrust
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: langchain
   url: https://jobs.ashbyhq.com/langchain
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: llamaindex
   url: https://jobs.ashbyhq.com/llamaindex
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: unstructured
   url: https://jobs.ashbyhq.com/unstructured
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: deepgram
   url: https://jobs.ashbyhq.com/deepgram
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: assemblyai
   url: https://jobs.ashbyhq.com/assemblyai
@@ -1015,12 +1015,12 @@ sources:
   name: baseten
   url: https://jobs.ashbyhq.com/baseten
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: cerebras
   url: https://jobs.ashbyhq.com/cerebras
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: groq
   url: https://jobs.ashbyhq.com/groq
@@ -1055,17 +1055,17 @@ sources:
   name: etched
   url: https://jobs.ashbyhq.com/etched
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: matx
   url: https://jobs.ashbyhq.com/matx
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: rain-ai
   url: https://jobs.ashbyhq.com/rain
   industry: software
-  status: dead
+  status: live
 - adapter: smartrecruiters
   name: visa
   url: https://jobs.smartrecruiters.com/Visa
@@ -1090,7 +1090,7 @@ sources:
   name: ubisoft
   url: https://jobs.smartrecruiters.com/Ubisoft2
   industry: software
-  status: dead
+  status: live
 - adapter: smartrecruiters
   name: epic-games
   url: https://jobs.smartrecruiters.com/EpicGames
@@ -1145,7 +1145,7 @@ sources:
   name: remoteok
   url: https://remoteok.com/api
   industry: general
-  status: dead
+  status: live
 - adapter: feed
   name: arbeitnow
   url: https://www.arbeitnow.com/api/job-board-api
@@ -1210,7 +1210,7 @@ sources:
   name: cryptocurrencyjobs
   url: https://cryptocurrencyjobs.co/index.xml
   industry: crypto
-  status: dead
+  status: live
 - name: Blockchain Works
   url: https://blockchain.works-hub.com/
   adapter: web
@@ -1230,7 +1230,7 @@ sources:
   url: https://bitcoinjobs.com/
   adapter: web
   industry: crypto
-  status: live
+  status: dead
 - name: CryptoJobs
   url: https://crypto.jobs/
   adapter: web
@@ -1355,7 +1355,7 @@ sources:
   url: https://web3.career/remote-jobs
   adapter: web
   industry: crypto
-  status: dead
+  status: live
 - name: Arc (formerly Vettery)
   url: https://arc.dev/
   adapter: web
@@ -1455,7 +1455,7 @@ sources:
   url: https://nodeflair.com/
   adapter: web
   industry: general
-  status: dead
+  status: live
 - name: Stack Overflow Jobs
   url: https://stackoverflow.com/jobs
   adapter: web
@@ -1615,12 +1615,12 @@ sources:
   name: crypto-jobs-feed
   url: https://crypto.jobs/feed/rss
   industry: crypto
-  status: dead
+  status: live
 - adapter: feed
   name: remote3-feed
   url: https://remote3.co/api/rss
   industry: crypto
-  status: dead
+  status: live
 - adapter: feed
   name: weworkremotely-feed
   url: https://weworkremotely.com/remote-jobs.rss
@@ -1630,7 +1630,7 @@ sources:
   name: tokyodev-feed
   url: https://www.tokyodev.com/atom.xml
   industry: general
-  status: dead
+  status: live
 - adapter: feed
   name: jobspresso-feed
   url: https://jobspresso.co/jobs/feed/
@@ -1640,17 +1640,17 @@ sources:
   name: coinbase-board
   url: https://boards.greenhouse.io/coinbase
   industry: crypto
-  status: dead
+  status: live
 - adapter: greenhouse
   name: ripple-board
   url: https://boards.greenhouse.io/ripple
   industry: crypto
-  status: dead
+  status: live
 - adapter: ashby
   name: uniswap-board
   url: https://jobs.ashbyhq.com/uniswap
   industry: crypto
-  status: dead
+  status: live
 - adapter: ashby
   name: opensea-board
   url: https://jobs.ashbyhq.com/opensea
@@ -1660,23 +1660,23 @@ sources:
   name: alchemy-board
   url: https://jobs.ashbyhq.com/alchemy
   industry: crypto
-  status: dead
+  status: live
 - adapter: greenhouse
   name: consensys-board
   url: https://boards.greenhouse.io/consensys
   industry: crypto
-  status: dead
+  status: live
 - adapter: ashby
   name: stellar-board
   url: https://jobs.ashbyhq.com/stellar
   industry: crypto
-  status: dead
+  status: live
 - adapter: ashby-index
   name: solana-ecosystem-index
   url: https://jobs.solana.com/
   max_orgs: 8
   industry: crypto
-  status: dead
+  status: live
 - adapter: web
   name: web3-career-jsonld
   url: https://web3.career/
@@ -1692,7 +1692,7 @@ sources:
   locations:
   - Remote
   industry: software
-  status: dead
+  status: live
 - adapter: teamtailor
   name: teamtailor-softwarefinder-na
   url: https://softwarefinder.na.teamtailor.com
@@ -1703,7 +1703,7 @@ sources:
   locations:
   - Remote
   industry: software
-  status: dead
+  status: live
 - adapter: recruitee
   name: recruitee-make
   url: https://make.recruitee.com
@@ -1747,7 +1747,7 @@ sources:
   locations:
   - Remote
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: acquia
   url: https://boards.greenhouse.io/acquia
@@ -1761,7 +1761,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: alphasights
   url: https://boards.greenhouse.io/alphasights
@@ -1775,7 +1775,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: andela
   url: https://jobs.ashbyhq.com/andela
@@ -1789,7 +1789,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: ark
   url: https://boards.greenhouse.io/ark
@@ -1831,7 +1831,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: buffer
   url: https://jobs.ashbyhq.com/buffer
@@ -1845,7 +1845,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: calibre
   url: https://jobs.ashbyhq.com/calibre
@@ -1873,7 +1873,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: caremessage
   url: https://jobs.ashbyhq.com/caremessage
@@ -1887,7 +1887,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: close
   url: https://jobs.ashbyhq.com/close
@@ -1901,7 +1901,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: coalition
   url: https://boards.greenhouse.io/coalition
@@ -1915,7 +1915,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: collabora
   url: https://jobs.lever.co/collabora
@@ -1929,7 +1929,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: customerio
   url: https://boards.greenhouse.io/customerio
@@ -1943,7 +1943,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: dashlane
   url: https://boards.greenhouse.io/dashlane
@@ -1957,7 +1957,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: datacamp
   url: https://boards.greenhouse.io/datacamp
@@ -1971,7 +1971,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: fastly
   url: https://boards.greenhouse.io/fastly
@@ -1985,7 +1985,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: godaddy
   url: https://boards.greenhouse.io/godaddy
@@ -1999,7 +1999,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: gohiring
   url: https://boards.greenhouse.io/gohiring
@@ -2013,7 +2013,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: intercom
   url: https://boards.greenhouse.io/intercom
@@ -2027,7 +2027,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: kinsta
   url: https://jobs.lever.co/kinsta
@@ -2041,7 +2041,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: labelbox
   url: https://boards.greenhouse.io/labelbox
@@ -2055,7 +2055,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: lightspeed
   url: https://jobs.ashbyhq.com/lightspeed
@@ -2069,7 +2069,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: litmus
   url: https://jobs.ashbyhq.com/litmus
@@ -2083,7 +2083,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: liveperson
   url: https://boards.greenhouse.io/liveperson
@@ -2097,7 +2097,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: testgorilla
   url: https://jobs.ashbyhq.com/testgorilla
@@ -2111,7 +2111,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: zapier
   url: https://jobs.ashbyhq.com/zapier
@@ -2125,7 +2125,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: platformsh
   url: https://boards.greenhouse.io/platformsh
@@ -2139,7 +2139,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: securityscorecard
   url: https://boards.greenhouse.io/securityscorecard
@@ -2153,7 +2153,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: metalab
   url: https://boards.greenhouse.io/metalab
@@ -2167,7 +2167,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: okta
   url: https://boards.greenhouse.io/okta
@@ -2181,7 +2181,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: renofi
   url: https://jobs.lever.co/renofi
@@ -2195,7 +2195,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: scandit
   url: https://boards.greenhouse.io/scandit
@@ -2209,7 +2209,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: streamnative
   url: https://boards.greenhouse.io/streamnative
@@ -2223,7 +2223,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: turing
   url: https://boards.greenhouse.io/turing
@@ -2237,7 +2237,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: quora
   url: https://jobs.ashbyhq.com/quora
@@ -2251,7 +2251,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: rocketchat
   url: https://boards.greenhouse.io/rocketchat
@@ -2265,7 +2265,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: twilio
   url: https://boards.greenhouse.io/twilio
@@ -2293,7 +2293,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: mux
   url: https://jobs.ashbyhq.com/mux
@@ -2307,7 +2307,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: percona
   url: https://jobs.ashbyhq.com/percona
@@ -2321,7 +2321,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: primer
   url: https://jobs.ashbyhq.com/primer
@@ -2335,7 +2335,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: recharge
   url: https://jobs.ashbyhq.com/recharge
@@ -2349,7 +2349,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: udacity
   url: https://boards.greenhouse.io/udacity
@@ -2363,7 +2363,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: wizeline
   url: https://boards.greenhouse.io/wizeline
@@ -2377,7 +2377,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: mixmax
   url: https://boards.greenhouse.io/mixmax
@@ -2391,7 +2391,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: openzeppelin
   url: https://boards.greenhouse.io/openzeppelin
@@ -2405,7 +2405,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: jackson-river-togetherwork
   url: https://boards.greenhouse.io/togetherwork
@@ -2419,7 +2419,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: truelogic
   url: https://jobs.ashbyhq.com/truelogic
@@ -2433,7 +2433,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: ashby
   name: alan
   url: https://jobs.ashbyhq.com/alan
@@ -2447,7 +2447,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: envato
   url: https://jobs.lever.co/envato-2
@@ -2461,7 +2461,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: contentsquare
   url: https://jobs.lever.co/contentsquare
@@ -2475,7 +2475,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: lever
   name: prominentedge
   url: https://jobs.lever.co/prominentedge
@@ -2489,7 +2489,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: bamboohr
   name: prezi
   url: https://prezi.bamboohr.com/jobs/
@@ -2517,7 +2517,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: recruitee
   name: kodify
   url: https://kodify.recruitee.com/api/offers/
@@ -2545,4 +2545,4 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
