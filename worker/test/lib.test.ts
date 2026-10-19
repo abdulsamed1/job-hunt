@@ -387,10 +387,10 @@ describe("generated source shard", () => {
   it("ships the full source set with hourly shard under the batch cap", async () => {
     const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
     // Dead boards (status: dead) are excluded from the shard, so the live set is
-    // smaller than the configured 382. The floor is the measured live count minus
+    // smaller than the configured 374. The floor is the measured live count minus
     // margin; a drop below it means a mass regression or an over-aggressive probe.
-    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBeGreaterThanOrEqual(150);
-    expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(100);
+    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBeGreaterThanOrEqual(180);
+    expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(130);
     const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");
     expect(hourly.length).toBeGreaterThan(0);
     expect(hourly.length).toBeLessThanOrEqual(40);

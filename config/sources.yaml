@@ -1165,7 +1165,7 @@ sources:
   name: weworkremotely
   url: https://weworkremotely.com/categories/remote-programming-jobs.json
   industry: general
-  status: dead
+  status: unknown
 - name: Calyptus
   url: https://calyptus.co/
   adapter: web
@@ -1220,7 +1220,7 @@ sources:
   url: https://ethgigs.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: DeFi Jobs
   url: https://defi.jobs/
   adapter: web
@@ -1230,7 +1230,7 @@ sources:
   url: https://bitcoinjobs.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: CryptoJobs
   url: https://crypto.jobs/
   adapter: web
@@ -1260,17 +1260,17 @@ sources:
   url: https://blockchainjobboard.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: CryptoJobsDB
   url: https://cryptojobsdb.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: CryptoJobLand
   url: https://cryptojob.land/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: Web3 Jobs
   url: https://web3jobs.ai/
   adapter: web
@@ -1295,7 +1295,7 @@ sources:
   url: https://nftjobs.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: Crypto Careers
   url: https://crypto-careers.com/
   adapter: web
@@ -1310,12 +1310,12 @@ sources:
   url: https://web3talent.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: Blocktribe
   url: https://blocktribe.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: Blockchain Developers
   url: https://blockchaindevelopers.io/
   adapter: web
@@ -1325,7 +1325,7 @@ sources:
   url: https://solidityjobs.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: SmartContractJobs
   url: https://smartcontractjobs.com/
   adapter: web
@@ -1340,7 +1340,7 @@ sources:
   url: https://cryptojobhunt.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: Stellar Jobs
   url: https://www.stellar.org/careers
   adapter: web
@@ -1385,7 +1385,7 @@ sources:
   url: https://www.gun.io/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: YCombinator Jobs
   url: https://www.workatastartup.com/
   adapter: web
@@ -1395,12 +1395,12 @@ sources:
   name: workingnomads
   url: https://www.workingnomads.com/jobs/export
   industry: general
-  status: dead
+  status: unknown
 - name: FlexJobs
   url: https://www.flexjobs.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: PowerToFly
   url: https://powertofly.com/
   adapter: web
@@ -1410,7 +1410,7 @@ sources:
   url: https://remote.co/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - adapter: feed
   name: jobspresso
   url: https://jobspresso.co/jobs/feed/
@@ -1450,27 +1450,27 @@ sources:
   url: https://www.talent.io/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: NodeFlair
   url: https://nodeflair.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: Stack Overflow Jobs
   url: https://stackoverflow.com/jobs
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: Indeed
   url: https://www.indeed.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: Glassdoor
   url: https://www.glassdoor.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: Dice
   url: https://www.dice.com/
   adapter: web
@@ -1490,7 +1490,7 @@ sources:
   url: https://daojobs.io/
   adapter: web
   industry: crypto
-  status: dead
+  status: unknown
 - name: https://ethglobal.com/auth?useredirect=/jobs
   url: https://ethglobal.com/auth?use_redirect=/jobs
   adapter: web
@@ -1505,17 +1505,17 @@ sources:
   url: https://www.bayt.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: GulfTalent
   url: https://www.gulftalent.com/
   adapter: web
   industry: general
-  status: dead
+  status: live
 - adapter: feed
   name: swissdevjobs
   url: https://swissdevjobs.ch/api/jobsLight
   industry: general
-  status: dead
+  status: unknown
 - name: Jobbatical
   url: https://jobbatical.com/
   adapter: web
@@ -1530,7 +1530,7 @@ sources:
   url: https://www.jobsdb.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: TokyoDev
   url: https://www.tokyodev.com/
   adapter: web
@@ -1540,7 +1540,7 @@ sources:
   url: https://www.jobstreet.com/
   adapter: web
   industry: general
-  status: dead
+  status: unknown
 - name: https://www.jobberman.com/jobs?q=blockchain
   url: https://www.jobberman.com/jobs?q=blockchain
   adapter: web
@@ -1550,7 +1550,7 @@ sources:
   name: Polygon Ecosystem Jobs
   url: https://jobs.polygon.technology/
   industry: crypto
-  status: dead
+  status: unknown
 - adapter: web
   name: chainlink-web
   url: https://chainlinklabs.com/careers
@@ -2449,7 +2449,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: live
+  status: unknown
 - adapter: bamboohr
   name: prezi
   url: https://prezi.bamboohr.com/jobs/

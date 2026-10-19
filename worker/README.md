@@ -20,9 +20,9 @@ python worker/scripts/gen_sources.py --check  # fail on drift (used by tests)
 
 | Split | Count | Why |
 |---|---|---|
-| Worker-runnable | **146** | greenhouse 70, ashby 42, rss 12, lever 10, teamtailor 3, recruitee 2, smartrecruiters 1, linkedin (disabled), indeed, ashby-index, freehire, bdjobs, personio, workable |
-| Python-only | **25** | HTML scraping (`web` 24), Naukri (RSA handshake); Bayt (TLS impersonation) is currently dead |
-| Dead (excluded) | **203** | measured dead by the probe: boards that answer 404/410 or return nothing |
+| Worker-runnable | **149** | greenhouse 70, ashby 42, rss 15, lever 10, teamtailor 3, recruitee 2, smartrecruiters 1, linkedin 1 (disabled), ashby-index 1, freehire 1, bdjobs 1, personio 1, workable 1 |
+| Python-only | **49** | HTML scraping (`web` 48), Naukri (RSA handshake); Bayt (TLS impersonation) is currently dead |
+| Dead (excluded) | **176** | measured dead by the probe: boards that answer 404/410 or return nothing |
 | Total in `sources.yaml` | **374** | every source accounted for, none silently dropped |
 
 ### Measured yield (live probe, 2026-10-19)
@@ -34,16 +34,18 @@ and writes the verdict to `config/sources.yaml` and to
 
 | Verdict | Count | Note |
 |---|---|---|
-| live | **170** | software 117, crypto 27, general 19, fintech 7 |
-| dead | **203** | greenhouse 60, web 57, lever 44, ashby 19, smartrecruiters 14 — the boards are gone (GitHub, DoorDash and others migrated off Greenhouse: `figma` returns 200, `github` 404s — slug derivation is correct) |
-| unknown | **1** | LinkedIn, disabled since the 2026-10-02 ban |
+| live | **170** | software 116, crypto 27, general 20, fintech 7 |
+| dead | **176** | greenhouse 60, web 33, lever 44, ashby 19, smartrecruiters 14, recruitee 2, feed 1, bayt/indeed/bamboohr 1 each — the boards are gone (GitHub, DoorDash and others migrated off Greenhouse: `figma` returns 200, `github` 404s — slug derivation is correct) |
+| unknown | **28** | 27 boards failed this attempt (403, timeout, DNS, unparseable body) → flaky, re-probed next run; plus LinkedIn, disabled since the 2026-10-02 ban |
 
 **Liveness rule**: a source is live when it yields at least one **remote**
 posting **at any age** — the 24h window gates the *feed*, not the source, and
 the remote filter stays on because only remote roles are applicable. A board
 that answers 404/410 is dead; a failed attempt is flaky (`status: unknown`),
-never a stale `live`. `status: dead` boards are excluded from the generated
-shard, so the Worker never spends requests on them.
+never a stale `live`. The adapters raise on a failed fetch (non-2xx status,
+whole-feed parse error) so the probe can tell "the board answered with
+nothing" from "the board failed". `status: dead` boards are excluded from the
+generated shard, so the Worker never spends requests on them.
 
 The hourly scout shard is **25 sources** (software 11, general 6, crypto 5,
 fintech 3 — at most 2 crypto orgs and 3 crypto feeds), rebuilt from the same

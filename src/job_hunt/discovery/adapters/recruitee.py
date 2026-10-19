@@ -95,8 +95,10 @@ class RecruiteeAdapter(DiscoveryAdapter):
             "Accept": "application/json, */*",
         }
         resp = await client.get(api_url, headers=headers, timeout=15.0, follow_redirects=True)
-        if resp.status_code != 200:
-            return []
+        # A non-success status is a FAILED attempt, not a clean zero: the probe
+        # must see the error (flaky -> re-probed next run) instead of recording
+        # an empty board (dead -> dropped from the shard and the sweep).
+        resp.raise_for_status()
 
         try:
             data = resp.json()

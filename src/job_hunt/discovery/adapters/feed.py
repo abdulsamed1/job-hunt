@@ -45,12 +45,16 @@ class FeedAdapter(DiscoveryAdapter):
         }
 
         response = await client.get(url, timeout=15.0, headers=headers, follow_redirects=True)
-        if response.status_code != 200:
-            return []
+        # A non-success status is a FAILED attempt, not a clean zero: the probe
+        # must see the error (flaky -> re-probed next run) instead of recording
+        # an empty board (dead -> dropped from the shard and the sweep).
+        response.raise_for_status()
 
         try:
             data = response.json()
         except Exception:
+            # Not JSON: try RSS/Atom. A feed that parses as neither is a
+            # failed attempt too and must surface (see _parse_rss_xml).
             return self._parse_rss_xml(response.text, entry)
 
         # Handle RemoteOK or list of jobs
@@ -63,49 +67,61 @@ class FeedAdapter(DiscoveryAdapter):
 
         postings: List[JobPosting] = []
         for j in jobs_raw:
-            title = (j.get("position") or j.get("title") or j.get("jobTitle") or j.get("name") or "").strip()
-            company = (j.get("company") or j.get("company_name") or j.get("companyName")
-                       or entry.get("name") or "").strip()
-            raw_url = j.get("url") or j.get("apply_url") or j.get("jobUrl") or ""
-            if not title or not raw_url or not company:
+            try:
+                posting = self._posting_from_json_item(j, entry)
+            except Exception:
+                # A single broken posting (e.g. a salary string the free-text
+                # parser chokes on) must not void the whole feed.
                 continue
-
-            canon_url = normalize_url(raw_url)
-            location_str = j.get("location") or ("Remote" if j.get("remote") else "")
-            description = j.get("description") or title
-
-            # Backstop: feeds carry no structured compensation; try free-text parse.
-            parsed = parse_salary_text(description)
-            posting = JobPosting(
-                external_id=str(j.get("id", "")),
-                source=entry.get("name", "feed").lower(),
-                source_name=company,
-                title=title,
-                company=company,
-                raw_url=raw_url,
-                canonical_url=canon_url,
-                canonical_url_hash=canonical_url_hash(canon_url),
-                role_fingerprint=compute_role_fingerprint(company, title, location_str),
-                content_hash=content_hash(description),
-                location=location_str,
-                description=description,
-                salary_min=parsed[0] if parsed else None,
-                salary_max=parsed[1] if parsed else None,
-                salary_currency=parsed[2] if parsed else None,
-                salary_source=parsed[3] if parsed else None,
-                posted_at=str(j.get("date") or j.get("pubDate") or j.get("published") or j.get("epoch") or ""),
-                metadata={"tags": j.get("tags", [])},
-            )
-            postings.append(posting)
+            if posting is not None:
+                postings.append(posting)
 
         return postings
+
+    def _posting_from_json_item(self, j: Dict[str, Any], entry: Dict[str, Any]) -> JobPosting | None:
+        """Build one posting from a JSON feed item (None when unusable)."""
+        title = (j.get("position") or j.get("title") or j.get("jobTitle") or j.get("name") or "").strip()
+        company = (j.get("company") or j.get("company_name") or j.get("companyName")
+                   or entry.get("name") or "").strip()
+        raw_url = j.get("url") or j.get("apply_url") or j.get("jobUrl") or ""
+        if not title or not raw_url or not company:
+            return None
+
+        canon_url = normalize_url(raw_url)
+        location_str = j.get("location") or ("Remote" if j.get("remote") else "")
+        description = j.get("description") or title
+
+        # Backstop: feeds carry no structured compensation; try free-text parse.
+        parsed = parse_salary_text(description)
+        return JobPosting(
+            external_id=str(j.get("id", "")),
+            source=entry.get("name", "feed").lower(),
+            source_name=company,
+            title=title,
+            company=company,
+            raw_url=raw_url,
+            canonical_url=canon_url,
+            canonical_url_hash=canonical_url_hash(canon_url),
+            role_fingerprint=compute_role_fingerprint(company, title, location_str),
+            content_hash=content_hash(description),
+            location=location_str,
+            description=description,
+            salary_min=parsed[0] if parsed else None,
+            salary_max=parsed[1] if parsed else None,
+            salary_currency=parsed[2] if parsed else None,
+            salary_source=parsed[3] if parsed else None,
+            posted_at=str(j.get("date") or j.get("pubDate") or j.get("published") or j.get("epoch") or ""),
+            metadata={"tags": j.get("tags", [])},
+        )
 
     def _parse_rss_xml(self, xml_text: str, entry: Dict[str, Any]) -> List[JobPosting]:
         """Parse standard RSS/Atom XML feeds for job postings.
 
         Items are parsed independently: one malformed posting (e.g. a salary
         string the free-text parser chokes on) is skipped instead of voiding
-        the whole feed.
+        the whole feed. A feed that is not parseable XML at all is a FAILED
+        attempt and raises: the caller (the probe) must see the error instead
+        of an empty board, which would mark a live board dead.
         """
         try:
             import xml.etree.ElementTree as ET
@@ -122,8 +138,11 @@ class FeedAdapter(DiscoveryAdapter):
             items = root.findall(".//item") or [
                 el for el in root.iter() if el.tag.endswith("item") or el.tag.endswith("entry")
             ]
-        except Exception:
-            return []
+        except Exception as exc:
+            raise ValueError(
+                f"Feed {entry.get('name', 'unknown')} ({entry.get('url', '')}) "
+                f"is neither JSON nor parseable XML: {exc}"
+            ) from exc
 
         postings: List[JobPosting] = []
         for item in items:

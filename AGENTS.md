@@ -39,7 +39,7 @@ user's explicit approval.
 - Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
 - Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
 
-## Discovery defaults (all 374 sources)
+## Discovery defaults (374 configured sources)
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
   Server-side where supported (Bayt/Naukri/Zip intervals, Indeed date filter;
   LinkedIn TPR unused while disabled); central `filter_recent` backstops the rest.
@@ -50,40 +50,80 @@ user's explicit approval.
 ## Board coverage (374 configured; probed live 2026-10-19)
 
 Configured ≠ working. `config/sources.yaml` holds **374** entries; the live
-probe (`scripts/probe_sources.py`) measured **170 live**, **203 dead** and
-**1 unknown** (LinkedIn, disabled). Treat the config as intent, never as proof.
+probe (`scripts/probe_sources.py`) measured **170 live**, **176 dead** and
+**28 unknown** (27 boards that failed this attempt + LinkedIn, disabled).
+Treat the config as intent, never as proof.
 
 - **Liveness rule**: a source is live when it yields at least one **remote**
   posting **at any age**. The 24h window gates the *feed*, not the source, and
   the remote filter stays on because only remote roles are applicable to this
   product. A board that answers 404/410 is **dead** (the org migrated ATS —
   GitHub and DoorDash 404 on Greenhouse while `figma` returns 200, so slug
-  derivation is correct); a failed attempt (timeout, 5xx) is **flaky** →
-  `status: unknown`, never a stale `status: live`.
-- **Dead by adapter**: greenhouse 60, web 57, lever 44, ashby 19,
-  smartrecruiters 14, feed 4, recruitee 2, bayt/indeed/bamboohr 1 each.
-- **Live by industry**: software 117, crypto 27, general 19, fintech 7.
+  derivation is correct); a failed attempt (timeout, 5xx, 403, unparseable
+  body) is **flaky** → `status: unknown`, never a stale `status: live`. The
+  adapters raise on a failed fetch, so the probe can tell the two apart.
+- **Dead by adapter**: greenhouse 60, web 33, lever 44, ashby 19,
+  smartrecruiters 14, recruitee 2, feed 1, bayt/indeed/bamboohr 1 each.
+- **Flaky by adapter** (`status: unknown`, re-probed next run): web 23,
+  feed 3, lever 1, linkedin 1.
+- **Live by industry**: software 116, crypto 27, general 20, fintech 7.
 - `status: dead` is honoured everywhere: the Worker generator excludes those
   boards from the shard, and `SourceRegistry.load_sources_file` skips them
   locally (the CI sweep stops spending budget on them). The probe itself
   re-measures dead boards (`include_dead=True`) so a recovered board is
   revived.
 
-- **RSS feeds that yield** (12 live): cryptojobslist-feed, cryptocurrencyjobs,
-  crypto-jobs-feed (crypto.jobs), remoteok, remotive, weworkremotely-feed,
-  arbeitnow, jobicy, jobspresso (`/jobs/feed/`), tokyodev-feed, remote3-feed,
-  Remotive.
-- **ATS boards that yield**: greenhouse (coinbase, ripple, consensys, stripe…),
-  ashby (stellar, uniswap, opensea, alchemy + `ashby-index` for aggregators
-  like solana jobs), lever, workable, workday, bamboohr, smartrecruiters.
-- **JobSpy-pattern boards**: bayt (MENA, needs TLS impersonation via
-  `discovery/tls_fetch.py`), naukri (India, RSA token), indeed incl. Egypt,
-  ziprecruiter (US), glassdoor + google (opportunistic, degrade to []).
-- **Dead — do not re-add without re-probing**: polygon.technology jobs,
-  ethgigs, daojobs, cryptojobsdb, cryptojob.land, consensys.net/careers URL,
-  alchemy.com/jobs URL, stackoverflow.com/jobs (sunset), nftjobs, flexjobs
-  (paywall), talent.io (login), angel/wellfound/toptal/hired/arc/gun
-  (login-gated → manual-only, never automated).
+- **Live boards (measured 2026-10-19)** — every name below is recorded
+  `live` in `data/source_probe.json`; this is a measurement, not a wish list:
+  - **Feeds (12)**: arbeitnow, crypto-jobs-feed, cryptocurrencyjobs,
+    cryptojobslist-feed, jobicy, jobspresso, remote3-feed, remoteok,
+    remotive, Remotive, tokyodev-feed, weworkremotely-feed.
+  - **Greenhouse (70)**: acquia, affirm, airbnb, alphasights, anduril,
+    anthropic, box, brex, carta, checkr, chime, circleci, cloudflare,
+    coalition, cockroachlabs, coinbase, consensys, cribl, customerio,
+    dashlane, datacamp, datadog, dropbox, elastic, fastly, figma, fivetran,
+    gitlab, glean, godaddy, gohiring, grafana, gusto, honeycomb, instacart,
+    intercom, jackson-river-togetherwork, labelbox, launchdarkly, liveperson,
+    lyft, metalab, mixmax, mongodb, newrelic, okta, openzeppelin, pagerduty,
+    pinterest, planetscale, platformsh, reddit, ripple, robinhood, rocketchat,
+    samsara, scaleai, scandit, securityscorecard, sofi, streamnative, stripe,
+    sumologic, togetherai, turing, twilio, udacity, verkada, warp, wizeline.
+  - **Ashby (42 + `ashby-index`)**: alan, alchemy, andela, baseten, braintrust,
+    buffer, capchase, caremessage, cerebras, clerk, close, cognition,
+    cursor-ai, deepgram, elevenlabs, etched, factory, langchain, lightspeed,
+    linear, litmus, llamaindex, matx, midjourney, mux, percona, pika,
+    poolside, posthog, primer, quora, rain-ai, recharge, resend,
+    stellar-board, sunno, supabase, testgorilla, truelogic, uniswap,
+    unstructured, zapier + `ashby-index` (solana-ecosystem-index).
+  - **Lever (9)**: britecore, collabora, contentsquare, envato, kinsta,
+    mindful, offchain-labs, renofi, spotify.
+  - **Tenant boards (8)**: teamtailor 3 (saasglobal, teamtailor-career,
+    teamtailor-softwarefinder-na), recruitee 2 (kodify, recruitee-make),
+    smartrecruiters 1 (ubisoft), personio 1 (personio-vivid),
+    workable 1 (netguru).
+  - **JobSpy-pattern boards that yield (3)**: naukri (India, RSA token),
+    freehire, bdjobs (Bangladesh). `bayt` and `indeed` answer 404 (dead),
+    `glassdoor` answers 403 (flaky); ziprecruiter and google are not
+    configured.
+  - **HTML-scraped `web` boards (25, python-only)**: Aave Careers, Coinbase
+    Careers, Crypto Careers, CryptoJobs, CryptoJobs.com, CryptoJobsList,
+    DeFi Jobs, Dice, Eurojobs, GulfTalent, Remote 💎 Web3 Jobs, Remote3,
+    RemoteLeaf, RemoteMore, Ripple Careers, Solana Ecosystem Jobs, TokyoDev,
+    WUZZUF, Web3 Jobs, Web3.career, Web3internships,
+    Wellfound (formerly AngelList), chainlink-web, jobberman, remotive-web.
+- **Dead — do not re-add without re-probing**: the 404 ATS boards (github,
+  doordash and 100+ others), polygon.technology jobs, ethgigs,
+  consensys.net/careers URL, alchemy.com/jobs URL, and the clean-zero boards
+  (Toptal, Hired, Arc (formerly Vettery), AngelList Talent, useWeb3 Jobs,
+  YCombinator Jobs, CryptoJobsDaily, Degen Crypto Jobs, Gitcoin,
+  Stellar Jobs, Uniswap Careers, OpenSea Careers, RemoteOK web page, …).
+- **Flaky (403 / timeout / DNS / unparseable) — re-probed, but they never
+  yield**: Indeed, Glassdoor, Gun.io, Web3 Talent, JobStreet, JobsDB,
+  Stack Overflow Jobs (sunset), NFT Jobs, FlexJobs (paywall), Talent.io
+  (login), Bayt, BitcoinJobs, Blockchain Job Board, Blocktribe,
+  CryptoJobHunt, CryptoJobLand, CryptoJobsDB, DAO Jobs, Ethereum Jobs,
+  Polygon Ecosystem Jobs, Solidity Jobs, Remote.co, NodeFlair, swissdevjobs,
+  workingnomads, weworkremotely (406), prominentedge (lever timeout).
 - **Feeds without job URLs** (cryptojobs.com) and **private Ashby APIs**
   (chainlink-labs, aave) are intentionally not wired: no stable job identity.
 - Every new board must prove yield before its entry stays: `scan_source`
@@ -93,9 +133,9 @@ probe (`scripts/probe_sources.py`) measured **170 live**, **203 dead** and
 ## Worker source coverage is generated (never hand-kept)
 
 - `worker/scripts/gen_sources.py` emits `worker/src/sources.generated.ts` from
-  `config/sources.yaml`: **146 Worker-runnable + 25 explicitly python-only**
-  (bayt TLS impersonation, naukri RSA, `web` HTML scraping) + **203 dead**
-  (excluded from both shards) = 374 accounted for.
+  `config/sources.yaml`: **149 Worker-runnable + 49 explicitly python-only**
+  (web 48, naukri 1) + **176 dead** (excluded from both shards) = 374
+  accounted for.
 - `--check` mode fails on drift; `tests/test_worker_source_shard.py` enforces it
   in CI. **Never hand-edit `sources.generated.ts`** — edit `sources.yaml`.
 - Worker gotchas that cost real debugging time, documented in
@@ -171,13 +211,14 @@ gives you structural context (callers, dependents, test coverage) that file sear
 ## Deployment (free tiers)
 
 - **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
-  374-source 24h-remote sweep + dry-run apply (LinkedIn sources filtered out,
+  198-source 24h-remote sweep (the 176 dead boards are skipped) + dry-run
+  apply (LinkedIn sources filtered out,
   see LinkedIn status above; manual dispatch without `full` runs apply only).
   Live runs only via manual dispatch with `live`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
 - **Cloudflare Worker** (`worker/`, full pipeline, not just scout): live at
   `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (25 sources)
-  + daily deep sweep (all 146 Worker-runnable) across RSS/JSON/ATS/tenant
+  + daily deep sweep (all 149 Worker-runnable) across RSS/JSON/ATS/tenant
   sources (LinkedIn-guest
   filtered out while disabled, see LinkedIn status above) →
   queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic

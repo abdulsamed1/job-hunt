@@ -554,7 +554,9 @@ async def _probe_all_async(
         results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
         for r in results:
             if isinstance(r, Exception):
-                # A task that could not even be built is still an attempt.
+                # A task that could not even be built never ran: the source is
+                # left out of this ledger (its config status stays as it was)
+                # and is re-probed on the next run.
                 continue
             probes.append(r)
     for e in skip_entries:

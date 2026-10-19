@@ -299,8 +299,12 @@ class UniversalWebAdapter(DiscoveryAdapter):
 
         try:
             response = await client.get(url, headers=headers, timeout=15.0, follow_redirects=True)
-            if response.status_code != 200:
-                return []
+            # A non-success status (or a transport failure) is a FAILED attempt,
+            # not a clean zero: the probe must see the error (flaky -> re-probed
+            # next run) instead of recording an empty board (dead -> dropped
+            # from the shard and the sweep). A page that parses but holds no
+            # job card is a genuine clean zero and still returns [].
+            response.raise_for_status()
 
             html = response.text
             # 1. Try Schema.org JSON-LD
@@ -323,4 +327,6 @@ class UniversalWebAdapter(DiscoveryAdapter):
             return postings
         except Exception as e:
             logger.debug("Web adapter fetch failed for %s (%s): %s", name, url, e)
-            return []
+            # Surface the failure: the registry isolates it per source, the
+            # probe records it as a flaky attempt.
+            raise

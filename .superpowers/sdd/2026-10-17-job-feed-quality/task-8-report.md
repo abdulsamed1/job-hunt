@@ -206,3 +206,124 @@ The two adapter fixes show up in the measurement: `weworkremotely-feed` and
 - `.github/workflows/scheduled-sweep.yml` still says "382-source" in two
   comments; the sweep now runs over 374 configured (203 dead skipped).
 
+
+---
+
+## Review fixes (source-probe fix wave, re-review, 2026-10-19)
+
+The re-review left one Important finding and four Minors, plus two cheap
+out-of-scope observations. All are fixed below; the ledger was re-probed
+because the adapters now surface failures instead of swallowing them.
+
+### Finding 1 (Important): a failed attempt was recorded as a clean zero
+The rule "a failed attempt is flaky, never dead" was implemented only for the
+ATS adapters (greenhouse/lever/ashby/smartrecruiters call `raise_for_status()`).
+The feed/web/recruitee adapters swallowed HTTP and parse errors and returned
+`[]`, so a 5xx/403 there was recorded as a clean zero -> `status: dead` -> the
+board was dropped from the Worker shard and the local/CI sweep until the next
+probe revived it.
+
+- `src/job_hunt/discovery/adapters/feed.py`: `raise_for_status()` replaces the
+  `status_code != 200 -> return []` branch; a body that is neither JSON nor
+  parseable XML now raises `ValueError` (whole-feed parse failure) instead of
+  returning `[]`.
+- `src/job_hunt/discovery/adapters/web.py`: `raise_for_status()` replaces the
+  `status_code != 200 -> return []` branch and the broad
+  `except Exception -> return []` now re-raises. A page that answers 200 but
+  holds no job card is still a genuine clean zero (`[]`).
+- `src/job_hunt/discovery/adapters/recruitee.py`: `raise_for_status()` replaces
+  the `status_code != 200 -> return []` branch.
+- **The ordinary local scan path still tolerates one failing source**: no
+  registry change was needed. `SourceRegistry.scan_source()` already isolates
+  the adapter exception per source (`raise_on_error=False` -> `[]`, the default
+  used by `discover_all()` / `run_discovery_stage()`), and `discover_all()`
+  gathers with `return_exceptions=True`. The probe path
+  (`raise_on_error=True`) is the one that surfaces the error, so the probe
+  records `attempts=1, yielded=0, error=...` -> `flaky` -> `status: unknown`
+  -> re-probed next run.
+- New tests (`tests/test_adapter_failure_surfacing.py`, 13 cases): feed/web/
+  recruitee raise on 5xx; feed raises on an unparseable body; the probe records
+  a 500 feed as `flaky` and a 404 feed as `dead`; `scan_source` isolates the
+  failure and `discover_all` keeps the other sources' postings.
+
+### Finding 2 (Minor): no per-item isolation in the feed adapter's JSON branch
+The item -> posting conversion moved to `FeedAdapter._posting_from_json_item()`
+(mirroring `_posting_from_rss_item()`), and the JSON loop parses each item in
+its own `try/except`, so one malformed posting (e.g. the salary string
+`'$103,913.30. - $120,000.00'`) no longer voids the whole feed. The RSS branch
+already had this.
+
+### Finding 3 (Minor): the sweep count in the operating manual was wrong
+`AGENTS.md` said "daily full 374-source 24h-remote sweep"; the local/CI scan
+skips the dead boards, so it fetches **198** sources (149 Worker-runnable +
+49 python-only). `AGENTS.md` (deployment section) and the two comments in
+`.github/workflows/scheduled-sweep.yml` now say 198 (and 176 dead skipped).
+
+### Finding 4 (Minor): `worker/README.md` listed `indeed` as Worker-runnable
+No indeed source is in the shard (measured dead -> excluded). The split table
+now enumerates exactly what the generator emits: greenhouse 70, ashby 42,
+rss 15, lever 10, teamtailor 3, recruitee 2, smartrecruiters 1, linkedin 1
+(disabled), ashby-index 1, freehire 1, bdjobs 1, personio 1, workable 1 =
+149.
+
+### Finding 5 (Minor): an inaccurate comment in the probe
+`scripts/probe_sources.py` said "A task that could not even be built is still
+an attempt" while the code just `continue`s. The comment now states what the
+code does: the source is left out of that ledger (its config status stays as
+it was) and is re-probed on the next run.
+
+### Observation 6 (Minor): AGENTS.md mixed measured and unmeasured claims
+The "ATS boards that yield" and "JobSpy-pattern boards" lists named boards
+that are dead or not configured at all (`opensea`, `workday`, `bamboohr`,
+`smartrecruiters`, `bayt`, `indeed`, `glassdoor`, `ziprecruiter`, `google`).
+They are replaced by a **live measurement (2026-10-19)** section that only
+names boards the ledger records as `live` (with the count per family), plus
+explicit dead and flaky lists that name the measured verdicts.
+
+### Observation 7 (Minor): the worker shard test floor was stale
+`worker/test/lib.test.ts` said "smaller than the configured 382" and floored
+the shard at >= 150 / >= 100. Reality is 374 configured / 198 in the shards
+(149 worker + 49 python-only): the comment now says 374 and the floors are
+180 / 130 (measured value minus a ~10% margin).
+
+## New ledger summary (after the re-probe)
+
+Probe command: `uv run python scripts/probe_sources.py --apply`
+then `python worker/scripts/gen_sources.py` (+ `--check` -> OK).
+
+| Metric | Value |
+|---|---|
+| Ledger entries (`data/source_probe.json`) | **374** |
+| live | **170** |
+| dead | **176** |
+| flaky (status `unknown`) | **28** — 27 boards that failed this attempt (403 / timeout / DNS / unparseable body) + LinkedIn (disabled, never probed) |
+| live by industry | software 116, crypto 27, general 20, fintech 7 |
+| dead by adapter | greenhouse 60, web 33, lever 44, ashby 19, smartrecruiters 14, recruitee 2, feed 1, bayt/indeed/bamboohr 1 each |
+| flaky by adapter | web 23, feed 3, lever 1, linkedin 1 |
+| config split | 149 worker-runnable + 49 python-only (web 48, naukri 1) + 176 dead = 374 |
+| local/CI sweep | **198** sources fetched (374 - 176 dead) |
+| hourly shard | **25** sources: software 11, general 6, crypto 5, fintech 3 (crypto orgs 2, crypto feeds 3) |
+
+What the re-probe shows: 27 boards that used to be "dead" are now correctly
+`flaky`/`unknown` (403 bot-walls: indeed, glassdoor, gun.io, web3 talent,
+jobstreet, jobsdb, stackoverflow jobs; timeouts: nftjobs, flexjobs, nodeflair,
+remote.co, prominentedge; DNS: cryptojobsdb, dao jobs, cryptojobland, …) and
+one feed per 406/unparseable body: swissdevjobs, workingnomads,
+weworkremotely. They are re-probed next run instead of being dropped from the
+shard and the sweep. The live count is unchanged (170).
+
+## Test output
+
+- `uv run pytest tests/ -q -p no:cacheprovider` -> **399 passed, 1 skipped** (2 warnings).
+- `cd worker && npm test` -> **238 passed** (12 test files).
+- `cd worker && npx tsc --noEmit` -> clean (exit 0).
+- `python worker/scripts/gen_sources.py --check` -> OK: 149 worker sources, 49 python-only.
+
+## Open items (out of the allowed file set)
+
+- The root `README.md` still carries the pre-re-probe numbers (146
+  worker-runnable + 25 python-only + 203 dead, "170 live, 203 dead, 1
+  unknown", "146 worker-runnable", "374 configured (203 dead skipped)"). It was
+  not in this round's allowed file list, so it was left untouched; it needs the
+  same numbers as `AGENTS.md` / `worker/README.md` (149 / 49 / 176, 28
+  unknown, 198-source sweep).
