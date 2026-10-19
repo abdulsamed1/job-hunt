@@ -43,6 +43,7 @@ VALID_TRANSITIONS: Dict[JobState, List[JobState]] = {
         JobState.TAILORED,
         JobState.REJECTED,
         JobState.APPLICATION_STARTED,
+        JobState.PRE_FILTERED_OUT,
     ],
     JobState.REJECTED: [
         JobState.ELIGIBLE,  # re-evaluation override
@@ -50,6 +51,7 @@ VALID_TRANSITIONS: Dict[JobState, List[JobState]] = {
     JobState.TAILORED: [
         JobState.APPLICATION_STARTED,
         JobState.FAILED,
+        JobState.PRE_FILTERED_OUT,
     ],
     JobState.APPLICATION_STARTED: [
         JobState.SUBMITTED,
