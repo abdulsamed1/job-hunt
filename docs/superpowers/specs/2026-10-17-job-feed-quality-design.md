@@ -146,7 +146,10 @@ New `worker/src/lib/roles.ts` exporting `classifyRole(title): { verdict: "softwa
 - **reject (revenue/BD):** `sales`, `business development`, `account executive`, `account manager`,
   `sales development`, `marketing`, `partner(ships)`, `customer success`, `customer support`.
 - **reject (CRM/platform administration, gated by `REJECT_CRM_ROLES`):** `salesforce
-  consultant|architect|administrator|analyst|developer` and the same for other CRM names.
+  consultant|architect|administrator|analyst|developer` and the same for other CRM names. The
+  **plural of a companion is a companion** (`Salesforce Developers` rejects like
+  `Salesforce Developer`); no new vocabulary is added, so a title that names the anchor and a
+  build role but no companion (`Software Engineer, Salesforce Integration`) stays a software role.
 - **reject (non-engineering):** `recruiter`, `talent acquisition`, `human resources`, `accountant`,
   `finance`, `legal`, `nurse`, `medical`, `driver`, `content writer`, `graphic designer`, `intern`.
   The **domain words** (`accountant`, `finance`, `legal`, `nurse`, `medical`) name a field of work,

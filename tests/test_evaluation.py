@@ -554,6 +554,30 @@ def test_pre_filter_leaves_management_and_revenue_titles_alone(engine, candidate
         assert rule in (reason or ""), f"{title}: {reason}"
 
 
+def test_pre_filter_rejects_a_plural_crm_companion(engine, candidate):
+    # The plural of a companion is a companion: "Salesforce Developers" is the
+    # same CRM platform work as "Salesforce Developer" and must reject under
+    # the same rule (the Worker agrees, see worker/test/roles.test.ts).
+    for title in ("Salesforce Developer", "Salesforce Developers"):
+        passed, reason = engine.pre_filter(_role_job(title), candidate)
+        assert passed is False, title
+        assert "crm:salesforce" in (reason or ""), f"{title}: {reason}"
+
+    # The guard against over-broadening: a build role is not a companion, so
+    # "Software Engineer, Salesforce Integration" is a genuine software role
+    # and stays admitted.
+    passed, reason = engine.pre_filter(_role_job("Software Engineer, Salesforce Integration"), candidate)
+    assert passed is True, reason
+
+    # With the CRM toggle off the family does not reject, so the plural title
+    # is admitted too.
+    profile_off = candidate.model_copy(update={"reject_crm_roles": False})
+    passed, reason = engine.pre_filter(_role_job("Salesforce Developers"), profile_off)
+    assert passed is True, reason
+    assert "crm" not in (reason or "").lower()
+    assert "salesforce" not in (reason or "").lower()
+
+
 def test_role_gate_shared_fixtures(engine, candidate):
     """Both runtimes read the same fixture list, so the role gate cannot drift.
 

@@ -93,5 +93,16 @@
     "title": "Software Engineering Internship",
     "verdict": "reject",
     "rule": "non-engineering:intern"
+  },
+  {
+    "name": "crm_plural_companion",
+    "title": "Salesforce Developers",
+    "verdict": "reject",
+    "rule": "crm:salesforce"
+  },
+  {
+    "name": "crm_anchor_with_a_build_role",
+    "title": "Software Engineer, Salesforce Integration",
+    "verdict": "software"
   }
 ]

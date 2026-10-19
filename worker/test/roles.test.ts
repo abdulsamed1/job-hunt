@@ -76,6 +76,9 @@ const CRM = [
   "Salesforce Consultant",
   "Salesforce Architect",
   "Salesforce Administrator",
+  // The plural of a companion is a companion: "Salesforce Developers" is the
+  // same CRM platform work as "Salesforce Developer".
+  "Salesforce Developers",
 ];
 
 describe("classifyRole", () => {
@@ -100,6 +103,26 @@ describe("classifyRole", () => {
     expect(classifyRole("Senior Salesforce Developer", { rejectCrm: false })).toEqual({
       verdict: "software",
       rule: "software:build role",
+    });
+    // The plural behaves the same way: with the gate off the CRM family does
+    // not reject, so "Salesforce Developers" is admitted (it names a build
+    // role, "developers").
+    expect(classifyRole("Salesforce Developers", { rejectCrm: false })).toEqual({
+      verdict: "software",
+      rule: "software:build role",
+    });
+  });
+  it("treats the plural of a CRM companion as a companion", () => {
+    // "Salesforce Developers" is CRM platform work, so it rejects like the
+    // singular does (Python agrees, see tests/test_evaluation.py).
+    expect(classifyRole("Salesforce Developers")).toEqual({ verdict: "reject", rule: "crm:salesforce" });
+    expect(classifyRole("Salesforce Developer")).toEqual({ verdict: "reject", rule: "crm:salesforce" });
+    // The guard against over-broadening: a build role is not a companion, so
+    // "Software Engineer, Salesforce Integration" is a genuine software role
+    // and stays software.
+    expect(classifyRole("Software Engineer, Salesforce Integration")).toEqual({
+      verdict: "software",
+      rule: "software:software",
     });
   });
   it("keeps an IC title that matches no reject family, and rejects management titles", () => {

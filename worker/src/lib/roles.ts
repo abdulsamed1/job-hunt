@@ -120,7 +120,18 @@ const REVENUE: Rule[] = [
 ];
 
 const CRM_ANCHOR = "salesforce";
-const CRM_COMPANIONS = ["consultant", "architect", "administrator", "analyst", "developer"];
+// The plural of a companion is a companion: "Salesforce Developers" is the
+// same CRM platform work as "Salesforce Developer". Only the plural form of a
+// listed companion is added — no new vocabulary — so a title that names the
+// anchor but no companion stays a build role: "Software Engineer, Salesforce
+// Integration" is a genuine software role and must not reject.
+const CRM_COMPANIONS = [
+  "consultant", "consultants",
+  "architect", "architects",
+  "administrator", "administrators",
+  "analyst", "analysts",
+  "developer", "developers",
+];
 const CRM_MATCH: Match = { rule: "crm:salesforce", word: CRM_ANCHOR };
 
 const NON_ENGINEERING: Rule[] = [

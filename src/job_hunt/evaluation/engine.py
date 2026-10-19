@@ -125,11 +125,22 @@ ROLE_REJECT_RULES: List[RoleRejectRule] = [
 # be applied through classify_role_reject, not through this flat list.
 NEGATIVE_ROLE_PATTERNS = [rule.pattern for rule in ROLE_REJECT_RULES]
 
-# CRM implementation roles: Salesforce plus one companion word.
+# CRM implementation roles: Salesforce plus one companion word. The plural of a
+# companion is a companion: "Salesforce Developers" is the same CRM platform
+# work as "Salesforce Developer". Only the plural form of a listed companion is
+# added — no new vocabulary — so a title that names the anchor but no companion
+# stays a build role: "Software Engineer, Salesforce Integration" is a genuine
+# software role and must not reject.
 CRM_ROLE_RULE = RoleRejectRule(
     "crm", "salesforce", "salesforce", re.compile(r"\bsalesforce\b", re.IGNORECASE)
 )
-CRM_ROLE_COMPANIONS = ("consultant", "architect", "administrator", "analyst", "developer")
+CRM_ROLE_COMPANIONS = (
+    "consultant", "consultants",
+    "architect", "architects",
+    "administrator", "administrators",
+    "analyst", "analysts",
+    "developer", "developers",
+)
 
 
 def classify_role_reject(title: str, reject_crm: bool = True) -> Optional[str]:
@@ -532,9 +543,10 @@ class EvaluationEngine:
                 return False, f"Title matches negative filter: {rule.family}:{rule.slug}"
 
         # CRM reject (only when reject_crm is on): salesforce + a companion.
+        # The companion list is the module constant, shared with
+        # classify_role_reject(), so the two cannot drift.
         if reject_crm and re.search(r"\bsalesforce\b", title, re.IGNORECASE):
-            companions = ("consultant", "architect", "administrator", "analyst", "developer")
-            if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in companions):
+            if any(re.search(rf"\b{c}\b", title, re.IGNORECASE) for c in CRM_ROLE_COMPANIONS):
                 return False, "Title matches negative filter: crm:salesforce"
 
         # Check positive SWE role patterns. The IC allow-list stands in for
