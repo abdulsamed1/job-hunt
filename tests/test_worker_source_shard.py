@@ -52,7 +52,7 @@ def test_every_yaml_source_is_accounted_for():
 def test_worker_shard_covers_full_scale():
     """Requirement: full coverage inside Cloudflare, not a 19-entry subset."""
     worker, _python_only, _stats = _load_generator().build()
-    assert len(worker) >= 1, f"only {len(worker)} worker sources"
+    assert len(worker) >= 15, f"only {len(worker)} worker sources"
 
 
 def test_ats_and_feed_sources_are_all_worker_runnable():

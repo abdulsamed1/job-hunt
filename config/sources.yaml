@@ -1277,10 +1277,10 @@ sources:
   industry: crypto
   status: live
 - adapter: greenhouse
-  name: Chainlink Labs Careers
+  name: chainlink-greenhouse
   url: https://boards.greenhouse.io/chainlink
   industry: crypto
-  status: live
+  status: dead
 - name: Binance Careers
   url: https://www.binance.com/en/careers
   adapter: web
@@ -1552,7 +1552,7 @@ sources:
   industry: crypto
   status: dead
 - adapter: web
-  name: Chainlink Labs Careers
+  name: chainlink-web
   url: https://chainlinklabs.com/careers
   industry: crypto
   status: live
@@ -1597,7 +1597,7 @@ sources:
   industry: general
   status: dead
 - adapter: web
-  name: Remotive
+  name: remotive-web
   url: https://remotive.com/
   industry: general
   status: live

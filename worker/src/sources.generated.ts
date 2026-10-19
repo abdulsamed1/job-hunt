@@ -4,7 +4,7 @@
 
 import type { SourceDef } from "./sources.js";
 
-// yaml_total=382 worker_supported=17 python_only=26 hourly=10
+// yaml_total=382 worker_supported=16 python_only=26 hourly=10
 
 export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "industry": "general", "status": "unknown", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"], "tprSeconds": 43200, "hoursOld": 24},
@@ -16,7 +16,6 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "greenhouse", "name": "grafana", "cadence": "hourly", "industry": "software", "status": "live", "org": "grafanalabs", "hoursOld": 24},
   {"kind": "rss", "name": "arbeitnow", "cadence": "hourly", "industry": "general", "status": "live", "url": "https://www.arbeitnow.com/api/job-board-api", "hoursOld": 24},
   {"kind": "rss", "name": "remotive", "cadence": "hourly", "industry": "general", "status": "live", "url": "https://remotive.com/api/remote-jobs?category=software-dev&limit=50", "hoursOld": 24},
-  {"kind": "greenhouse", "name": "Chainlink Labs Careers", "cadence": "6h", "industry": "crypto", "status": "live", "org": "chainlink", "hoursOld": 24},
   {"kind": "rss", "name": "jobspresso", "cadence": "hourly", "industry": "general", "status": "live", "url": "https://jobspresso.co/jobs/feed/", "hoursOld": 24},
   {"kind": "rss", "name": "Remotive", "cadence": "6h", "industry": "general", "status": "live", "url": "https://remotive.com/api/remote-jobs", "hoursOld": 24},
   {"kind": "rss", "name": "cryptojobslist-feed", "cadence": "hourly", "industry": "crypto", "status": "live", "url": "https://api.cryptojobslist.com/jobs.rss", "hoursOld": 24},
@@ -58,9 +57,9 @@ export const PYTHON_ONLY_SOURCES: PythonOnlySource[] = [
   {"name": "Eurojobs", "adapter": "web", "url": "https://www.eurojobs.com/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "TokyoDev", "adapter": "web", "url": "https://www.tokyodev.com/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "https://www.jobberman.com/jobs?q=blockchain", "adapter": "web", "url": "https://www.jobberman.com/jobs?q=blockchain", "industry": "crypto", "status": "live", "hoursOld": 24},
-  {"name": "Chainlink Labs Careers", "adapter": "web", "url": "https://chainlinklabs.com/careers", "industry": "crypto", "status": "live", "hoursOld": 24},
+  {"name": "chainlink-web", "adapter": "web", "url": "https://chainlinklabs.com/careers", "industry": "crypto", "status": "live", "hoursOld": 24},
   {"name": "Coinbase Careers", "adapter": "web", "url": "https://www.coinbase.com/careers", "industry": "crypto", "status": "live", "hoursOld": 24},
   {"name": "Ripple Careers", "adapter": "web", "url": "https://ripple.com/careers/", "industry": "crypto", "status": "live", "hoursOld": 24},
-  {"name": "Remotive", "adapter": "web", "url": "https://remotive.com/", "industry": "general", "status": "live", "hoursOld": 24},
+  {"name": "remotive-web", "adapter": "web", "url": "https://remotive.com/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "web3-career-jsonld", "adapter": "web", "url": "https://web3.career/", "industry": "crypto", "status": "live", "hoursOld": 24},
 ];

@@ -95,14 +95,6 @@
     "verdict": "dead",
     "yielded": 0
   },
-  "Chainlink Labs Careers": {
-    "attempts": 1,
-    "industry": "crypto",
-    "kind": "web",
-    "last_yield_at": "2026-10-18T21:32:09.688065+00:00",
-    "verdict": "live",
-    "yielded": 3
-  },
   "Coinbase Careers": {
     "attempts": 1,
     "industry": "crypto",
@@ -458,10 +450,10 @@
   "Remotive": {
     "attempts": 1,
     "industry": "general",
-    "kind": "web",
+    "kind": "feed",
     "last_yield_at": "2026-10-18T21:32:09.098657+00:00",
     "verdict": "live",
-    "yielded": 21
+    "yielded": 12
   },
   "Ripple Careers": {
     "attempts": 1,
@@ -1022,6 +1014,22 @@
     "last_yield_at": null,
     "verdict": "dead",
     "yielded": 0
+  },
+  "chainlink-greenhouse": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "greenhouse",
+    "last_yield_at": null,
+    "verdict": "dead",
+    "yielded": 0
+  },
+  "chainlink-web": {
+    "attempts": 1,
+    "industry": "crypto",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:09.688065+00:00",
+    "verdict": "live",
+    "yielded": 3
   },
   "characterai": {
     "attempts": 1,
@@ -2430,6 +2438,14 @@
     "last_yield_at": "2026-10-18T21:31:41.697005+00:00",
     "verdict": "live",
     "yielded": 12
+  },
+  "remotive-web": {
+    "attempts": 1,
+    "industry": "general",
+    "kind": "web",
+    "last_yield_at": "2026-10-18T21:32:09.098657+00:00",
+    "verdict": "live",
+    "yielded": 21
   },
   "render": {
     "attempts": 1,

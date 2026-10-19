@@ -20,6 +20,8 @@ from job_hunt.settings import linkedin_enabled
 
 import yaml
 
+import httpx
+
 ORG_ADAPTERS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
 FEED_ADAPTERS = {"feed"}
 ORG_KINDS = {"greenhouse", "lever", "ashby", "smartrecruiters"}
@@ -387,11 +389,21 @@ def apply_verdicts(
         if entry.get("adapter") == "linkedin":
             continue
         name = entry.get("name")
-        info = ledger.get(name) if isinstance(ledger, dict) else None
+        adapter = entry.get("adapter")
+        info = None
+        if isinstance(ledger, dict):
+            candidate = ledger.get(name)
+            if isinstance(candidate, dict):
+                cand_kind = candidate.get("kind", candidate.get("adapter"))
+                # Belt-and-braces: never conflate same-named entries that use
+                # different adapters. A missing kind (legacy ledger) is allowed.
+                if cand_kind in (None, "", adapter):
+                    info = candidate
         if info is None and probes is not None:
             for p in probes:
-                if _name(p) == name:
-                    info = {"verdict": getattr(p, "verdict", None) if not isinstance(p, dict) else p.get("verdict")}
+                if _name(p) == name and _kind(p) == adapter:
+                    info = {"verdict": getattr(p, "verdict", None) if not isinstance(p, dict) else p.get("verdict"),
+                            "kind": _kind(p)}
                     break
         if not isinstance(info, dict):
             continue
@@ -413,7 +425,8 @@ def apply(*a, **kw):
 def _probe_one(entry, client, semaphore, hours_old, remote):
     async def _run():
         registry = SourceRegistry()
-        postings = await registry.scan_source(entry, client, semaphore)
+        async with semaphore:
+            postings = await registry.scan_source(entry, client, asyncio.Semaphore(10_000))
         if remote:
             postings = _freshness.filter_recent(postings, hours_old)
             postings = _freshness.filter_remote(postings)
@@ -466,7 +479,7 @@ async def _probe_all_async(
 
     semaphore = asyncio.Semaphore(max_concurrency)
     probes: List[SourceProbe] = []
-    async with __import__("httpx").AsyncClient(headers={"User-Agent": "JobHuntAgent/1.0"}) as client:
+    async with httpx.AsyncClient(headers={"User-Agent": "JobHuntAgent/1.0"}) as client:
         tasks = []
         skip_entries = []
         for kind, e in filtered:
