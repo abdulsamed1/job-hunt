@@ -368,6 +368,7 @@ export default {
       // Feed-quality counters from the jobs/counter view: dated vs proxy
       // freshness, plus the gate counters. Computed from stored rows when
       // available, with aggregate fallbacks for pre-aggregated test doubles.
+      const rejectCrm = env.REJECT_CRM_ROLES !== "false";
       let datedFresh = 0;
       let proxyFresh = 0;
       const softwareCompanies = new Set<string>();
@@ -385,7 +386,12 @@ export default {
           if (state === "PRE_FILTERED_OUT" || state === "DUPLICATE") continue;
           if (String(j?.source ?? "").toLowerCase().startsWith("greenhouse:")) proxyFresh++;
           else datedFresh++;
-          if (j?.company) softwareCompanies.add(String(j.company));
+          // live_software counts distinct companies with a software-verdict
+          // posting in the 24h window: re-classify each surviving row's title
+          // with the role gate rather than trusting any stored verdict.
+          if (j?.company && classifyRole(String(j?.title ?? ""), { rejectCrm }).verdict === "software") {
+            softwareCompanies.add(String(j.company));
+          }
         }
       }
       const counters: Record<string, number> = {

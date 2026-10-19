@@ -98,3 +98,18 @@ def test_no_stale_counts():
     docs = _all_docs()
     for stale in ("298 Active", "62 passed", "201 Active", "FreeLLM Structured"):
         assert stale not in docs, f"stale documentation string: {stale}"
+
+
+def test_docs_document_the_24h_window_and_role_gate():
+    """Feed-quality guarantees: 24h window + software-only role gate must be documented."""
+    docs = _all_docs()
+    assert "24h" in docs or "24 hours" in docs or "24-hour" in docs
+    assert "role gate" in docs.lower() or "role_gate" in docs.lower()
+    assert "role_rejected" in docs
+
+
+def test_docs_document_the_coverage_counters():
+    """GET /coverage counters must all be documented."""
+    docs = _all_docs()
+    for counter in ("dated_fresh", "proxy_fresh", "dateless_dropped", "duplicate_suppressed", "role_rejected", "live_software"):
+        assert counter in docs, f"docs never mention coverage counter {counter}"
