@@ -48,7 +48,7 @@ There is no per-stage retry loop in the Worker; queue retries are
 ## Source shard
 
 `config/sources.yaml` is the source of truth. 375 entries → 206 in the
-shard → 146 yielding usable postings at the last probe (2026-10-21); 169 dead
+shard → 147 yielding usable postings at the last probe (2026-10-21); 169 dead
 boards are excluded from polling but remain probe-able.
 
 ```bash
@@ -149,7 +149,7 @@ document (or `/master`). The PDF is written to
 
 ```bash
 npm ci
-npm test                 # 296 tests
+npm test                 # 304 tests
 npx tsc --noEmit
 node scripts/gen_sources.mjs
 node scripts/probe_sources.mjs --apply
@@ -169,6 +169,11 @@ missing/invalid master resume pointer, or a transport error; quiet boards warn.
 - Discover consumer `max_batch_size = 1`: one source per invocation so
   `INTAKE_CAP` postings fit the subrequest budget.
 - `wrangler d1 execute` needs `--remote`; retry transient `fetch failed`.
+- `wrangler deploy` fails with "The request to Cloudflare's API timed out" when
+  the local route to some `api.cloudflare.com` anycast IP is broken (TCP connect
+  hangs past undici's 10s connect timeout). Check with
+  `node -e "fetch('https://api.cloudflare.com/client/v4/')"`; retry, or pin the
+  host to a healthy edge IP. The Worker's own endpoints are unaffected.
 - `web` boards whose postings only exist after a client-side API call return
   an empty list (no browser on the Worker). JSON-LD, server-rendered links and
   `__NEXT_DATA__`/`var Stash` hydrated state are supported.

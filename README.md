@@ -61,8 +61,8 @@ Measured on 2026-10-21 (Worker probe, all 375 boards):
 |---|---|
 | Configured in YAML | **375** |
 | Worker-runnable (non-dead, in the shard) | **206** |
-| Yielding ≥1 usable posting at any age | **146** |
-| Quiet / flaky (still in the shard, re-probed) | **60** |
+| Yielding ≥1 usable posting at any age | **147** |
+| Quiet / flaky (still in the shard, re-probed) | **59** |
 | Dead (404/410 or excluded, not polled) | **169** |
 
 Kinds on the Worker: `greenhouse`, `ashby`, `lever`, `rss`/feed,

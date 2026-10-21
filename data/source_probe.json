@@ -1,14 +1,14 @@
 {
   "Aave Careers": {
     "attempts": 1,
-    "error": "transport: timeout",
+    "error": "",
     "fatal": false,
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.366Z",
-    "verdict": "flaky",
-    "yielded": 0
+    "probed_at": "2026-10-21T20:39:27.642Z",
+    "verdict": "live",
+    "yielded": 17
   },
   "Alchemy Jobs": {
     "attempts": 1,
@@ -50,7 +50,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.642Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -72,7 +72,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -94,7 +94,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -116,7 +116,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -138,7 +138,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -160,7 +160,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 120
   },
@@ -182,7 +182,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -193,7 +193,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -204,9 +204,9 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
-    "yielded": 120
+    "yielded": 5
   },
   "CryptoJobs": {
     "attempts": 1,
@@ -215,7 +215,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 10
   },
@@ -226,7 +226,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 20
   },
@@ -237,7 +237,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -259,7 +259,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -270,7 +270,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -292,7 +292,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 33
   },
@@ -314,9 +314,9 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
-    "verdict": "live",
-    "yielded": 120
+    "probed_at": "2026-10-21T20:39:27.643Z",
+    "verdict": "dead",
+    "yielded": 0
   },
   "Ethereum Jobs": {
     "attempts": 1,
@@ -325,7 +325,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -336,7 +336,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 70
   },
@@ -347,7 +347,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -369,7 +369,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -380,7 +380,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -391,7 +391,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -424,7 +424,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -435,7 +435,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -457,7 +457,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -479,7 +479,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -490,7 +490,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -512,7 +512,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 1
   },
@@ -523,7 +523,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -545,7 +545,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 9
   },
@@ -556,7 +556,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 1
   },
@@ -567,7 +567,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -578,7 +578,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 40
   },
@@ -589,9 +589,9 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
-    "yielded": 26
+    "yielded": 37
   },
   "RemoteMore": {
     "attempts": 1,
@@ -600,7 +600,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "dead",
     "yielded": 0
   },
@@ -633,7 +633,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 9
   },
@@ -655,7 +655,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 19
   },
@@ -666,7 +666,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -688,7 +688,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 1
   },
@@ -699,7 +699,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -710,7 +710,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -754,7 +754,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 1
   },
@@ -765,7 +765,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 12
   },
@@ -787,7 +787,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 39
   },
@@ -798,7 +798,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -809,7 +809,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 1
   },
@@ -820,7 +820,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 40
   },
@@ -831,7 +831,7 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.374Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 21
   },
@@ -1403,7 +1403,7 @@
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.375Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
     "yielded": 5
   },
@@ -2234,14 +2234,14 @@
   },
   "https://www.jobberman.com/jobs?q=blockchain": {
     "attempts": 1,
-    "error": "transport: timeout",
+    "error": "",
     "fatal": false,
     "industry": "crypto",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.375Z",
-    "verdict": "flaky",
-    "yielded": 0
+    "probed_at": "2026-10-21T20:39:27.643Z",
+    "verdict": "live",
+    "yielded": 11
   },
   "hudson-river": {
     "attempts": 1,
@@ -2525,7 +2525,7 @@
     "industry": "general",
     "kind": "linkedin",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.375Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -2536,7 +2536,7 @@
     "industry": "general",
     "kind": "linkedin",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.375Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "flaky",
     "yielded": 0
   },
@@ -3317,9 +3317,9 @@
     "industry": "general",
     "kind": "web",
     "last_yield_at": null,
-    "probed_at": "2026-10-21T19:31:13.376Z",
+    "probed_at": "2026-10-21T20:39:27.643Z",
     "verdict": "live",
-    "yielded": 22
+    "yielded": 21
   },
   "render": {
     "attempts": 1,

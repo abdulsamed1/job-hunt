@@ -40,7 +40,7 @@ cron hourly (25) + 6-hourly (200)
 
 - `config/sources.yaml` is the single source of truth. **375** entries:
   **206 Worker-runnable** (in the shard) + **169 dead** (not polled).
-  Measured live on 2026-10-21: **146** (≥1 usable posting at any age); 60
+  Measured live on 2026-10-21: **147** (≥1 usable posting at any age); 59
   quiet/flaky boards stay in the shard and are re-probed.
 - `worker/scripts/gen_sources.mjs` emits `worker/src/sources.generated.ts` and
   fails when an adapter has no Worker implementation. Never hand-edit the
