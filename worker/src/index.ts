@@ -12,11 +12,11 @@
  *   LinkedIn submits + CAPTCHA jobs stay human-queued.
  */
 
-import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
+import { GENERATED_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, filterTargetGeoList, HOURS_OLD, parsePostedAt } from "./lib/freshness.js";
-import { applyToAts, evaluateJob } from "./stages/pipeline.js";
+import { applyDisposition, applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { discoverSource, linkedinEnabled, NO_DATE_DETAIL, runDiscoverStage } from "./stages/discover.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
@@ -39,7 +39,6 @@ export interface Env {
   TPR_SECONDS?: string;
   INTAKE_CAP?: string;
   THRESHOLD?: string;
-  REQUIRE_LINKEDIN_APPROVAL?: string;
   LINKEDIN_ENABLED?: string;
   REJECT_CRM_ROLES?: string;
   LIVE_APPLY?: string;
@@ -52,10 +51,13 @@ export interface Env {
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_EVENTS?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
-  REZI_MCP_TOKEN?: string;
 }
 
-const SOURCES: SourceDef[] = GENERATED_SOURCES;
+// Every supported source ships, with its status. The pipeline runs only
+// non-dead ones; /probe can still reach a dead board so it can be promoted
+// back into the shard without a special build.
+const ALL_SOURCES: SourceDef[] = GENERATED_SOURCES;
+const SOURCES: SourceDef[] = ALL_SOURCES.filter((s) => s.status !== "dead");
 
 /** How many job rows GET /coverage reads in its window. The window bounds the
  *  query; this bounds the answer, so a store with a broken discovered_at
@@ -270,6 +272,19 @@ export default {
             if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
             continue;
           }
+          // Direct ATS submission is only attempted where the contract is
+          // known to work. Greenhouse's board API requires a per-company API
+          // key (unauthenticated POST is 401), and Ashby's submit contract is
+          // not pinned; those postings are queued for the human instead of
+          // being reported as failed attempts that never reached the employer.
+          if (live && (!approved || board.kind === "ashby")) {
+            const queuedDetail = board.kind === "ashby"
+              ? "ashby: live submit not pinned — apply manually"
+              : `${board.kind}: live submission not approved — apply manually`;
+            await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
+            continue;
+          }
           await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored("application attempt started"));
           const names = profile.fullName.split(/\s+/);
           const result = await applyToAts(
@@ -279,14 +294,17 @@ export default {
               email: profile.email, phone: profile.phone,
               resumeBytes: resumeBytes, resumeFilename: "cv.pdf",
             },
-            { dryRun: !live, approved },
+            { dryRun: !live, approved: true },
           );
-          const submitted = result.ok && live && approved;
-          const finalState: JobState = submitted ? "SUBMITTED" : live ? "FAILED" : "APPLICATION_STARTED";
-          // The terminal event is distinct from the attempt event so it is
-          // never deduped away, and dry runs report their real outcome.
-          const terminalEvent: WorkerEvent = submitted ? "SUBMITTED" : live ? "FAILED" : "DRY_RUN";
-          await saveApplication(db, m.hash, finalState, result.detail, key);
+          const disposition = applyDisposition(result, live);
+          // A captcha/credential refusal is a manual-apply queue, not a
+          // failure; only a real transport/validation failure is FAILED. The
+          // terminal event is distinct from the attempt event so it is never
+          // deduped away, and dry runs report their real outcome.
+          const terminalEvent: WorkerEvent = disposition.manual
+            ? "APPLICATION_ATTEMPT"
+            : disposition.state === "SUBMITTED" ? "SUBMITTED" : disposition.state === "FAILED" ? "FAILED" : "DRY_RUN";
+          await saveApplication(db, m.hash, disposition.state, result.detail, key);
           const notified = await notifyEventOnce(db, env, "worker", m.hash, terminalEvent, row, scored(result.detail));
           if (notified !== "sent") console.log(`telegram notify ${notified} for ${m.hash} (${terminalEvent})`);
         }
@@ -426,7 +444,6 @@ export default {
       const liveSoftware = softwareCompanies.size;
       return Response.json({
         configured_worker_sources: SOURCES.length,
-        python_only_sources: PYTHON_ONLY_SOURCES.length,
         sources_attempted: rows?.configured ?? 0,
         sources_yielding: rows?.yielding ?? 0,
         total_attempts: rows?.attempts ?? 0,
@@ -445,7 +462,8 @@ export default {
       for (const s of SOURCES) byKind[s.kind] = (byKind[s.kind] || 0) + 1;
       return Response.json({
         worker_sources: SOURCES.length,
-        python_only_sources: PYTHON_ONLY_SOURCES.length,
+        configured_sources: ALL_SOURCES.length,
+        dead_sources: ALL_SOURCES.length - SOURCES.length,
         hourly_shard: SOURCES.filter((s) => s.cadence === "hourly").length,
         by_kind: byKind,
       });
@@ -453,7 +471,7 @@ export default {
     if (url.pathname === "/probe" && request.method === "POST") {
       // Read-only yield probe: runs one source's fetch + filters, writes nothing.
       const body: any = await request.json().catch(() => ({}));
-      const def = SOURCES.find((s) => s.name === body.name);
+      const def = ALL_SOURCES.find((s) => s.name === body.name);
       if (!def) return Response.json({ error: "unknown source" }, { status: 404 });
       try {
         const jobs = await discoverSource(def, env);
@@ -471,8 +489,14 @@ export default {
         const geo = filterTargetGeoList(
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
+        // Liveness is "yields a usable posting at any age"; the 24h window
+        // gates the feed, not the board. A monthly board is alive, not dead.
+        const geoAnyAge = filterTargetGeoList(
+          jobs.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
+        );
         return Response.json({
           name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length,
+          usable_any_age: geoAnyAge.length,
           usable_fresh: geo.length, remote_fresh: remote.length,
           degraded: detectDegraded(geo, def.url || "", def.kind || ""),
           sample: geo.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),

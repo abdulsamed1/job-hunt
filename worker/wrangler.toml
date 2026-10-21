@@ -57,11 +57,9 @@ TPR_SECONDS = "43200"
 INTAKE_CAP = "150"
 THRESHOLD = "70"
 # Safety defaults: everything is dry-run unless a human flips these.
-REQUIRE_LINKEDIN_APPROVAL = "true"
 # LinkedIn DISCOVERY is on (guest endpoints, no account). Applying through the
-# owner's LinkedIn account stays off by design: a LinkedIn row is queued for
-# the human in the tailor-apply stage, and the Python engine refuses a LinkedIn
-# posting before it ever launches a browser.
+# owner's LinkedIn account stays off by design: the tailor-apply stage queues a
+# LinkedIn row for the human and never calls an ATS client.
 LINKEDIN_ENABLED = "true"
 LIVE_APPLY = "false"
 APPROVE_GREENHOUSE = "false"
@@ -71,6 +69,6 @@ REJECT_CRM_ROLES = "true"
 # Telegram event allowlist (comma-separated). Default: the outcome events only
 # (the stage events SEEKING/FILTERED/ELIGIBLE/TAILORED stay silent).
 TELEGRAM_EVENTS = "APPLICATION_ATTEMPT,SUBMITTED,DRY_RUN,FAILED,STAGE_FAILED"
-# Secrets (never commit): wrangler secret put REZI_MCP_TOKEN
-# Optional: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
-# Pipeline identity: wrangler secret put PROFILE_JSON  (or set [vars] below)
+# Secrets (never commit): PROFILE_JSON, MASTER_RESUME_SHA,
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_WEBHOOK_SECRET.
+# Set with: npx wrangler secret put <NAME>

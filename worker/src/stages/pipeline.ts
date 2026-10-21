@@ -158,3 +158,20 @@ export async function applyToAts(
 export function freshWithin(postedAt: unknown, hoursOld: number): boolean {
   return isFresh(postedAt, hoursOld) !== false;
 }
+
+/** What a live attempt means for the application state.
+ *
+ * A board that refuses automation (captcha, missing API credentials, an
+ * unpinned contract) is not a failure: nothing was submitted, and the posting
+ * still deserves a human's one-click apply. Only a transport/validation
+ * failure that a retry could not fix is FAILED. */
+export function applyDisposition(
+  result: ApplyResult, live: boolean,
+): { state: "SUBMITTED" | "FAILED" | "APPLICATION_STARTED"; manual: boolean } {
+  if (!live) return { state: "APPLICATION_STARTED", manual: false };
+  if (result.ok) return { state: "SUBMITTED", manual: false };
+  if (/captcha|401|403|unauthorized|basic auth|requires auth|not pinned|access denied/i.test(result.detail)) {
+    return { state: "APPLICATION_STARTED", manual: true };
+  }
+  return { state: "FAILED", manual: false };
+}

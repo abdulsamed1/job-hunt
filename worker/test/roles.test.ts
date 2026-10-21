@@ -170,9 +170,9 @@ describe("classifyRole", () => {
     expect(classifyRole("Sales Engineer")).toEqual({ verdict: "reject", rule: "revenue:sales" });
     expect(classifyRole("Compliance Manager, BSA/AML Program")).toEqual({ verdict: "reject", rule: "people-management:manager" });
   });
-  it("matches the shared Python/Worker role-gate fixtures", () => {
+  it("matches the shared role-gate parity fixtures", () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const fixture = join(here, "..", "..", "tests", "fixtures", "role_gate_cases.json");
+    const fixture = join(here, "fixtures", "role_gate_cases.json");
     const cases = JSON.parse(readFileSync(fixture, "utf8")) as Array<{
       name: string;
       title: string;

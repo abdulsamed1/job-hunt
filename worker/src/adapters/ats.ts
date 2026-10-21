@@ -3,7 +3,7 @@
 
 import { fetchJson, fetchText, type RawJob } from "./http.js";
 
-export async function fetchGreenhouseBoard(org: string, limit = 40): Promise<RawJob[]> {
+export async function fetchGreenhouseBoard(org: string, limit = 300): Promise<RawJob[]> {
   const data: any = await fetchJson(`https://boards-api.greenhouse.io/v1/boards/${org}/jobs`);
   const out: RawJob[] = [];
   for (const j of (data && data.jobs) || []) {
@@ -24,7 +24,7 @@ export async function fetchGreenhouseBoard(org: string, limit = 40): Promise<Raw
   return out;
 }
 
-export async function fetchLeverBoard(org: string, limit = 40): Promise<RawJob[]> {
+export async function fetchLeverBoard(org: string, limit = 300): Promise<RawJob[]> {
   const data: any = await fetchJson(`https://api.lever.co/v0/postings/${org}?mode=json`);
   const out: RawJob[] = [];
   for (const j of Array.isArray(data) ? data : []) {
@@ -45,7 +45,7 @@ export async function fetchLeverBoard(org: string, limit = 40): Promise<RawJob[]
   return out;
 }
 
-export async function fetchAshbyBoard(org: string, limit = 40): Promise<RawJob[]> {
+export async function fetchAshbyBoard(org: string, limit = 300): Promise<RawJob[]> {
   const data: any = await fetchJson(
     `https://api.ashbyhq.com/posting-api/job-board/${org}?includeCompensation=true`,
   );
@@ -70,7 +70,7 @@ export async function fetchAshbyBoard(org: string, limit = 40): Promise<RawJob[]
   return out;
 }
 
-export async function fetchSmartRecruitersBoard(org: string, limit = 40): Promise<RawJob[]> {
+export async function fetchSmartRecruitersBoard(org: string, limit = 300): Promise<RawJob[]> {
   const data: any = await fetchJson(
     `https://api.smartrecruiters.com/v1/companies/${org}/postings?limit=100`,
   );

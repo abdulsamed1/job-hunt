@@ -17,7 +17,10 @@ export type SourceKind =
   | "recruitee"
   | "personio"
   | "bamboohr"
-  | "workable";
+  | "workable"
+  | "web"
+  | "bayt"
+  | "naukri";
 
 export type Cadence = "hourly" | "6h";
 

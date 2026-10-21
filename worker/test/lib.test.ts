@@ -378,9 +378,9 @@ describe("scoreJob disability-targeting gate", () => {
     expect(r.reasoning).toMatch(/disabilit/i);
   });
 
-  it("matches the shared Python/Worker parity fixtures", () => {
+  it("matches the shared role-gate parity fixtures", () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const fixture = join(here, "..", "..", "tests", "fixtures", "disability_gate_cases.json");
+    const fixture = join(here, "fixtures", "disability_gate_cases.json");
     const cases = JSON.parse(readFileSync(fixture, "utf8")) as Array<{
       name: string;
       title: string;
@@ -437,15 +437,12 @@ describe("ashby index fan-out", () => {
 
 describe("generated source shard", () => {
   it("ships the full source set with hourly shard under the batch cap", async () => {
-    const { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } = await import("../src/sources.generated.js");
-    // Dead boards (status: dead) are excluded from the shard, so the shipped
-    // set is smaller than the configured 374: 198 boards are not dead (149
-    // Worker-runnable + 49 python-only). The floor is that non-dead count minus
-    // margin; a drop below it means a mass regression or an over-aggressive
-    // probe. The measured *live* count is 170 (see AGENTS.md) and is not what
-    // these floors assert.
-    expect(GENERATED_SOURCES.length + PYTHON_ONLY_SOURCES.length).toBeGreaterThanOrEqual(180);
-    expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(130);
+    const { GENERATED_SOURCES } = await import("../src/sources.generated.js");
+    // The Worker is the only runtime: every non-dead source in the YAML has a
+    // Worker adapter, so the shard is the whole configured-not-dead set (200
+    // of 375 at the 2026-10-21 probe). A drop below it means a mass regression
+    // or an over-aggressive probe; the measured *live* count is 169.
+    expect(GENERATED_SOURCES.length).toBeGreaterThanOrEqual(200);
     const hourly = GENERATED_SOURCES.filter((s) => s.cadence === "hourly");
     expect(hourly.length).toBeGreaterThan(0);
     expect(hourly.length).toBeLessThanOrEqual(40);

@@ -1,336 +1,210 @@
-# Autonomous Job Application Agent for Software Engineers
+# jobhunt — 24/7 autonomous job search on Cloudflare Workers
 
-An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, and browser-automated submission engine operating at **$0 marginal cost** for Senior Backend, Distributed Systems, and Infrastructure Software Engineers.
+Discovery, deterministic evaluation and application preparation for software
+roles — remote anywhere, or on-site/hybrid/remote in Egypt — running entirely
+on the Cloudflare free tier. No server, no browser, no paid APIs, nothing to
+keep running on a laptop.
 
----
+Live deployment: `https://jobhunt.habdulsamed777.workers.dev`
 
-## High-Level Architecture
+## What runs where
+
+| Piece | Cloudflare service | Purpose |
+|---|---|---|
+| Pipeline | Worker (`worker/src`) | fetch sources, filter, score, build application packages |
+| State | D1 (`jobhunt`) | jobs, evaluations, applications, source health, counters |
+| Resumes | R2 (`jobhunt-cvs`) | master PDF (`cvs/master/<sha>.pdf`) |
+| Fan-out | Queues | discover → evaluate → tailor/apply, one source per message |
+| Schedule | Cron triggers | hourly scout (25 sources) + 6-hourly deep sweep (200 sources) |
+| Alerts | Telegram | outcome events only; inbound PDF updates the master resume |
+| Ledger | `data/source_probe.json` + `config/sources.yaml` | measured source status |
+
+## Pipeline
 
 ```
-                [375 Configured Sources & Job Boards]
-     (150 Worker-runnable + 50 Python-only + 175 dead; LinkedIn guest search
-      [discovery only, apply is manual], Greenhouse, Ashby,
-      Lever, SmartRecruiters, RSS/JSON, Indeed, Bayt, Naukri, HTML scrape)
-                                                │
-                                                ▼
-                                    [High-Throughput Discovery]
-                                    (500+ daily quota, anti-429 rotation)
-                                                │
-                                                ▼
-                             [Normalization & Multi-Signal Deduplication]
-                       (RFC 3986 canonical URL + role fingerprint + content hash)
-                                                │
-                          ┌─────────────────────┴─────────────────────┐
-                          ▼                                           ▼
-                 [Duplicate Detected]                        [Fresh Requisition]
-             (Provenance Recorded, Stop)                              │
-                                                                      ▼
-                                                         [Zero-Token Liveness Filter]
-                                                        (Zero-token 404 / closed check)
-                                                                      │
-                                                                      ▼
-                                                      [Deterministic Pre-Filtering]
-                                                     (Positive SWE regex, negative role filter)
-                                                                      │
-                                                                      ▼
-                                                      [Deterministic Evaluation]
-                                          (skills alignment, seniority, location,
-                                       sponsorship, work-auth, language, blocked lists)
-                                                                      │
-                          ┌───────────────────────────────────────────┴───────────────────────┐
-                          ▼                                                                   ▼
-                [Fit Score < 70%]                                                    [Fit Score >= 70%]
-             (State: REJECTED, Stop)                                                 (State: ELIGIBLE)
-                                                                                              │
-                                                                                              ▼
-                                                                                  [Fact-Preserving CV Stamping]
-                                                                   (Master PDF copy + visible skill line)
-                                                                                              │
-                                                                                              ▼
-                                                                                   [Playwright Stealth Engine]
-                                                                               (Same-tab nav, cookie bypass, iframes)
-                                                                                              │
-                                                                                              ▼
-                                                                                   [Multi-Step Form Filling]
-                                                                                (Precision selectors, questionnaires)
-                                                                                              │
-                                                                                              ▼
-                                                                                  [Autonomous Submission & Proof]
-                                                                                (Screenshot proof + DOM confirmation)
-                                                                                              │
-                                                                                              ▼
-                                                                             [Mission Control Web UI Dashboard]
-                                                                             (http://localhost:8000 // DESIGN.md)
-```
-
----
-
-## Core Capabilities & Operational Moats
-
-### 1. High-Throughput Multi-ATS Discovery (375 Configured Sources)
-- **Extensive ATS Coverage**: Native adapters for **LinkedIn** (guest search only — discovery, never apply), **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
-- **Dedicated LinkedIn Guest Scraper** (discovery only — no account, no cookies, no login): pagination against the public guest search endpoint (`seeMoreJobPostings/search`) with adaptive backoff and anti-429 pacing. Two standing targets, past-12h window (`f_TPR=r43200`): remote worldwide (`geoId=92000000`) and Egypt (`geoId=106155005`, on-site/hybrid/remote), across the build-role queries (Backend, Full stack, Software Engineer, React, Node.js, TypeScript, JavaScript, Forward Deployed Engineer). Applying through the owner's LinkedIn account is never automated — the browser engine refuses a LinkedIn posting before it launches, and the Worker queues it for the human. Note: `linkedin.com/robots.txt` disallows automated access, so the Python registry skips LinkedIn and the Worker guest fetcher is the only intake (the owner's accepted trade-off: no account is touched).
-- **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
-- **Coverage is measured, not assumed**: the live probe (`scripts/probe_sources.py`) measured every configured source on 2026-10-21 — **169 live**, **175 dead**, **31 unknown** (boards that failed this attempt, plus the two LinkedIn sources robots.txt refuses). Liveness = the source yields at least one usable posting at any age: remote anywhere, placed in Egypt (on-site, hybrid or remote), or unknown location; the 24h window gates the feed, not the source, and the geography gate is the shipped `--target-geo` policy, so an Egypt on-site board counts. The dead boards answer 404/410 or never yield a usable posting (GitHub, DoorDash and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone); they are excluded from the generated shard, which leaves 200 boards for the local and CI sweep to fetch. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
-
-## What the feed now guarantees
-
-- Only software-engineering roles are surfaced or applied to: the role gate
-  rejects sales, BD, marketing, people-management and CRM-consulting titles
-  (stored as `PRE_FILTERED_OUT`, counted in `role_rejected`). A domain word
-  (`accountant`, `finance`, `legal`, `medical`) rejects only when the title
-  names no engineering build role, so `Full Stack Engineer - Finance` and
-  `AI Engineer, Legal & Compliance` stay in the feed while `Senior Accountant`
-  and `Legal Counsel` do not.
-- Every surfaced posting is within the last 24 hours by the best date its source
-  provides; dateless postings are stored for the record, counted in
-  `dateless_dropped`, and never scored or applied.
-- One requisition produces at most one application and one notification, across
-  boards, via the role fingerprint (counted in `duplicate_suppressed`).
-- `GET /coverage` distinguishes `dated_fresh` (real posting date within 24h) from
-  `proxy_fresh` (greenhouse rows whose `posted_at` came from `updated_at`), and
-  reports `live_software` (distinct companies with a software-verdict posting in
-  the last 24h) plus the gate counters.
-
-### 2. Multi-Signal Deduplication & Provenance
-- **Canonical URL Normalization**: Strips RFC 3986 tracking parameters (`utm_*`, `gh_src`, `ref`, `source`, `fbclid`).
-- **Role Identity Fingerprinting**: Normalizes corporate legal variants (`Stripe, Inc.` $\to$ `stripe`), cleans title synonyms, and hashes normalized job location.
-- **Provenance Ledger**: Retains full cross-channel discovery history without re-processing duplicates.
-
-### 3. Zero-Token Liveness & Repost Detection
-- **Liveness Gate**: Performs fast HTTP HEAD/GET checks to immediately filter out 404s, expired postings, and filled jobs before spending LLM tokens.
-- **Stale Job / Repost Detector**: Detects recycled requisitions across dates and avoids applying to expired reposts.
-
-### 4. Honest ATS Tailoring (no hidden text)
-- **Single Source of Truth**: The candidate master PDF is strictly preserved. Tailoring writes a *copy*; the master is never modified.
-- **Visible verified-skill line only**: `append_keyword_line` appends one visible line containing **only skills already verified on the profile**. No white text, no 1pt stamps, no invisible layers, no keyword stuffing.
-- **Gaps stay missing**: Skills the candidate does not have are never added to reach a match count.
-- **Text-layer verification**: `verify_pdf_text_layer` confirms what a real ATS parser would extract, so claims are checked rather than assumed.
-- **Why this is deliberate**: hidden text and keyword stuffing are never used — they produce rejections, misrepresent the candidate, and violate the standing rule in [`AGENTS.md`](AGENTS.md).
-
-### 5. Robust Browser Automation Engine
-- **Anti-Bot Stealth**: Injects evasions to neutralize `navigator.webdriver`, mock runtime plugins, and bypass client-side bot detection.
-- **Same-Tab Navigation (`_drop_new_tabs`)**: Strips `target="_blank"` and traps `window.open` calls so navigation stays within the active Playwright session.
-- **Cookie Consent Dismissal**: Automatically detects and dismisses OneTrust, Cookiebot, and GDPR overlays preventing click-interception errors.
-- **IFrame Traversal**: Detects embedded application forms inside iframes (common in Greenhouse and Workable widgets) and operates directly in the child frame.
-- **Multi-Step Stepper Progression**: Detects "Next", "Continue", and "Review" buttons across multi-page forms, dynamically filling questionnaires until the final submit button is reached.
-- **Proof-of-Submission**: Automatically captures high-resolution screenshots of submission confirmation pages and stores them in `data/screenshots/`.
-
-### 6. Mission Control Web UI Dashboard
-- **Dark-Mode First Design System ([`DESIGN.md`](DESIGN.md))**: Designed according to the `getdesign.md` and Google Stitch standards (Geist/Inter typography, deep `#07080a` canvas, hairline borders, and semantic color tokens).
-- **Interactive Controls**: One-click action buttons to trigger discovery scans, batch evaluation, CV tailoring, dry-run applications, and full pipeline cycles.
-- **Live Terminal & Metrics**: Real-time Bento metrics grid, 24h throughput bar, paginated jobs table with faceted search, and an embedded streaming console for `data/job_hunt.log`.
-
----
-
-## Quick Start (< 5 Minutes)
-
-### Prerequisites
-- Python 3.14+
-- `uv` package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- Google Chrome or Chromium installed (`/usr/bin/google-chrome`)
-
-### 1. Install Dependencies
-```bash
-uv sync
-```
-
-### 2. Configure Candidate Profile
-Edit `config/candidate_profile.json` with your verified skills, experience bullets, and screening answers:
-```json
-{
-  "full_name": "Abdulsamed Hamdy",
-  "first_name": "Abdulsamed",
-  "last_name": "Hamdy",
-  "email": "abdulsamedhamdy@gmail.com",
-  "location": "Cairo, Egypt",
-  "open_to_remote": true,
-  "citizenship": "Egypt",
-  "authorized_countries": ["Egypt"],
-  "sponsorship_required": false,
-  "years_of_experience": 4,
-  "verified_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Kubernetes", "AWS", "Distributed Systems"]
-}
-```
-
-### 3. Launch Mission Control Web UI
-```bash
-uv run python -m job_hunt.cli ui --port 8000
-```
-Open **`http://localhost:8000`** in your browser to access the full Mission Control dashboard.
-
-### 4. Run 24/7 Autonomous Background Daemon
-```bash
-uv run python -m job_hunt.cli run --interval 3600
-```
-
----
-
-## Cloudflare Worker (24/7 free-tier operation)
-
-The full pipeline also runs on Cloudflare Workers at
-`https://jobhunt.habdulsamed777.workers.dev`, so the hunt keeps running when
-the laptop is off. See [`worker/README.md`](worker/README.md) for internals.
-
-```text
-[hourly cron :15 + daily cron 02:00]
+cron 15 * * * *   → 25-source hourly scout   ┐
+cron 0 */6 * * *  → 200-source deep sweep   ┘
         │
-        ▼  one source per queue message (≤50/batch)
-[jobhunt-discover] ──► filter_recent + filter_remote ──► D1 upsert
-        │                        (rich descriptions only)
         ▼
-[jobhunt-evaluate] ──► deterministic score + gates
+DISCOVER_Q (1 source per message)
+  fetch → 24h freshness → role gate → geography gate
+        → dedupe (URL hash + role fingerprint) → D1
+        │  one message per new posting
+        ▼
+EVALUATE_Q
+  deterministic score vs PROFILE_JSON → threshold (70)
+  disability / eligibility / language gate → PRE_FILTERED_OUT or eligible
         │
-        ▼  eligible only
-[jobhunt-apply] ──► tailor text ──► pdf-lib PDF ──► R2 ──► ATS route
-                     (greenhouse/lever POST | ashby dry-run | human queue)
+        ▼
+APPLY_Q
+  re-check freshness + role + disability → TAILORED
+  attach master resume from R2 → direct ATS attempt or human queue
 ```
 
-**What runs where**
+Everything is deterministic and auditable: no LLM is required (an optional
+`LLM_RATIONALE` path exists but is off), and the full state machine lives in D1.
 
-| Stage | Cloudflare Worker | Python / Actions |
-|---|---|---|
-| Fetch + parse every live source | ✅ 150 worker-runnable | ✅ 375 configured (175 dead skipped → 200 fetched) |
-| Deterministic evaluation | ✅ | ✅ |
-| Tailored PDF via `pdf-lib` | ✅ | ✅ (master + visible skill line) |
-| Direct ATS HTTP POST | ✅ per-board flags, OFF by default | ✅ |
-| Playwright / Easy Apply / LinkedIn submit | ❌ no browser | ✅ human-approved only |
-| CAPTCHA jobs | ❌ | ✅ human queue |
-| Rezi mirroring + LLM-heavy work | ❌ | ✅ |
+## Sources
 
-**HTTP API**
+`config/sources.yaml` is the single source of truth. The Worker shard is
+generated, never hand-edited:
 
-| Endpoint | Purpose |
+```bash
+cd worker
+node scripts/gen_sources.mjs          # regenerate src/sources.generated.ts
+node scripts/gen_sources.mjs --check  # fail on drift (also runs in npm test)
+```
+
+Measured on 2026-10-21 (Worker probe, all 375 boards):
+
+| Split | Count |
 |---|---|
-| `GET /health` | Job count **plus profile sanity** (`profile_skills`, `live_apply`, `threshold`) — an empty `verified_skills` silently rejects every job |
-| `GET /recent` | `actionable` list (tailored/submitted/human-queue) + `eligible` + `latest`. Read `actionable`, not `eligible`: qualifying jobs leave the `ELIGIBLE` state once tailored |
-| `GET /coverage` | Measured coverage: configured vs attempted vs yielding sources, by kind |
-| `GET /sources` | Configured Worker shard and hourly subset size |
-| `POST /run?deep=1` | Fan out the **whole** shard (omit `deep` for the hourly subset) |
-| `POST /probe` | Run one source read-only: `{"name":"stripe"}` → raw / fresh_24h / remote_fresh |
+| Configured in YAML | **375** |
+| Worker-runnable (non-dead, in the shard) | **206** |
+| Yielding ≥1 usable posting at any age | **146** |
+| Quiet / flaky (still in the shard, re-probed) | **60** |
+| Dead (404/410 or excluded, not polled) | **169** |
 
-**Safety boundaries** — LinkedIn submits are never automated; non-ATS boards and
-CAPTCHA jobs stay human-queued; live ATS POSTs stay `LIVE_APPLY=false` behind
-per-board `APPROVE_*` flags.
+Kinds on the Worker: `greenhouse`, `ashby`, `lever`, `rss`/feed,
+`smartrecruiters`, `teamtailor`, `recruitee`, `personio`, `bamboohr`,
+`workable`, `freehire`, `bdjobs`, `indeed`, `ashby-index`, `linkedin` (guest,
+discovery only), `web` (generic HTML/JSON-LD), `bayt`, `naukri`.
 
----
+Liveness rule: a source is live when it yields at least one **usable** posting
+**at any age** — remote anywhere, placed in Egypt (on-site, hybrid or remote),
+or unknown location. The 24h window gates the *feed*, not the board. A failed
+fetch is flaky (`unknown`), never a stale live. A quiet board stays in the
+shard and is re-probed; only an answered 404/410 demotes it to `dead`. Dead
+boards remain probe-able and are promoted back to `live` when they answer with
+usable postings again.
 
-## CLI Reference
+Probe and verify against the live Worker:
 
-| Command | Arguments | Description |
+```bash
+cd worker
+npm run probe -- --apply          # measure all 375, promote live / demote hard-dead, regenerate
+npm run probe -- --only stripe,figma
+npm run verify -- --new-only      # post-deploy check (add --expect-live for live deploys)
+```
+
+## Deploy
+
+The runtime needs no local machine. Two equivalent paths:
+
+**Cloudflare Workers Builds (recommended).** Connect the GitHub repo in the
+Cloudflare dashboard, set the root directory to `worker`, the build command to
+`npm ci && npm test`, and the deploy command to `npx wrangler deploy`. Every
+push to `main` ships after tests pass.
+
+**CLI, from any machine:**
+
+```bash
+cd worker
+npm ci
+npm test
+npx tsc --noEmit
+npx wrangler deploy
+node scripts/verify_deploy.mjs --new-only --expect-live
+```
+
+One-time provisioning (already done for the live deployment):
+
+```bash
+cd worker
+npx wrangler d1 create jobhunt
+npx wrangler d1 execute jobhunt --remote --file schema.sql   # --remote is required
+npx wrangler queues create jobhunt-discover
+npx wrangler queues create jobhunt-evaluate
+npx wrangler queues create jobhunt-apply
+npx wrangler r2 bucket create jobhunt-cvs
+```
+
+Secrets (`npx wrangler secret put …`): `PROFILE_JSON`, `MASTER_RESUME_SHA`,
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`.
+
+Non-secret vars live in `worker/wrangler.toml` (`THRESHOLD`, `INTAKE_CAP`,
+`LIVE_APPLY`, `APPROVE_GREENHOUSE`, `APPROVE_LEVER`, `LINKEDIN_ENABLED`,
+`TELEGRAM_EVENTS`, …).
+
+## Endpoints
+
+| Endpoint | Method | What it returns |
 |---|---|---|
-| `ui` | `--port 8000 --host 0.0.0.0` | Launch the Mission Control web dashboard |
-| `status` | `--db data/jobs.db` | Print current pipeline state counts and 24h metrics |
-| `llm-status` | `--llm-url http://127.0.0.1:4000/v1` | Check local LLM endpoint connectivity (optional; eval is deterministic by default) |
-| `scan` | `--limit 50 --sources config/sources.yaml [--no-notify]` | Run discovery across configured ATS sources |
-| `evaluate` | `--limit 100 --threshold 70.0 [--no-notify]` | Run deterministic evaluation and scoring on discovered jobs |
-| `tailor` | `--limit 50 --job-id N [--no-notify]` | Generate fact-checked CVs for eligible jobs |
-| `apply` | `--limit 10 --job-id N [--live] [--no-notify]` | Launch browser automation (defaults to safe dry-run) |
-| `run` | `--interval 3600 [--live] [--no-notify]` | Start 24/7 continuous autonomous loop |
-| `doctor` | `--db data/jobs.db` | Cold-start diagnostics (DB, adapters, secrets, source config) |
-| `outcome` | `--job-id N --status applied\|interview\|offer\|rejected\|hired\|ghosted` | Record what actually happened to an application, for calibration |
+| `/health` | GET | job count, profile skills, live-apply flag, resume pointer, ledger count |
+| `/coverage` | GET | attempted/yielding sources, fresh counts, filters, live software companies |
+| `/sources` | GET | shard size, hourly count, per-kind counts |
+| `/probe` | POST `{name}` | read-only yield probe for one source (`usable_any_age`, `usable_fresh`, sample) |
+| `/recent` | GET | recent jobs, including `actionable` |
+| `/queue` | POST | enqueue a stage message |
+| `/run` | POST | fan out the shard (manual trigger) |
+| `/telegram/webhook` | POST | owner-only inbound PDF → master resume pointer |
 
----
+## Submitting applications — the honest part
 
-## REST API Reference
+The product prepares everything automatically, but **direct submission is
+gated by what each ATS allows a server to do**:
 
-The backend provides a REST API powering the Mission Control UI:
+- **Greenhouse** — the public board API (`POST /v1/boards/{org}/jobs/{id}`)
+  requires HTTP Basic auth with a per-company API key; an unauthenticated POST
+  returns 401. The public application form is reCAPTCHA-protected. The Worker
+  therefore queues Greenhouse postings for the human unless a company API key
+  is supplied.
+- **Lever** — the public `/apply` endpoint accepts multipart POSTs but the
+  board forms load hCaptcha; captcha-protected boards are queued for the human.
+- **Ashby** — the submit contract is not pinned and the public form is
+  reCAPTCHA-protected; Ashby is queued.
+- **Everything else** (web, RSS, Bayt, Naukri, LinkedIn, …) has no
+  server-side apply contract and is queued.
 
-- **`GET /api/health`**: Real-time system health, database state, LLM connectivity, and active operations.
-- **`GET /api/stats`**: Aggregate pipeline statistics, state breakdown, and 24h daily throughput.
-- **`GET /api/jobs`**: Paginated jobs list supporting `state`, `source`, `min_score`, and `search` query params.
-- **`GET /api/jobs/{id}`**: Complete job requisition details, AI evaluation breakdown, and audit trail.
-- **`GET /api/cv/{id}`**: Download the ATS-stamped tailored PDF for a specific job.
-- **`GET /api/screenshots/{filename}`**: View Playwright submission verification screenshots.
-- **`GET /api/logs`**: Stream recent lines from `data/job_hunt.log`.
-- **`POST /api/actions/scan`**: Trigger asynchronous discovery scan.
-- **`POST /api/actions/evaluate`**: Trigger asynchronous batch evaluation.
-- **`POST /api/actions/tailor`**: Trigger asynchronous CV tailoring.
-- **`POST /api/actions/apply`**: Trigger browser automation applications (dry-run or live).
-- **`POST /api/actions/cycle`**: Trigger a complete end-to-end pipeline cycle.
+The code encodes this: `LIVE_APPLY=false` by default; live sends require the
+per-board `APPROVE_*` flag; a captcha/credential refusal becomes
+`APPLICATION_STARTED` (“apply manually”) with an `APPLICATION_ATTEMPT` alert,
+not a fake `FAILED`; only a real transport/validation failure is `FAILED`.
+Fully unattended submission to captcha-protected ATSs requires a paid browser
+or captcha-solving service — it is not possible on the Workers free tier.
 
-## Operations: Telegram notifications & disability filter
+**LinkedIn is discovery-only.** Search uses the public guest endpoint (no
+cookies, no account). No automated path applies through the owner's LinkedIn
+account — that is a permanent safety rule after the 2026-10-02 ban.
 
-Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable safe, best-effort
-event notifications. **Only the outcome events are sent by default** —
-`APPLICATION_ATTEMPT` (an application started), `SUBMITTED`, `DRY_RUN`,
-`FAILED` and `STAGE_FAILED`. The stage chatter (`SEEKING`, `FILTERED`,
-`ELIGIBLE`, `TAILORED`) is suppressed in both runtimes: the owner asked for
-the application story, not the pipeline's progress report. Override the set
-with `TELEGRAM_EVENTS` (comma-separated event names; absent or empty = the
-default set) — the Worker reads the `TELEGRAM_EVENTS` var, the local runtime
-the `TELEGRAM_EVENTS` environment variable, and both parse it the same way.
+## Notifications
 
-Unset credentials mean no-op — nothing sends and nothing raises. `scan`,
-`evaluate`, `tailor`, `apply`, and `run` accept `--no-notify`, which skips
-notifier construction for that run even with credentials present. Web-UI runs
-never notify: the dashboard builds its orchestrator without a notifier, and
-that is intentional. Messages are tagged `[local]` or `[worker]` by runtime
-and deduplicated so retries never resend the same event. CI sweeps get the
-two secrets from GitHub Secrets.
+Telegram receives outcome events only by default:
+`APPLICATION_ATTEMPT`, `SUBMITTED`, `DRY_RUN`, `FAILED`, `STAGE_FAILED`.
+Stage chatter (`SEEKING`, `FILTERED`, `ELIGIBLE`, `TAILORED`) is muted.
+Override with `TELEGRAM_EVENTS` (a muted event is never sent and never claims
+the at-most-once ledger row).
 
-A job handled by both runtimes alerts twice (`[local]` + `[worker]`). Each
-runtime keeps its own event ledger, so the cross-runtime double-send is by
-design, not a dedup failure.
+Inbound: only the owner's chat can upload a PDF, which replaces the master
+resume pointer (`settings.master_resume_sha` in D1); `/master` reports it.
 
-A Telegram outage drops events, with per-runtime recovery semantics:
-
-- **Local**: a failed send is *not* remembered, so the next emission of the
-  same event tries again (the next CLI run retries it). Dedup memory is
-  process-lifetime, FIFO-bounded to 2000 events.
-- **Worker**: the ledger key is claimed *before* the send, so a failed send is
-  recorded as failed and never retried — queue retries and cron re-runs can
-  never storm Telegram.
-
-Either way the pipeline keeps running without notification backpressure.
-
-### Inbound: updating the master resume from Telegram
-
-Send a PDF to the bot from the owner's chat and it becomes the master resume:
-the Worker validates it (`%PDF-` header, `pdf-lib` parse, ≤15 MB), stores it
-as `cvs/master/<sha256>.pdf` in R2, and repoints `settings.master_resume_sha`
-in D1. All future applications use it; old versions stay in R2. Text `/master`
-reports the current sha and its source (`d1` or the `MASTER_RESUME_SHA`
-secret fallback).
-
-Everything else inbound is ignored; the webhook rejects requests without the
-Telegram secret-token header.
-
-Local sync (this machine is NOT the source of truth):
+## Testing
 
 ```bash
-uv run python scripts/pull_master.py         # replace data/cvs/Abdulsamed_Hamdy.pdf with the current master
-uv run python scripts/pull_master.py --check # exit 1 when the local file drifts
+cd worker
+npm test            # 296 tests, includes source-shard drift + parser fixtures
+npx tsc --noEmit
 ```
 
-Disability-targeted programs are filtered at evaluation time and re-checked
-right before tailoring/applying (both runtimes): a `disabilit*` mention in the
-**title** fails outright; in the description it fails when a program or
-hiring phrase sits nearby (a program noun — program/initiative/track/
-internship/fellowship/cohort — within ±80 chars, or compound phrasing like
-"hiring people with disabilities"). Pure encouragement sentences pass, and
-generic EEO/accessibility boilerplate (nondiscrimination statements,
-reasonable-accommodation text) is allowed through.
+## Limits
 
----
+- No browser: postings that require JavaScript-only apply flows are queued.
+- No per-job Rezi variants: every application uses the master PDF in R2.
+- No LinkedIn apply.
+- Free-tier budgets: cron + queues + D1/R2; the pipeline is sized for them
+  (`INTAKE_CAP=150`, one source per discover message).
 
-## Running Automated Tests
+## Repository map
 
-Run the complete suite across discovery, dedup, evaluation gates, CV tailoring,
-browser automation, storage, and web endpoints. The Worker has its own suite:
-
-```bash
-uv run pytest tests/ -q -p no:cacheprovider
-cd worker && npm test && npm run typecheck
 ```
-
-```text
-uv run pytest tests/ -q          # 325 passed, 1 skipped
-cd worker && npm test            # 118 passed (vitest, 10 files) + tsc --noEmit clean
+config/sources.yaml          source of truth (375 entries)
+data/source_probe.json       measured liveness ledger
+worker/src/                  Worker runtime
+worker/src/adapters/         per-kind fetchers (ATS, RSS, web, Bayt, Naukri, LinkedIn guest)
+worker/src/lib/              freshness, roles, scoring, hashing, hosts, notify
+worker/src/stages/           discover, evaluate, tailor/apply
+worker/scripts/              source generator, probe, deploy verifier
+worker/schema.sql            D1 schema
+worker/test/                 vitest suites
+docs/superpowers/specs/      design records
 ```
-
----
-
-## License
-
-Internal proprietary software developed for autonomous career acceleration.

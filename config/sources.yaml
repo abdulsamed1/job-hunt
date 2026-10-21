@@ -567,7 +567,7 @@ sources:
   name: datadog-eu
   url: https://job-boards.eu.greenhouse.io/datadog
   industry: software
-  status: dead
+  status: live
 - adapter: greenhouse
   name: sumologic
   url: https://boards.greenhouse.io/sumologic
@@ -1332,7 +1332,7 @@ sources:
   url: https://cryptojobsearch.com/
   adapter: web
   industry: crypto
-  status: dead
+  status: live
 - name: Web3 Talent
   url: https://web3talent.com/
   adapter: web
@@ -1372,7 +1372,7 @@ sources:
   url: https://www.stellar.org/careers
   adapter: web
   industry: crypto
-  status: dead
+  status: live
 - name: PompCryptoJobs
   url: https://pompcryptojobs.com/
   adapter: web
@@ -1432,7 +1432,7 @@ sources:
   url: https://powertofly.com/
   adapter: web
   industry: general
-  status: dead
+  status: live
 - name: Remote.co
   url: https://remote.co/
   adapter: web
@@ -1472,7 +1472,7 @@ sources:
   url: https://vanhack.com/
   adapter: web
   industry: general
-  status: dead
+  status: live
 - name: Talent.io
   url: https://www.talent.io/
   adapter: web
@@ -1487,7 +1487,7 @@ sources:
   url: https://stackoverflow.com/jobs
   adapter: web
   industry: general
-  status: unknown
+  status: dead
 - name: Indeed
   url: https://www.indeed.com/
   adapter: web
@@ -1537,7 +1537,7 @@ sources:
   url: https://www.gulftalent.com/
   adapter: web
   industry: general
-  status: unknown
+  status: live
 - adapter: feed
   name: swissdevjobs
   url: https://swissdevjobs.ch/api/jobsLight
@@ -1602,7 +1602,7 @@ sources:
   name: Polygon Careers
   url: https://polygon.technology/careers/
   industry: crypto
-  status: dead
+  status: live
 - adapter: web
   name: Alchemy Jobs
   url: https://www.alchemy.com/jobs
@@ -2280,7 +2280,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: unknown
+  status: live
 - adapter: ashby
   name: mux
   url: https://jobs.ashbyhq.com/mux
@@ -2490,7 +2490,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: dead
+  status: live
 - adapter: workable
   name: netguru
   url: https://apply.workable.com/netguru/

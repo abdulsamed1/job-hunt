@@ -1,26 +1,14 @@
-.ref-repos/
-_bmad
-_bmad-output/
-.venv/
-node_modules/
-worker/dist/
-__pycache__/
-*.pyc
 .env
-# Rezi: account config carries PII; tokens are password-equivalent
-config/rezi.json
-.rezi_token
-.pytest_cache/
-*.db
-*.sqlite3
-data/
-*.png
-*.pdf
-*.jpg
-*.jpeg
 .superpowers/
-.worktrees/
-# Added by code-review-graph
-.code-review-graph/
-opencode.jsonc
+node_modules/
 worker/.wrangler/
+worker/dist/
+data/*
+!data/source_probe.json
+# Cloudflare local state and OS noise
+.DS_Store
+*.log
+
+# Local Python/Rezi leftovers (runtime removed)
+__pycache__/
+config/rezi.json

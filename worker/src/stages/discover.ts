@@ -8,6 +8,9 @@
 // state from the message, db and env it is handed.
 
 import { fetchArbeitnow, fetchBdJobs, fetchJobicy, fetchJsonSearchBoard, fetchLinkedInGuest, fetchRemotive, fetchRemoteOK } from "../adapters/boards.js";
+import { fetchBayt } from "../adapters/bayt.js";
+import { fetchNaukri } from "../adapters/naukri.js";
+import { fetchWebBoard } from "../adapters/web.js";
 import { fetchRssFeed } from "../adapters/rss.js";
 import { bamboohrListUrl, fetchBamboohr, fetchPersonio, fetchRecruitee, fetchTeamtailor, fetchWorkable, personioFeedUrl, recruiteeApiUrl, teamtailorFeedUrl, workableApiUrl } from "../adapters/tenants.js";
 import { enrichDescriptions, fetchAshbyBoard, fetchAshbyIndex, fetchGreenhouseBoard, fetchIndeed, fetchLeverBoard, fetchSmartRecruitersBoard } from "../adapters/ats.js";
@@ -129,6 +132,58 @@ export async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]
     case "personio": return fetchPersonio(def.url || "", def.name);
     case "bamboohr": return fetchBamboohr(def.url || "", def.name);
     case "workable": return fetchWorkable(def.url || "", def.name);
+    case "web": return fetchWebBoard(def.name, def.url || "");
+    case "bayt": {
+      // Search HTML: every query × location is one request. A single blocked
+      // query must not hide a partial harvest, but every query failing is a
+      // source-level failure with a cause (Bayt's edge blocks plain clients).
+      const out: RawJob[] = [];
+      let ok = 0;
+      let failed = 0;
+      let lastError = "";
+      for (const query of def.queries || ["backend"]) {
+        for (const location of def.locations || ["Cairo, Egypt"]) {
+          try {
+            out.push(...(await fetchBayt({
+              query, location, hoursOld: def.hoursOld ?? 24,
+            })));
+            ok++;
+          } catch (e) {
+            failed++;
+            lastError = e instanceof Error ? e.message : String(e);
+          }
+        }
+      }
+      if (ok === 0 && failed > 0) {
+        throw new Error(`bayt searches all failed (${failed}): ${lastError}`);
+      }
+      return out;
+    }
+    case "naukri": {
+      // Public JSON API with the RSA request token: same partial-harvest rule
+      // as Bayt and LinkedIn.
+      const out: RawJob[] = [];
+      let ok = 0;
+      let failed = 0;
+      let lastError = "";
+      for (const query of def.queries || ["backend"]) {
+        for (const location of def.locations || ["Remote"]) {
+          try {
+            out.push(...(await fetchNaukri({
+              query, location, hoursOld: def.hoursOld ?? 24,
+            })));
+            ok++;
+          } catch (e) {
+            failed++;
+            lastError = e instanceof Error ? e.message : String(e);
+          }
+        }
+      }
+      if (ok === 0 && failed > 0) {
+        throw new Error(`naukri searches all failed (${failed}): ${lastError}`);
+      }
+      return out;
+    }
     case "linkedin": {
       if (!linkedinEnabled(env)) return [];
       // Guest endpoint only: no cookies, no login, no account. Discovery is

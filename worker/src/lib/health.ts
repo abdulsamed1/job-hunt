@@ -29,7 +29,7 @@ export function detectDegraded(jobs: DegradedRow[], sourceUrl: string, kind = ""
  * should report them as inconclusive rather than as a dead source.
  */
 const INCONCLUSIVE_PROBE_ERROR =
-  /(?:\b429\b|e429|rate[\s_-]*limit|too many requests|fetch failed|\benotfound\b|\beai_again\b|timed?\s*out|aborterror|service unavailable|bad gateway|gateway timeout|\b5\d\d\b)/i;
+  /(?:\b403\b|\b429\b|e429|forbidden|access denied|rate[\s_-]*limit|too many requests|fetch failed|\benotfound\b|\beai_again\b|timed?\s*out|aborterror|service unavailable|bad gateway|gateway timeout|\b5\d\d\b)/i;
 
 export function isInconclusiveProbeError(e: unknown): boolean {
   const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
