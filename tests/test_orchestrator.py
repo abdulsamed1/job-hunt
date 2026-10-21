@@ -33,12 +33,26 @@ class RecordingNotifier(TelegramNotifier):
     echoes fields back: only this way can a formatting bug that injects
     credentials into the wire payload be caught. Records both the structured
     emit arguments and the exact texts the transport would have sent.
+
+    Every event is allowed here: this double exists to check the payload the
+    transport receives, and the default allowlist mutes the stage events
+    (see tests/test_notifications.py for the allowlist itself). Without this
+    the stage events would never reach the transport and the leak check
+    would have nothing to look at.
     """
+
+    ALL_EVENTS = frozenset({
+        "SEEKING", "FILTERED", "ELIGIBLE", "TAILORED", "APPLICATION_ATTEMPT",
+        "SUBMITTED", "DRY_RUN", "FAILED", "RETRY", "RECOVERY",
+    })
 
     def __init__(self, bot_token="tok-secret-abc123", chat_id="123"):
         self.texts = []
         self.calls = []
-        super().__init__(bot_token, chat_id, runtime="local", sender=self._record)
+        super().__init__(
+            bot_token, chat_id, runtime="local", sender=self._record,
+            allowed_events=self.ALL_EVENTS,
+        )
 
     def _record(self, text):
         self.texts.append(text)

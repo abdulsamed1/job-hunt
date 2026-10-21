@@ -252,15 +252,22 @@ The backend provides a REST API powering the Mission Control UI:
 ## Operations: Telegram notifications & disability filter
 
 Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to enable safe, best-effort
-event notifications (pipeline lifecycle, identical in both runtimes:
-discovered → eligible/filtered → tailored → application-attempt → submitted /
-dry-run / failed / stage-failed). Unset credentials mean no-op — nothing
-sends and nothing raises. `scan`, `evaluate`, `tailor`, `apply`, and `run`
-accept `--no-notify`, which skips notifier construction for that run even
-with credentials present. Web-UI runs never notify: the dashboard builds its
-orchestrator without a notifier, and that is intentional. Messages are tagged
-`[local]` or `[worker]` by runtime and deduplicated so retries never resend
-the same event. CI sweeps get the two secrets from GitHub Secrets.
+event notifications. **Only the outcome events are sent by default** —
+`APPLICATION_ATTEMPT` (an application started), `SUBMITTED`, `DRY_RUN`,
+`FAILED` and `STAGE_FAILED`. The stage chatter (`SEEKING`, `FILTERED`,
+`ELIGIBLE`, `TAILORED`) is suppressed in both runtimes: the owner asked for
+the application story, not the pipeline's progress report. Override the set
+with `TELEGRAM_EVENTS` (comma-separated event names; absent or empty = the
+default set) — the Worker reads the `TELEGRAM_EVENTS` var, the local runtime
+the `TELEGRAM_EVENTS` environment variable, and both parse it the same way.
+
+Unset credentials mean no-op — nothing sends and nothing raises. `scan`,
+`evaluate`, `tailor`, `apply`, and `run` accept `--no-notify`, which skips
+notifier construction for that run even with credentials present. Web-UI runs
+never notify: the dashboard builds its orchestrator without a notifier, and
+that is intentional. Messages are tagged `[local]` or `[worker]` by runtime
+and deduplicated so retries never resend the same event. CI sweeps get the
+two secrets from GitHub Secrets.
 
 A job handled by both runtimes alerts twice (`[local]` + `[worker]`). Each
 runtime keeps its own event ledger, so the cross-runtime double-send is by

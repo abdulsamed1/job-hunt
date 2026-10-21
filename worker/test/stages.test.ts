@@ -258,6 +258,12 @@ describe("queue lifecycle events", () => {
       THRESHOLD: "70",
       TELEGRAM_BOT_TOKEN: "tok",
       TELEGRAM_CHAT_ID: "123",
+      // These tests assert the pipeline's event stream, not the delivery
+      // filter: the stage events (SEEKING/FILTERED/ELIGIBLE/TAILORED) are
+      // muted by default (see the allowlist tests in notify.test.ts), so the
+      // env opts into every event to keep them observable here.
+      TELEGRAM_EVENTS:
+        "SEEKING,FILTERED,ELIGIBLE,TAILORED,APPLICATION_ATTEMPT,SUBMITTED,DRY_RUN,FAILED,STAGE_FAILED",
       PROFILE_JSON: JSON.stringify({
         verified_skills: ["Python", "FastAPI"],
         years_of_experience: 5,
@@ -592,16 +598,26 @@ describe("queue lifecycle events", () => {
   const GH_URL = "https://boards.greenhouse.io/acme/jobs/1";
   const LV_URL = "https://jobs.lever.co/acme/9";
   type BoardJob = { id: number; title: string; url: string; location: string };
-  const ghBody = (jobs: BoardJob[]) => JSON.stringify({
-    jobs: jobs.map((j) => ({
-      id: j.id, title: j.title, absolute_url: j.url,
-      location: { name: j.location }, updated_at: new Date().toISOString(),
-    })),
-  });
-  const lvBody = (jobs: BoardJob[]) => JSON.stringify(jobs.map((j) => ({
-    id: j.id, text: j.title, hostedUrl: j.url,
-    categories: { location: j.location }, createdAt: new Date().toISOString(),
-  })));
+  // One timestamp per board body, not per posting: two postings of the same
+  // batch must carry the same date, or the newest-first intake sort can
+  // reorder them across a millisecond boundary and flip which twin of a
+  // duplicate pair wins (the seed order is what the assertions expect).
+  const ghBody = (jobs: BoardJob[]) => {
+    const postedAt = new Date().toISOString();
+    return JSON.stringify({
+      jobs: jobs.map((j) => ({
+        id: j.id, title: j.title, absolute_url: j.url,
+        location: { name: j.location }, updated_at: postedAt,
+      })),
+    });
+  };
+  const lvBody = (jobs: BoardJob[]) => {
+    const postedAt = new Date().toISOString();
+    return JSON.stringify(jobs.map((j) => ({
+      id: j.id, text: j.title, hostedUrl: j.url,
+      categories: { location: j.location }, createdAt: postedAt,
+    })));
+  };
   const twoBoards = (greenhouse: string, lever: string) =>
     (url: string) => (String(url).includes("greenhouse") ? greenhouse : lever);
   const GH_POSTING = { id: GH_JOB, title: "Backend Engineer", url: GH_URL, location: "Remote, US" };

@@ -54,6 +54,9 @@ APPROVE_GREENHOUSE = "false"
 APPROVE_LEVER = "false"
 # Role gate: reject Salesforce/CRM implementation roles. "false" admits them.
 REJECT_CRM_ROLES = "true"
+# Telegram event allowlist (comma-separated). Default: the outcome events only
+# (the stage events SEEKING/FILTERED/ELIGIBLE/TAILORED stay silent).
+TELEGRAM_EVENTS = "APPLICATION_ATTEMPT,SUBMITTED,DRY_RUN,FAILED,STAGE_FAILED"
 # Secrets (never commit): wrangler secret put REZI_MCP_TOKEN
 # Optional: wrangler secret put TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
 # Pipeline identity: wrangler secret put PROFILE_JSON  (or set [vars] below)

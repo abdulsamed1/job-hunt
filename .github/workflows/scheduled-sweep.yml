@@ -29,6 +29,10 @@ jobs:
       # configure the secrets to receive sweep notifications).
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # Event allowlist (comma-separated). Unset = the default outcome set
+      # (APPLICATION_ATTEMPT/SUBMITTED/DRY_RUN/FAILED/STAGE_FAILED); the stage
+      # events stay silent. Same name and same rules as the Worker's var.
+      TELEGRAM_EVENTS: ${{ vars.TELEGRAM_EVENTS }}
     steps:
       - uses: actions/checkout@v4
 

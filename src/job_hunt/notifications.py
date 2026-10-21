@@ -8,6 +8,14 @@ on runtime + event + job URL identity (mirroring the Worker's
 ``(runtime, job_hash, event)`` ledger). Dedup memory is process-lifetime and
 FIFO-bounded to ``MAX_SEEN_EVENTS``: in a process that outlives the window a
 very old event could resend, which is acceptable for an observability channel.
+
+Only the outcome events are sent by default: the stage chatter
+(SEEKING/FILTERED/ELIGIBLE/TAILORED) is muted, because the owner asked for
+the application story and not the pipeline's progress report. The allowlist
+is configurable per runtime through the ``TELEGRAM_EVENTS`` environment
+variable (comma-separated event names); an absent or empty value means the
+default set. The Worker's ``TELEGRAM_EVENTS`` var follows the same rules and
+the same default set, so the two runtimes never drift.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ import logging
 import urllib.error
 import urllib.request
 from collections import deque
-from typing import Callable, Deque, Optional, Set, Tuple
+from typing import Callable, Deque, Iterable, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +34,40 @@ TELEGRAM_API_TIMEOUT_SEC = 10.0
 MAX_MESSAGE_LEN = 3000
 MAX_SEEN_EVENTS = 2000
 
+# The events that reach Telegram by default: the outcomes only. The stage
+# events (SEEKING/FILTERED/ELIGIBLE/TAILORED) stay silent unless the owner
+# names them in TELEGRAM_EVENTS. Mirrors DEFAULT_TELEGRAM_EVENTS in
+# worker/src/lib/notify.ts.
+DEFAULT_TELEGRAM_EVENTS: Tuple[str, ...] = (
+    "APPLICATION_ATTEMPT",
+    "SUBMITTED",
+    "DRY_RUN",
+    "FAILED",
+    "STAGE_FAILED",
+)
+
 # Per-field caps keep the total under MAX_MESSAGE_LEN without truncating the
 # trailing URL away (mirrors the Worker formatJobAlert caps).
 MAX_TITLE_LEN = 200
 MAX_COMPANY_LEN = 120
 MAX_DETAIL_LEN = 1500
 MAX_URL_LEN = 500
+
+
+def parse_telegram_events(raw: Optional[str]) -> Set[str]:
+    """Parse a comma-separated event allowlist.
+
+    Whitespace around each name is trimmed and names are upper-cased, so the
+    value reads the same in both runtimes. An absent, empty or blank-only
+    value means the default set; the caller never has to special-case an
+    unset variable.
+    """
+    names = {
+        part.strip().upper()
+        for part in (raw or "").split(",")
+        if part.strip()
+    }
+    return set(DEFAULT_TELEGRAM_EVENTS) if not names else names
 
 
 def format_event(
@@ -80,6 +116,11 @@ class TelegramNotifier:
 
     Returns booleans instead of raising: ``emit`` is True only when a
     message was actually sent. No background threads, no new dependencies.
+
+    ``allowed_events`` is the set of event names that may reach Telegram; it
+    defaults to the outcome set (see ``DEFAULT_TELEGRAM_EVENTS``). An event
+    outside the set is not sent and not remembered as sent, so a later
+    emission stays quiet too.
     """
 
     def __init__(
@@ -88,6 +129,7 @@ class TelegramNotifier:
         chat_id: str,
         runtime: str = "local",
         sender: Optional[Callable[[str], bool]] = None,
+        allowed_events: Optional[Iterable[str]] = None,
     ) -> None:
         self._bot_token = bot_token or ""
         self._chat_id = chat_id or ""
@@ -95,13 +137,27 @@ class TelegramNotifier:
         self._sender: Callable[[str], bool] = sender or (
             lambda text: _post_message(self._bot_token, self._chat_id, text)
         )
+        self._allowed_events: Set[str] = (
+            set(DEFAULT_TELEGRAM_EVENTS)
+            if allowed_events is None
+            else {str(e).strip().upper() for e in allowed_events if str(e).strip()}
+        )
         self._seen: Set[Tuple[str, str, str]] = set()
         self._order: Deque[Tuple[str, str, str]] = deque()
+
+    @property
+    def allowed_events(self) -> Set[str]:
+        """The event names this notifier may deliver (a copy)."""
+        return set(self._allowed_events)
 
     @staticmethod
     def _job_key(title: str, company: str, url: str) -> str:
         """Job identity for dedup: URL first, title/company only as fallback."""
         return url or f"{(title or '').strip()}\x1f{(company or '').strip()}"
+
+    def _is_allowed(self, event: str) -> bool:
+        """May this event reach Telegram under the current allowlist?"""
+        return (event or "").strip().upper() in self._allowed_events
 
     def emit(
         self,
@@ -117,6 +173,12 @@ class TelegramNotifier:
             return False
         key = (self._runtime, event, self._job_key(title, company, url))
         if key in self._seen:
+            return False
+        if not self._is_allowed(event):
+            # Muted by the allowlist: no POST, and the event is remembered
+            # like a sent one so a re-emit of it stays quiet too.
+            logger.debug("Telegram event %s suppressed by the event allowlist", event)
+            self._remember(key)
             return False
         text = format_event(self._runtime, event, title, company, detail, url)
         try:

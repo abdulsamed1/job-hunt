@@ -242,7 +242,9 @@ records the newest posting date (`last_yield_at`) next to the probe time
   (`(runtime, job_hash, event)` PK) gets the event key inserted *before* the
   Telegram call, so a queue retry that re-runs the message sees the conflict
   and skips — a Telegram outage records "failed" and never retry-storms. With
-  credentials unset nothing is claimed. The table is created at runtime
+  credentials unset nothing is claimed. A **muted** event (one outside
+  `TELEGRAM_EVENTS`) is claimed the same way: the ledger stays consistent and
+  the retry skips, but no HTTP POST is made. The table is created at runtime
   (`ensureNotificationEvents`, once per queue batch) for databases that
   predate it; `/health` reports `null` when it is missing.
 - **`settings` holds the master-resume pointer, also created at runtime.**
@@ -287,10 +289,26 @@ npx wrangler secret put APPROVE_LEVER
 ```
 
 Optional: `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for lifecycle event
-notifications (`SEEKING` / `FILTERED` / `ELIGIBLE` / `TAILORED` /
-`APPLICATION_ATTEMPT` / `SUBMITTED` / `DRY_RUN` / `FAILED` / `STAGE_FAILED`),
+notifications. **Only the outcome events are sent by default** —
+`APPLICATION_ATTEMPT` / `SUBMITTED` / `DRY_RUN` / `FAILED` / `STAGE_FAILED` —
 at most once per `(runtime, job_hash, event)` via the `notification_events`
-ledger. Unset credentials = silent no-op, nothing claimed.
+ledger. The stage events (`SEEKING` / `FILTERED` / `ELIGIBLE` / `TAILORED`)
+are suppressed: the owner asked for the application story, not the pipeline's
+progress report.
+
+Override the set with the `TELEGRAM_EVENTS` var (comma-separated event names;
+absent or empty = the default set). The local runtime reads the same name
+from its environment, so one vocabulary serves both runtimes:
+
+```toml
+# worker/wrangler.toml [vars]
+TELEGRAM_EVENTS = "APPLICATION_ATTEMPT,SUBMITTED,DRY_RUN,FAILED,STAGE_FAILED"
+```
+
+A muted event is still **claimed** in `notification_events` (the ledger claims
+before it sends), so the at-most-once bookkeeping stays consistent and a
+queue retry that re-runs the message skips the same way it always did — only
+the HTTP POST is skipped. Unset credentials = silent no-op, nothing claimed.
 
 Inbound master-resume updates need `TELEGRAM_WEBHOOK_SECRET` (random hex) and a
 **fresh** `TELEGRAM_BOT_TOKEN` — revoke the old one in BotFather first — plus a

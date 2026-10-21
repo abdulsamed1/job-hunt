@@ -13,7 +13,7 @@ from pathlib import Path
 
 from job_hunt.llm.client import FreeLLMClient
 from job_hunt.models import JobState
-from job_hunt.notifications import TelegramNotifier
+from job_hunt.notifications import TelegramNotifier, parse_telegram_events
 from job_hunt.orchestrator import PipelineOrchestrator
 from job_hunt.storage import Storage
 
@@ -31,10 +31,16 @@ logger = logging.getLogger("job-hunt-cli")
 
 
 def build_notifier() -> TelegramNotifier:
-    """Build the process-wide Telegram notifier (no-op when unconfigured)."""
+    """Build the process-wide Telegram notifier (no-op when unconfigured).
+
+    The event allowlist comes from `TELEGRAM_EVENTS` (comma-separated names);
+    an absent or empty value means the default outcome set, so the owner
+    only ever sees submission and failure notices unless they ask for more.
+    """
     return TelegramNotifier(
         bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
+        allowed_events=parse_telegram_events(os.getenv("TELEGRAM_EVENTS", "")),
     )
 
 

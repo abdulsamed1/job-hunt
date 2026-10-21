@@ -185,3 +185,45 @@ def test_docs_document_the_coverage_counters():
     docs = _all_docs()
     for counter in ("dated_fresh", "proxy_fresh", "dateless_dropped", "duplicate_suppressed", "role_rejected", "live_software"):
         assert counter in docs, f"docs never mention coverage counter {counter}"
+
+
+def test_docs_state_the_telegram_event_allowlist():
+    """The Telegram allowlist must be documented, and the three documents must
+    agree: only the outcome events reach Telegram by default, and
+    `TELEGRAM_EVENTS` overrides the set in both runtimes."""
+    for name in ("AGENTS.md", "README.md", "worker/README.md"):
+        body = _text(name)
+        assert "TELEGRAM_EVENTS" in body, f"{name} never mentions the TELEGRAM_EVENTS override"
+        for event in ("APPLICATION_ATTEMPT", "SUBMITTED", "DRY_RUN", "FAILED", "STAGE_FAILED"):
+            assert event in body, f"{name} never names the default event {event}"
+        for event in ("SEEKING", "FILTERED", "ELIGIBLE", "TAILORED"):
+            assert event in body, f"{name} never names the suppressed event {event}"
+
+
+def test_docs_and_code_agree_on_the_default_event_set():
+    """The default allowlist in the code and in the docs must be the same set.
+
+    The Worker's `DEFAULT_TELEGRAM_EVENTS` and Python's
+    `DEFAULT_TELEGRAM_EVENTS` are parsed here, so a set that drifts in one
+    runtime (or in the deployed `wrangler.toml` var) fails the build.
+    """
+    from job_hunt.notifications import DEFAULT_TELEGRAM_EVENTS
+
+    worker_src = _text("worker/src/lib/notify.ts")
+    m = re.search(
+        r"DEFAULT_TELEGRAM_EVENTS[^=]*=\s*\[(.*?)\]", worker_src, re.S
+    )
+    assert m, "the Worker must declare DEFAULT_TELEGRAM_EVENTS"
+    worker_events = set(re.findall(r'"([A-Z_]+)"', m.group(1)))
+    assert worker_events == set(DEFAULT_TELEGRAM_EVENTS), (
+        "the two runtimes must default to the same event set"
+    )
+
+    # The deployed Worker var must list the same set.
+    toml = _text("worker/wrangler.toml")
+    var = re.search(r'^TELEGRAM_EVENTS\s*=\s*"([^"]*)"', toml, re.M)
+    assert var, "wrangler.toml must set the TELEGRAM_EVENTS var"
+    deployed = {p.strip() for p in var.group(1).split(",") if p.strip()}
+    assert deployed == set(DEFAULT_TELEGRAM_EVENTS), (
+        "the deployed TELEGRAM_EVENTS var must list the default set"
+    )

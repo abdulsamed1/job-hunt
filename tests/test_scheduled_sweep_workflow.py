@@ -23,6 +23,18 @@ def test_sweep_wires_telegram_secrets():
     assert env["TELEGRAM_CHAT_ID"] == "${{ secrets.TELEGRAM_CHAT_ID }}"
 
 
+def test_sweep_wires_the_telegram_event_allowlist():
+    """The CI sweep must be able to narrow the Telegram event set.
+
+    An unset repository variable resolves to an empty string, which the
+    notifier reads as "use the default outcome set" — so wiring it here
+    never changes the default behavior, it only makes it overridable.
+    """
+    doc = yaml.safe_load(WORKFLOW.read_text())
+    env = doc["jobs"]["sweep"]["env"]
+    assert env["TELEGRAM_EVENTS"] == "${{ vars.TELEGRAM_EVENTS }}"
+
+
 def test_sweep_never_contains_literal_credentials():
     body = WORKFLOW.read_text()
     assert "8788179007" not in body  # pasted chat token must never appear

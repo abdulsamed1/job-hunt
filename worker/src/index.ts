@@ -49,6 +49,7 @@ export interface Env {
   PROFILE_JSON?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_EVENTS?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
   REZI_MCP_TOKEN?: string;
 }

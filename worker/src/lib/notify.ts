@@ -1,6 +1,9 @@
 // Telegram outbound lifecycle events: seeking, filter, evaluation, tailor,
 // application attempt, submission, dry-run result, failure, and stage-failure
-// notices. Inbound is limited to the owner's chat: PDF master-resume uploads
+// notices. Only the outcome events are delivered by default: the stage
+// chatter (SEEKING/FILTERED/ELIGIBLE/TAILORED) is muted unless the
+// `TELEGRAM_EVENTS` var re-enables it (see DEFAULT_TELEGRAM_EVENTS).
+// Inbound is limited to the owner's chat: PDF master-resume uploads
 // and the /master status command (see lib/webhook.ts). Sends are
 // best-effort with at-most-once semantics per (runtime, job_hash, event): the
 // event key is inserted into `notification_events` before sending, so queue
@@ -27,9 +30,23 @@ export type WorkerEvent =
 
 import { parsePostedAt } from "./freshness.js";
 
+/** The events that reach Telegram by default: the outcomes only. The owner
+ *  wants the application story (attempt, submission, dry run, failure)
+ *  without the stage chatter, and both runtimes default to exactly this set.
+ *  The `TELEGRAM_EVENTS` var overrides it (comma-separated event names). */
+export const DEFAULT_TELEGRAM_EVENTS: readonly WorkerEvent[] = [
+  "APPLICATION_ATTEMPT",
+  "SUBMITTED",
+  "DRY_RUN",
+  "FAILED",
+  "STAGE_FAILED",
+];
+
 export interface AlertEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  /** Comma-separated event allowlist; empty or absent means the default set. */
+  TELEGRAM_EVENTS?: string;
 }
 
 export interface AlertJobRow {
@@ -115,6 +132,23 @@ export function formatJobAlert(
 }
 
 /**
+ * Parse the `TELEGRAM_EVENTS` allowlist: comma-separated event names,
+ * whitespace trimmed, matched case-insensitively. An absent, empty or
+ * blank-only value means the default set. The names are a plain list, not a
+ * vocabulary check: each runtime knows events the other never emits
+ * (`STAGE_FAILED` is worker-only, `RETRY`/`RECOVERY` python-only), so a
+ * name that matches nothing here simply never fires.
+ */
+export function parseTelegramEvents(raw: string | undefined | null): Set<string> {
+  const names = (raw || "")
+    .split(",")
+    .map((n) => n.trim().toUpperCase())
+    .filter((n) => n.length > 0);
+  if (names.length === 0) return new Set(DEFAULT_TELEGRAM_EVENTS);
+  return new Set(names);
+}
+
+/**
  * Alert at most once per (runtime, job_hash, event). Claims the event key in
  * `notification_events` first: a conflicting key means this event already
  * sent (or is being sent) and resolves "skipped" without a second send.
@@ -147,6 +181,10 @@ export async function notifyEventOnce(
     if (/unique|primary key|constraint failed|already exists/i.test(String(e))) return "skipped";
     return "failed";
   }
+  // The event key is claimed above, so the ledger stays at-most-once even for
+  // a muted event; only the HTTP POST is skipped. A muted event therefore
+  // resolves "skipped" exactly like an already-sent one.
+  if (!parseTelegramEvents(env.TELEGRAM_EVENTS).has(event.toUpperCase())) return "skipped";
   let outcome: "sent" | "failed" = "failed";
   try {
     if (await alert(env, formatJobAlert(rt, row, event, detail))) outcome = "sent";

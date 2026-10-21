@@ -262,13 +262,21 @@ gives you structural context (callers, dependents, test coverage) that file sear
   Off Workers, always: Playwright browser, LLM-heavy stages, Rezi mirroring,
   LinkedIn submits, CAPTCHA jobs (human-queued). On Workers: fetch/parse,
   deterministic eval, pdf-lib PDFs, direct ATS POSTs (approved per-board).
-- **Notifications**: both runtimes emit the same lifecycle events to Telegram
-  (`SEEKING/FILTERED/ELIGIBLE/TAILORED/APPLICATION_ATTEMPT/SUBMITTED/DRY_RUN/
-  FAILED`; `STAGE_FAILED` worker-only, `RETRY`/`RECOVERY` python-only).
+- **Notifications**: only the **outcome** events reach Telegram by default —
+  `SUBMITTED`/`DRY_RUN`/`APPLICATION_ATTEMPT`/`FAILED`/`STAGE_FAILED`. The
+  stage chatter (`SEEKING`/`FILTERED`/`ELIGIBLE`/`TAILORED`) is suppressed in
+  both runtimes; the owner asked for the application story, not the
+  pipeline's progress report. Override with `TELEGRAM_EVENTS`
+  (comma-separated event names; absent or empty = the default set) — the
+  Worker reads the `TELEGRAM_EVENTS` var, the local runtime the
+  `TELEGRAM_EVENTS` env var, and both parse it the same way. The full event
+  vocabulary is unchanged (`STAGE_FAILED` worker-only, `RETRY`/`RECOVERY`
+  python-only) — a muted event is simply never sent.
   Secrets: GitHub Actions via repo secrets, Worker via `wrangler secret`;
   web-UI runs stay silent; `--no-notify` per CLI run. Worker claims the ledger
-  key pre-send (at-most-once); local retries a failed send on the next
-  emission. Disability gate re-runs at tailor/apply time in both runtimes.
+  key pre-send (at-most-once) — a muted event is still claimed, so the ledger
+  stays consistent and a retry stays silent; local retries a failed send on the
+  next emission. Disability gate re-runs at tailor/apply time in both runtimes.
   Telegram inbound is owner-restricted: PDF uploads via `POST /telegram/webhook`
   (secret token header) update the master resume pointer
   (`settings.master_resume_sha` in D1; `MASTER_RESUME_SHA` secret is the

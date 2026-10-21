@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { alert, formatJobAlert, formatPostedAge, notifyEventOnce } from "../src/lib/notify.js";
+import {
+  alert,
+  DEFAULT_TELEGRAM_EVENTS,
+  formatJobAlert,
+  formatPostedAge,
+  notifyEventOnce,
+  parseTelegramEvents,
+} from "../src/lib/notify.js";
 
 const ENV = { TELEGRAM_BOT_TOKEN: "tok", TELEGRAM_CHAT_ID: "123" };
+/** Every event the Worker can report, explicitly allowed. */
+const ENV_ALL = {
+  ...ENV,
+  TELEGRAM_EVENTS:
+    "SEEKING,FILTERED,ELIGIBLE,TAILORED,APPLICATION_ATTEMPT,SUBMITTED,DRY_RUN,FAILED,STAGE_FAILED",
+};
 
 function stubFetch(handler: (url: string, init: any) => any) {
   const prev = globalThis.fetch;
@@ -137,7 +150,7 @@ describe("notifyEventOnce", () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
-      await expect(notifyEventOnce(m.db, {}, "worker", "h", "SEEKING", ROW, "x")).resolves.toBe("skipped");
+      await expect(notifyEventOnce(m.db, {}, "worker", "h", "SUBMITTED", ROW, "x")).resolves.toBe("skipped");
       expect(s.calls).toHaveLength(0);
       expect(m.writes).toHaveLength(0);
     } finally { s.restore(); }
@@ -147,10 +160,10 @@ describe("notifyEventOnce", () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
-      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("sent");
-      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "ok")).toBe("sent");
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "ok")).toBe("skipped");
       expect(s.calls).toHaveLength(1);
-      expect(JSON.parse(s.calls[0][1].body).text).toContain("[worker] SEEKING:");
+      expect(JSON.parse(s.calls[0][1].body).text).toContain("[worker] SUBMITTED:");
     } finally { s.restore(); }
   });
 
@@ -158,7 +171,7 @@ describe("notifyEventOnce", () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
-      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("sent");
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "APPLICATION_ATTEMPT", ROW, "go")).toBe("sent");
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "ok")).toBe("sent");
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "FAILED", ROW, "late failure")).toBe("sent");
       expect(s.calls).toHaveLength(3);
@@ -169,8 +182,8 @@ describe("notifyEventOnce", () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
-      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "x")).toBe("sent");
-      expect(await notifyEventOnce(m.db, ENV, "local", "h", "SEEKING", ROW, "x")).toBe("sent");
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "x")).toBe("sent");
+      expect(await notifyEventOnce(m.db, ENV, "local", "h", "SUBMITTED", ROW, "x")).toBe("sent");
       expect(s.calls).toHaveLength(2);
     } finally { s.restore(); }
   });
@@ -189,9 +202,9 @@ describe("notifyEventOnce", () => {
 
   it("bad: pre-seeded event key skips without sending", async () => {
     const s = stubFetch(async () => okResp());
-    const m = memDb(["worker:h:SEEKING"]);
+    const m = memDb(["worker:h:SUBMITTED"]);
     try {
-      await expect(notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "x")).resolves.toBe("skipped");
+      await expect(notifyEventOnce(m.db, ENV, "worker", "h", "SUBMITTED", ROW, "x")).resolves.toBe("skipped");
       expect(s.calls).toHaveLength(0);
     } finally { s.restore(); }
   });
@@ -230,6 +243,99 @@ describe("notifyEventOnce", () => {
       await expect(notifyEventOnce(db, ENV, "worker", "h", "SUBMITTED", ROW, "")).resolves.toBe("failed");
       expect(s.calls).toHaveLength(0);
     } finally { s.restore(); }
+  });
+});
+
+describe("telegram event allowlist", () => {
+  const STAGE_EVENTS = ["SEEKING", "FILTERED", "ELIGIBLE", "TAILORED"] as const;
+  const OUTCOME_EVENTS = ["APPLICATION_ATTEMPT", "SUBMITTED", "DRY_RUN", "FAILED", "STAGE_FAILED"] as const;
+
+  it("default: the stage events are muted but still claimed in the ledger", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    try {
+      for (const ev of STAGE_EVENTS) {
+        expect(await notifyEventOnce(m.db, ENV, "worker", `h-${ev}`, ev, ROW, "stage chatter")).toBe("skipped");
+      }
+      expect(s.calls).toHaveLength(0);
+      // The ledger claim still happens, once per (runtime, hash, event).
+      expect(m.writes).toHaveLength(STAGE_EVENTS.length);
+      expect(m.writes.every((w) => String(w[0]).includes("INSERT INTO notification_events"))).toBe(true);
+      for (const ev of STAGE_EVENTS) expect(m.seen.has(`worker:h-${ev}:${ev}`)).toBe(true);
+    } finally { s.restore(); }
+  });
+
+  it("default: the outcome events still reach Telegram", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    try {
+      for (const ev of OUTCOME_EVENTS) {
+        expect(await notifyEventOnce(m.db, ENV, "worker", `h-${ev}`, ev, ROW, "outcome")).toBe("sent");
+      }
+      expect(s.calls).toHaveLength(OUTCOME_EVENTS.length);
+      for (const ev of OUTCOME_EVENTS) {
+        expect(JSON.parse(s.calls[OUTCOME_EVENTS.indexOf(ev)][1].body).text).toContain(`[worker] ${ev}:`);
+      }
+    } finally { s.restore(); }
+  });
+
+  it("TELEGRAM_EVENTS narrows the set: an event left out is muted", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    const env = { ...ENV, TELEGRAM_EVENTS: "SUBMITTED" };
+    try {
+      expect(await notifyEventOnce(m.db, env, "worker", "h1", "SUBMITTED", ROW, "ok")).toBe("sent");
+      expect(await notifyEventOnce(m.db, env, "worker", "h2", "FAILED", ROW, "boom")).toBe("skipped");
+      expect(s.calls).toHaveLength(1);
+      expect(JSON.parse(s.calls[0][1].body).text).toContain("[worker] SUBMITTED:");
+    } finally { s.restore(); }
+  });
+
+  it("TELEGRAM_EVENTS widens the set: a stage event can be switched back on", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    const env = { ...ENV, TELEGRAM_EVENTS: "SEEKING,SUBMITTED" };
+    try {
+      expect(await notifyEventOnce(m.db, env, "worker", "h1", "SEEKING", ROW, "found")).toBe("sent");
+      expect(await notifyEventOnce(m.db, env, "worker", "h2", "SUBMITTED", ROW, "ok")).toBe("sent");
+      expect(await notifyEventOnce(m.db, env, "worker", "h3", "ELIGIBLE", ROW, "ok")).toBe("skipped");
+      expect(s.calls).toHaveLength(2);
+    } finally { s.restore(); }
+  });
+
+  it("an empty or absent TELEGRAM_EVENTS uses the default set", async () => {
+    for (const env of [ENV, { ...ENV, TELEGRAM_EVENTS: "" }, { ...ENV, TELEGRAM_EVENTS: "  ,  " }]) {
+      const s = stubFetch(async () => okResp());
+      const m = memDb();
+      try {
+        expect(await notifyEventOnce(m.db, env, "worker", "h1", "SEEKING", ROW, "found")).toBe("skipped");
+        expect(await notifyEventOnce(m.db, env, "worker", "h2", "SUBMITTED", ROW, "ok")).toBe("sent");
+        expect(s.calls).toHaveLength(1);
+      } finally { s.restore(); }
+    }
+  });
+
+  it("a second muted event for the same job is still claimed exactly once", async () => {
+    const s = stubFetch(async () => okResp());
+    const m = memDb();
+    try {
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
+      // The second attempt hits the ledger conflict and skips the same way.
+      expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
+      expect(s.calls).toHaveLength(0);
+      // Exactly one ledger row for the key: the ledger claims it once.
+      expect(m.seen.size).toBe(1);
+      expect(m.seen.has("worker:h:SEEKING")).toBe(true);
+    } finally { s.restore(); }
+  });
+
+  it("parseTelegramEvents: comma separated, trimmed, empty means the default set", () => {
+    expect([...parseTelegramEvents(undefined)].sort()).toEqual([...DEFAULT_TELEGRAM_EVENTS].sort());
+    expect([...parseTelegramEvents("")].sort()).toEqual([...DEFAULT_TELEGRAM_EVENTS].sort());
+    expect([...parseTelegramEvents("   ")].sort()).toEqual([...DEFAULT_TELEGRAM_EVENTS].sort());
+    expect([...parseTelegramEvents("SEEKING, SUBMITTED")].sort()).toEqual(["SEEKING", "SUBMITTED"]);
+    // Event names are matched case-insensitively.
+    expect([...parseTelegramEvents("seeking")]).toEqual(["SEEKING"]);
   });
 });
 
