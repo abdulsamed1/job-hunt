@@ -47,9 +47,10 @@ describe("detectDegraded", () => {
   it("returns [] for an empty job list", () => {
     expect(detectDegraded([], "https://example.com/feed")).toEqual([]);
   });
-  it("skips off-domain-url for rss aggregators", () => {
+  it("skips off-domain-url for rss aggregators and LinkedIn's country hosts", () => {
     const rows = [{ title: "Backend Engineer", company: "Acme", url: "https://boards.greenhouse.io/x/1" }];
     expect(detectDegraded(rows, "https://example.com/feed", "rss")).toEqual([]);
+    expect(detectDegraded(rows, "https://www.linkedin.com/jobs/", "linkedin")).toEqual([]);
     expect(detectDegraded(rows, "https://example.com/feed", "greenhouse")).toContain("off-domain-url");
   });
 });

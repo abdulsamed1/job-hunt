@@ -31,6 +31,13 @@ engine, and no automated path may use the account again.
   banned. If the owner wants robots honoured on the Worker too, delete the
   `linkedin` case in `worker/src/stages/discover.ts`: discovery stops, apply
   stays manual.
+- **Guest throttling is expected**: the endpoint answers 200 with cards, but a
+  burst of queries can 429 every request. The Worker retries each query once
+  (700 ms), searches one page per query, and the discover stage fails the
+  source only when *every* query fails — a partial harvest still lands. Such a
+  run is `inconclusive` in `POST /probe`, never a dead board, so probing the
+  two LinkedIn entries in quick succession is what produces 429s; pipeline
+  cadence is 8–9 requests per source per 6h.
 - **No auto-apply, three layers**: the Worker `tailor-apply` stage saves a
   LinkedIn row as `APPLICATION_STARTED` with "discovery only — apply manually"
   and never calls an ATS client; the Python `run_application_stage` filters

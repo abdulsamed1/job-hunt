@@ -80,8 +80,16 @@ def classify_probe(name: str, status: int, probe: dict):
         return ("fail", f"{name}: transport/server error (HTTP {status}): {probe}")
     if probe.get("inconclusive"):
         return ("warn", f"{name}: inconclusive ({probe.get('error', '')[:80]})")
-    if (probe.get("remote_fresh") or 0) == 0:
-        return ("warn", f"{name}: zero fresh-remote jobs (board quiet or stale, not a deploy failure)")
+    # A board is empty only when it yields nothing the product can use. The
+    # geography gate is the shipped policy (remote anywhere, placed in Egypt,
+    # or unknown location); judging by remote-only would call an Egypt on-site
+    # board empty. `remote_fresh` is the fallback for a deployment that
+    # predates `usable_fresh`.
+    usable = probe.get("usable_fresh")
+    if usable is None:
+        usable = probe.get("remote_fresh")
+    if (usable or 0) == 0:
+        return ("warn", f"{name}: zero fresh-usable jobs (board quiet or stale, not a deploy failure)")
     return ("ok", "")
 
 
@@ -165,7 +173,8 @@ def main() -> int:
             warnings.append(msg)
             rows.append((name, "inconclusive" if probe.get("inconclusive") else "empty", (probe.get("error") or "")[:60]))
         else:
-            rows.append((name, f"raw={probe.get('raw')} fresh={probe.get('fresh_24h')} remote={probe.get('remote_fresh')}", ""))
+            rows.append((name, f"raw={probe.get('raw')} fresh={probe.get('fresh_24h')} "
+                              f"usable={probe.get('usable_fresh')} remote={probe.get('remote_fresh')}", ""))
 
     print("\nprobe results:")
     for name, res, extra in rows:

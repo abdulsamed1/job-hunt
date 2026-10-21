@@ -21,6 +21,34 @@ export async function fetchText(url: string, init?: RequestInit, maxBytes = MAX_
   }
 }
 
+export interface FetchOutcome {
+  /** HTTP status, or 0 when the request itself threw (network/DNS/TLS). */
+  status: number;
+  /** Decoded body, or null when the request failed or the body was too big. */
+  text: string | null;
+}
+
+/**
+ * Like fetchText, but keeps the status. Guest endpoints (LinkedIn) throttle
+ * with 429/999; a bare `null` cannot tell that apart from a network error, so
+ * "why is this source failing in production?" becomes unanswerable. Used by
+ * the LinkedIn guest fetcher, whose raised error carries the status.
+ */
+export async function fetchTextStatus(url: string, init?: RequestInit, maxBytes = MAX_BYTES): Promise<FetchOutcome> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: { "User-Agent": UA, Accept: "application/json, text/xml, */*", ...(init?.headers || {}) },
+    });
+    if (!res.ok) return { status: res.status, text: null };
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.length > maxBytes) return { status: res.status, text: null };
+    return { status: res.status, text: new TextDecoder().decode(buf) };
+  } catch {
+    return { status: 0, text: null };
+  }
+}
+
 export async function fetchJson(url: string, init?: RequestInit): Promise<any | null> {
   try {
     const res = await fetch(url, {

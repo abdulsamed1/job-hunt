@@ -54,6 +54,22 @@ def test_classify_probe_empty_but_clean_is_warning():
     assert kind == "warn"
 
 
+def test_classify_probe_egypt_onsite_board_is_ok():
+    mod = _load()
+    # Fresh postings, none remote, all usable under the target-geo policy:
+    # an Egypt on-site board must not read as empty.
+    kind, msg = mod.classify_probe(
+        "x", 200, {"raw": 66, "fresh_24h": 66, "remote_fresh": 0, "usable_fresh": 66}
+    )
+    assert (kind, msg) == ("ok", "")
+
+
+def test_classify_probe_falls_back_to_remote_fresh_on_older_deploys():
+    mod = _load()
+    kind, _ = mod.classify_probe("x", 200, {"raw": 10, "fresh_24h": 5, "remote_fresh": 0})
+    assert kind == "warn"
+
+
 def test_classify_probe_yielding_is_ok():
     mod = _load()
     kind, msg = mod.classify_probe("x", 200, {"raw": 10, "fresh_24h": 5, "remote_fresh": 3})

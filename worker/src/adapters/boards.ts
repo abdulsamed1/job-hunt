@@ -1,7 +1,8 @@
 // JSON-board discovery: RemoteOK, Remotive, Arbeitnow, Jobicy + LinkedIn guest.
 // Mirrors the Python feed/LinkedIn adapters' field mapping.
 
-import { fetchJson, fetchText, type RawJob } from "./http.js";
+import { fetchJson, fetchTextStatus, type RawJob } from "./http.js";
+import { htmlToText } from "./ats.js";
 import { isRemoteish } from "../lib/freshness.js";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0 Safari/537.36";
@@ -108,23 +109,34 @@ export async function fetchLinkedInGuest(
       "Accept-Language": "en-US,en;q=0.9",
       Referer: "https://www.linkedin.com/jobs/",
     };
-    let html = await fetchText(url, { headers });
+    let html = (await fetchTextStatus(url, { headers })).text;
     if (html === null) {
       // One polite retry: the guest endpoint throttles bursts with 429.
       await new Promise((r) => setTimeout(r, 700));
-      html = await fetchText(url, { headers });
+      const second = await fetchTextStatus(url, { headers });
+      // `null` is a failed fetch (429/403/5xx/network); "" is "no more cards".
+      // Raising matters: swallowing it would report a throttled source as a
+      // board with nothing to offer, and the probe would call it dead. The
+      // status rides along so a deploy failure is diagnosable from the probe
+      // response instead of a vague "all failed".
+      if (second.text === null) {
+        throw new Error(
+          `linkedin guest search failed (${keywords} @ ${location}): ` +
+          `HTTP ${second.status || "network error"}`,
+        );
+      }
+      html = second.text;
     }
-    // `null` is a failed fetch (429/403/5xx/network); "" is "no more cards".
-    // Raising matters: swallowing it would report a throttled source as a
-    // board with nothing to offer, and the probe would call it dead.
-    if (html === null) throw new Error(`linkedin guest search failed (${keywords} @ ${location})`);
     if (!html) break;
     const cards = html.match(/<li[\s\S]*?<\/li>/gi) || [];
     if (cards.length === 0) break;
     for (const card of cards) {
       const pick = (re: RegExp) => {
         const m = card.match(re);
-        return m ? m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+        // Guest cards escape `&`, `'` and friends (`Backend &amp; Platform`).
+        // Unescaping here keeps titles readable and keeps the role gate and
+        // the dedupe fingerprint from hashing entity soup.
+        return m ? htmlToText(m[1], 400) : "";
       };
       const href =
         pick(/<a[^>]+class="[^"]*base-card__full-link[^"]*"[^>]+href="([^"]+)"/i) ||

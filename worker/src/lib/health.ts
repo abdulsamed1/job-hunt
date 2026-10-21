@@ -6,8 +6,10 @@ export function detectDegraded(jobs: DegradedRow[], sourceUrl: string, kind = ""
   const signals = new Set<string>();
   let host = "";
   try { host = new URL(sourceUrl).hostname; } catch { /* ignore */ }
-  // RSS feeds aggregate off-domain job URLs by design; the signal is noise there.
-  const skipOffDomain = kind === "rss";
+  // RSS feeds aggregate off-domain job URLs by design, and the LinkedIn guest
+  // endpoint serves links from whichever country host it picked
+  // (eg.linkedin.com for an Egypt search) — the signal is noise for both.
+  const skipOffDomain = kind === "rss" || kind === "linkedin";
   for (const j of jobs) {
     if (!j.company) signals.add("null-company");
     if (!j.title) signals.add("empty-title");

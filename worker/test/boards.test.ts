@@ -28,6 +28,28 @@ describe("fetchLinkedInGuest", () => {
     }
   });
 
+  it("unescapes HTML entities in card text", async () => {
+    const prev = globalThis.fetch;
+    (globalThis as any).fetch = async () => ({
+      ok: true, status: 200,
+      arrayBuffer: async () => new TextEncoder().encode(
+        '<ul><li><div class="base-card job-search-card" data-entity-urn="urn:li:jobPosting:7">' +
+        '<a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/z-7"></a>' +
+        '<h3 class="base-search-card__title">Backend &amp; Platform Engineer</h3>' +
+        '<h4 class="base-search-card__subtitle">Acme &amp; Co</h4>' +
+        '<span class="job-search-card__location">Cairo, Egypt</span>' +
+        '</div></li></ul>',
+      ).buffer,
+    });
+    try {
+      const jobs = await fetchLinkedInGuest("Backend", "Egypt", 1, 43200);
+      expect(jobs[0].title).toBe("Backend & Platform Engineer");
+      expect(jobs[0].company).toBe("Acme & Co");
+    } finally {
+      (globalThis as any).fetch = prev;
+    }
+  });
+
   it("tags city locations as remote when the search itself was remote-filtered", async () => {
     const prev = globalThis.fetch;
     (globalThis as any).fetch = async () => ({
@@ -55,8 +77,23 @@ describe("fetchLinkedInGuest", () => {
     const prev = globalThis.fetch;
     (globalThis as any).fetch = async () => ({ ok: false, status: 429 });
     try {
+      // The status rides on the error: "all failed" with no reason is not a
+      // diagnosable production report.
       await expect(fetchLinkedInGuest("Backend", "Egypt", 1, 43200))
-        .rejects.toThrow(/linkedin guest search failed/);
+        .rejects.toThrow(/linkedin guest search failed \(Backend @ Egypt\): HTTP 429/);
+    } finally {
+      (globalThis as any).fetch = prev;
+    }
+  });
+
+  it("names a network failure instead of an HTTP status when the request throws", async () => {
+    const prev = globalThis.fetch;
+    (globalThis as any).fetch = async () => {
+      throw new Error("connect timeout");
+    };
+    try {
+      await expect(fetchLinkedInGuest("Backend", "Egypt", 1, 43200))
+        .rejects.toThrow(/HTTP network error/);
     } finally {
       (globalThis as any).fetch = prev;
     }

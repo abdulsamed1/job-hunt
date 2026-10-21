@@ -140,20 +140,25 @@ export async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]
       const tpr = def.tprSeconds || parseInt(env.TPR_SECONDS || "43200", 10);
       let ok = 0;
       let failed = 0;
+      let lastError = "";
       for (const location of locations) {
         for (const q of def.queries || ["backend"]) {
           try {
             out.push(...(await fetchLinkedInGuest(q, location, 1, tpr)));
             ok++;
-          } catch {
+          } catch (e) {
             failed++;
+            lastError = e instanceof Error ? e.message : String(e);
           }
         }
       }
       // Some queries surviving is a normal partial harvest; every query
       // failing (throttled, blocked) is a source-level failure and must be
-      // recorded as one, not swallowed into an empty result.
-      if (ok === 0 && failed > 0) throw new Error(`linkedin guest searches all failed (${failed})`);
+      // recorded as one, not swallowed into an empty result. The underlying
+      // reason (HTTP status / network) rides along for /coverage and /probe.
+      if (ok === 0 && failed > 0) {
+        throw new Error(`linkedin guest searches all failed (${failed}): ${lastError}`);
+      }
       return out;
     }
   }

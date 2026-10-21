@@ -119,7 +119,7 @@ records the newest posting date (`last_yield_at`) next to the probe time
 | `GET /coverage` | Measured coverage from the `source_health` table, by kind. The feed-quality counters read the `jobs` table through a **window** (`discovered_at >= now - 1 day`) and a `LIMIT`: the table is cumulative history, so an unbounded read would grow with the store instead of with the feed. There is no aggregate fallback — the endpoint fails loudly rather than answering from columns the real D1 table does not have. |
 | `GET /sources` | Configured shard: total, python-only, hourly subset, by kind. |
 | `POST /run?deep=1` | Fan out the whole shard, one source per message, ≤50 per `sendBatch`. Omit `deep` for the hourly subset. |
-| `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_24h` / `remote_fresh`. Writes nothing. |
+| `POST /probe` | Read-only single-source yield check: `{"name":"stripe"}` → `raw` / `fresh_24h` / `usable_fresh` (the shipped geography gate) / `remote_fresh` (strict). Writes nothing. |
 | `POST /queue` | Fetch jobs by state (`{"state":"ELIGIBLE","count":10}`). |
 | `POST /telegram/webhook` | Owner-only Telegram inbound; `X-Telegram-Bot-Api-Secret-Token` must match `TELEGRAM_WEBHOOK_SECRET` (else 401). A PDF upload updates `settings.master_resume_sha` (precedence: D1 → `MASTER_RESUME_SHA` secret); `/master` reports the current sha + source; everything else is ignored. |
 

@@ -15,7 +15,7 @@
 import { GENERATED_SOURCES, PYTHON_ONLY_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
-import { filterRecentList, filterRemoteList, HOURS_OLD, parsePostedAt } from "./lib/freshness.js";
+import { filterRecentList, filterRemoteList, filterTargetGeoList, HOURS_OLD, parsePostedAt } from "./lib/freshness.js";
 import { applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { discoverSource, linkedinEnabled, NO_DATE_DETAIL, runDiscoverStage } from "./stages/discover.js";
 import { completeJson } from "./lib/llm.js";
@@ -464,10 +464,18 @@ export default {
         const remote = filterRemoteList(
           fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
         );
+        // The shipped geography gate: remote anywhere, placed in Egypt, or
+        // unknown location. This is what the pipeline actually ingests, so it
+        // is what "this board yields" must mean — an Egypt on-site board is not
+        // empty just because it has no remote roles.
+        const geo = filterTargetGeoList(
+          fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })),
+        );
         return Response.json({
-          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length, remote_fresh: remote.length,
-          degraded: detectDegraded(remote, def.url || "", def.kind || ""),
-          sample: remote.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
+          name: def.name, kind: def.kind, raw: jobs.length, fresh_24h: fresh.length,
+          usable_fresh: geo.length, remote_fresh: remote.length,
+          degraded: detectDegraded(geo, def.url || "", def.kind || ""),
+          sample: geo.slice(0, 3).map((j) => ({ title: j.title, company: j.company, url: j.url })),
         });
       } catch (e) {
         // Transport/rate-limit failures are inconclusive (HTTP 200): the board

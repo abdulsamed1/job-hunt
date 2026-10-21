@@ -1518,6 +1518,9 @@ describe("queue lifecycle events", () => {
       const health = statements.find((s) => s.sql.includes("INSERT INTO source_health"));
       expect(health, "source health must be recorded").toBeTruthy();
       expect(String(health?.params?.join(" "))).toContain("linkedin guest searches all failed");
+      // The cause survives the aggregation: /coverage and /probe show whether
+      // it was a throttle, a block, or the network.
+      expect(String(health?.params?.join(" "))).toContain("HTTP 429");
       expect(q.EVALUATE_Q.sent).toHaveLength(0);
     } finally {
       (globalThis as any).fetch = prev;
