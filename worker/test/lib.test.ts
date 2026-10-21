@@ -539,8 +539,14 @@ describe("enrichDescriptions", () => {
   it("never drops a job when enrichment fails", async () => {
     const { enrichDescriptions } = await import("../src/adapters/ats.js");
     const jobs = [{ title: "t", company: "c", location: "Remote", url: "u", source: "greenhouse:nope", desc: "x", posted_at: "", external_id: "999999" }];
-    const out = await enrichDescriptions(jobs);
-    expect(out).toHaveLength(1);
+    const prev = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    try {
+      const out = await enrichDescriptions(jobs);
+      expect(out).toHaveLength(1);
+    } finally {
+      globalThis.fetch = prev;
+    }
   });
 });
 

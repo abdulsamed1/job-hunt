@@ -56,10 +56,16 @@ function isRemoteText(text: string): boolean {
   return /\b(remote|anywhere|worldwide|work from home|wfh|distributed)\b/i.test(text);
 }
 
+const NOT_A_JOB_PATH = /\/(job-search|jobs\/q|search|category|categories|tags?|blog|articles?|career-advice|salary)(\/|$|[-_?.])/i;
+
 function looksLikeJobUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return /\/(job|jobs|career|careers|position|positions|opening|openings|vacanc|role|roles)(\/|$|[-_])/i.test(u.pathname + "/");
+    const path = u.pathname + "/";
+    // Listing/navigation pages often sit under /jobs/ too (Dice's /jobs/q-…,
+    // CryptoJobSearch's /job-search/…). Only a detail-looking path counts.
+    if (NOT_A_JOB_PATH.test(path)) return false;
+    return /\/(job|jobs|career|careers|position|positions|opening|openings|vacanc|role|roles)(\/|$|[-_])/i.test(path);
   } catch {
     return false;
   }

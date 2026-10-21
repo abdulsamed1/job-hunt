@@ -42,6 +42,16 @@ describe("web board adapter", () => {
     });
   });
 
+  it("rejects search and category links that live under /jobs/", () => {
+    const html = `<a href="/job-search/cloud-it-infrastructure.html">Cloud + IT Infrastructure</a>
+      <a href="/jobs/q-data-entry">Data entry</a>
+      <a href="/job-profile/1230506.html">Senior Software Engineer</a>
+      <a href="/job-detail/abc-123">Backend Engineer</a>
+      <a href="/search?q=engineer">Search results</a>`;
+    const jobs = parseWebHtml(html, "Example", "https://jobs.example.com/");
+    expect(jobs.map((j) => j.title).sort()).toEqual(["Backend Engineer", "Senior Software Engineer"]);
+  });
+
   it("reads __NEXT_DATA__ postings", () => {
     const payload = {
       props: {
