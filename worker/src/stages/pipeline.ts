@@ -159,6 +159,22 @@ export function freshWithin(postedAt: unknown, hoursOld: number): boolean {
   return isFresh(postedAt, hoursOld) !== false;
 }
 
+/**
+ * The instruction the owner reads for a posting the Worker queued for a human.
+ *
+ * The owner's flow is one click: the message carries the posting's URL, and
+ * the only other thing needed is the master CV. The detail therefore says what
+ * to do ("tap the link, attach your master CV") and names the CV by its short
+ * sha, so the owner attaches the same file the Worker would have attached and
+ * not a stale copy from a previous upload. Pure — no env, no I/O.
+ */
+export function manualApplyDetail(reason: string, masterSha: string | null | undefined): string {
+  const why = (reason || "").trim();
+  const cv = (masterSha || "").trim();
+  const tail = cv ? ` (master CV ${cv.slice(0, 8)})` : "";
+  return `${why ? `${why} — ` : ""}apply manually: tap the link, attach your master CV${tail}`;
+}
+
 /** What a live attempt means for the application state.
  *
  * A board that refuses automation (captcha, missing API credentials, an

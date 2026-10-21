@@ -36,6 +36,18 @@ function parseArgs(argv) {
   return out;
 }
 
+/** One request, retried once on a transport failure: a stalled connect to the
+ *  Worker says nothing about the deploy, and a false "unreachable" is worse
+ *  than a two-second wait. */
+async function reqRetry(baseUrl, method, path, payload, timeoutMs = 60_000) {
+  let out = await req(baseUrl, method, path, payload, timeoutMs);
+  if (out.status === -1) {
+    await new Promise((r) => setTimeout(r, 1500));
+    out = await req(baseUrl, method, path, payload, timeoutMs);
+  }
+  return out;
+}
+
 function req(baseUrl, method, path, payload, timeoutMs = 60_000) {
   return new Promise((resolve) => {
     let settled = false;
@@ -145,7 +157,7 @@ export async function verify(opts) {
   const warnings = [];
   const rows = [];
 
-  const health = await req(opts.baseUrl, "GET", "/health");
+  const health = await reqRetry(opts.baseUrl, "GET", "/health");
   if (health.status !== 200 || !health.body?.ok) {
     failures.push(`/health unreachable: ${health.status} ${JSON.stringify(health.body)}`);
   } else {
@@ -157,16 +169,16 @@ export async function verify(opts) {
     failures.push(...checkHealth(h, opts.expectLive));
   }
 
-  const sources = await req(opts.baseUrl, "GET", "/sources");
+  const sources = await reqRetry(opts.baseUrl, "GET", "/sources");
   if (sources.status !== 200) failures.push(`/sources unreachable: ${sources.status}`);
   else console.log(`shard: ${sources.body.worker_sources} worker sources`);
 
-  const coverage = await req(opts.baseUrl, "GET", "/coverage");
+  const coverage = await reqRetry(opts.baseUrl, "GET", "/coverage");
   if (coverage.status !== 200) failures.push(`/coverage unreachable: ${coverage.status}`);
   else console.log(`coverage: ${coverage.body.sources_yielding}/${coverage.body.sources_attempted} yielding`);
 
   for (const name of names) {
-    const probe = await req(opts.baseUrl, "POST", "/probe", { name }, 90_000);
+    const probe = await reqRetry(opts.baseUrl, "POST", "/probe", { name }, 90_000);
     const [kind, msg] = classifyProbe(name, probe.status, probe.body || {});
     if (kind === "fail") failures.push(msg);
     else if (kind === "warn") {

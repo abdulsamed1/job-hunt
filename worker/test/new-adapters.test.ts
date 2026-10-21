@@ -6,7 +6,7 @@ import { generateNkparam, parseNaukriJob } from "../src/adapters/naukri.js";
 import { parseFeedText } from "../src/adapters/rss.js";
 import { parseWebHtml } from "../src/adapters/web.js";
 import { isInconclusiveProbeError } from "../src/lib/health.js";
-import { applyDisposition } from "../src/stages/pipeline.js";
+import { applyDisposition, manualApplyDetail } from "../src/stages/pipeline.js";
 
 describe("web board adapter", () => {
   it("reads schema.org JobPosting blocks", () => {
@@ -227,6 +227,20 @@ describe("apply disposition", () => {
     expect(applyDisposition({ ok: true, detail: "submitted (HTTP 200)" }, true)).toEqual({
       state: "SUBMITTED", manual: false,
     });
+  });
+});
+
+describe("manual apply instruction", () => {
+  it("says what to do and names the master CV by its short sha", () => {
+    const detail = manualApplyDetail("non-ATS board", "19c8b110cabcc0237fdebdb198f7b9d7d6e294784907930efab00712fa396ae6");
+    expect(detail).toBe("non-ATS board — apply manually: tap the link, attach your master CV (master CV 19c8b110)");
+    expect(detail).toContain("apply manually");
+  });
+
+  it("stays readable when no master CV is set", () => {
+    expect(manualApplyDetail("linkedin: discovery only", null)).toBe(
+      "linkedin: discovery only — apply manually: tap the link, attach your master CV",
+    );
   });
 });
 

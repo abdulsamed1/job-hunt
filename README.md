@@ -163,6 +163,14 @@ not a fake `FAILED`; only a real transport/validation failure is `FAILED`.
 Fully unattended submission to captcha-protected ATSs requires a paid browser
 or captcha-solving service — it is not possible on the Workers free tier.
 
+**Owner decision (2026-10-21): one-click manual.** The free tier stays as it
+is; every eligible posting is queued for a human and the Telegram message is
+the click. The alert carries the posting URL and says exactly what to do —
+`apply manually: tap the link, attach your master CV (master CV 19c8b110)` —
+so the owner attaches the same file the Worker would have attached. The two
+alternatives (paid browser + captcha service, or employer API keys) stay
+available by flipping `LIVE_APPLY`/`APPROVE_*` once credentials exist.
+
 **LinkedIn is discovery-only.** Search uses the public guest endpoint (no
 cookies, no account). No automated path applies through the owner's LinkedIn
 account — that is a permanent safety rule after the 2026-10-02 ban.

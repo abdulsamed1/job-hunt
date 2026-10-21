@@ -16,7 +16,7 @@ import { GENERATED_SOURCES } from "./sources.generated.js";
 import type { SourceDef } from "./sources.js";
 import { detectDegraded, isInconclusiveProbeError } from "./lib/health.js";
 import { filterRecentList, filterRemoteList, filterTargetGeoList, HOURS_OLD, parsePostedAt } from "./lib/freshness.js";
-import { applyDisposition, applyToAts, evaluateJob } from "./stages/pipeline.js";
+import { applyDisposition, manualApplyDetail, applyToAts, evaluateJob } from "./stages/pipeline.js";
 import { discoverSource, linkedinEnabled, NO_DATE_DETAIL, runDiscoverStage } from "./stages/discover.js";
 import { completeJson } from "./lib/llm.js";
 import { checkDisabilityTargetingGate, type Profile } from "./lib/evaluate.js";
@@ -249,7 +249,7 @@ export default {
           // banned, so a LinkedIn posting never reaches an apply client. It is
           // queued for the human exactly like any other non-ATS board.
           if (src.toLowerCase() === "linkedin" || /(^|[./])linkedin\.com\//i.test(row.url || "")) {
-            const queuedDetail = "linkedin: discovery only — apply manually";
+            const queuedDetail = manualApplyDetail("linkedin: discovery only", sha);
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
             if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
             continue;
@@ -267,7 +267,7 @@ export default {
             (board?.kind === "greenhouse" && env.APPROVE_GREENHOUSE === "true") ||
             (board?.kind === "lever" && env.APPROVE_LEVER === "true");
           if (!board) {
-            const queuedDetail = "non-ATS board: queued for human review";
+            const queuedDetail = manualApplyDetail("non-ATS board", sha);
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
             if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
             continue;
@@ -278,9 +278,12 @@ export default {
           // not pinned; those postings are queued for the human instead of
           // being reported as failed attempts that never reached the employer.
           if (live && (!approved || board.kind === "ashby")) {
-            const queuedDetail = board.kind === "ashby"
-              ? "ashby: live submit not pinned — apply manually"
-              : `${board.kind}: live submission not approved — apply manually`;
+            const queuedDetail = manualApplyDetail(
+              board.kind === "ashby"
+                ? "ashby: live submit not pinned"
+                : `${board.kind}: live submission not approved`,
+              sha,
+            );
             await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
             if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
             continue;
