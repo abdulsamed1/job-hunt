@@ -11,17 +11,22 @@ cd worker
 npm ci
 npm test                 # vitest, includes source-shard drift + parser fixtures
 npx tsc --noEmit         # typecheck
-node scripts/gen_sources.mjs          # regenerate src/sources.generated.ts
-node scripts/gen_sources.mjs --check  # drift check (also runs in npm test)
-npm run probe -- --apply              # measure sources, rewrite status:, regenerate
-npm run verify -- --new-only          # post-deploy check (--expect-live for live)
+npm run sources          # regenerate src/sources.generated.ts
+npm run sources:check    # drift check (also runs in npm test)
+npm run probe -- --apply # measure all 375 boards, promote live / demote hard-dead
+npm run probe -- --only <name>        # measure one board
+npm run verify -- --sources a,b       # post-deploy check (--expect-live for live)
 npx wrangler deploy
 ```
+
+`probe` and `verify` talk to the deployed Worker over an explicit IPv4 socket
+(`node:https`, `family: 4`) and retry a stalled connect once — a transport
+blip is not a verdict and must never be recorded as one.
 
 ## Runtime
 
 ```
-cron hourly (25) + 6-hourly (200)
+cron hourly (26) + 6-hourly (206)
   → DISCOVER_Q (1 source/message) → D1 jobs
   → EVALUATE_Q (deterministic score + gates) → eligible
   → APPLY_Q (re-gates, attaches master PDF from R2) → submit or human queue
@@ -45,6 +50,10 @@ cron hourly (25) + 6-hourly (200)
 - `worker/scripts/gen_sources.mjs` emits `worker/src/sources.generated.ts` and
   fails when an adapter has no Worker implementation. Never hand-edit the
   generated file.
+- The generated file ships **every supported source with its status**, dead
+  ones included. The pipeline runs only non-dead entries (`status !== "dead"`);
+  `/probe` searches all of them, so a board that comes back to life is
+  promoted by a status change, not by a hand-edited special case.
 - `worker/src/sources.generated.ts` is checked in; `npm test` runs `--check`.
 - Kinds: greenhouse, ashby, lever, rss/feed, smartrecruiters, teamtailor,
   recruitee, personio, bamboohr, workable, freehire, bdjobs, indeed,
@@ -52,15 +61,21 @@ cron hourly (25) + 6-hourly (200)
 - Hourly shard = 26 curated sources. Everything else runs on the 6-hourly
   deep sweep. The deep sweep is 4×/day so a 24h window never misses a posting.
 - Adding a source: add to `config/sources.yaml` → implement the adapter if the
-  kind is new → `node scripts/gen_sources.mjs` → `npm test` → deploy →
+  kind is new → `npm run sources` → `npm test` → deploy →
   `npm run probe -- --only <name>` → keep it only if `usable_any_age > 0`
-  (or leave `status: unknown` while it is being evaluated).
+  (or leave `status: unknown` while it is being evaluated). A board that
+  answers but posts nothing stays configured and is re-probed; only a hard
+  404/410 is written back as `status: dead`.
 - Probing is triage, not the product. `data/source_probe.json` is the ledger.
   Liveness = at least one usable posting at **any age** (remote anywhere,
   placed in Egypt, or unknown location). A failed fetch is flaky (`unknown`),
   never dead. A quiet board is kept and re-probed; only a 404/410 demotes it
   to `dead`. Dead boards stay probe-able (`ALL_SOURCES`) and revive on a
   yielding probe.
+- **"Live" is not "productive".** A board that posts without a date (most
+  `web` boards) counts as live but its rows are dateless, so they are stored
+  for the record and never scored. The live count therefore overstates the
+  24h feed; the productive set is the boards that also yield *dated* rows.
 
 ## Geography and recency
 
@@ -105,17 +120,48 @@ cron hourly (25) + 6-hourly (200)
    Rezi; it attaches the master PDF.
 8. **Every code change needs tests.** Red → green; `npm test` and
    `npx tsc --noEmit` must be clean before deploy.
+9. **Owner decision (2026-10-21): one-click manual.** `LIVE_APPLY` stays
+   `false` and every eligible posting is queued for the human. The queued
+   alert *is* the product: it must carry the posting URL and say what to do
+   (`manualApplyDetail` in `worker/src/stages/pipeline.ts` →
+   `apply manually: tap the link, attach your master CV (master CV <sha8>)`).
+   A paid captcha service and employer API keys were the rejected
+   alternatives; reviving either needs an explicit owner decision, and no
+   captcha bypass may be added in the meantime (rule 4).
 
 ## Worker gotchas that cost real debugging time
 
 - ATS list endpoints omit descriptions (greenhouse/smartrecruiters) → must
   enrich before scoring, otherwise every job rejects for lack of evidence.
+- ATS board caps are **300**, not 40. Remote roles sit deep in big boards
+  (Cloudflare's only remote role is #284, Datadog's #53, Brex's #143). A
+  lower cap silently hides them and the board reads as dead.
+- The `rss` kind is a **generic feed**: JSON is parsed first (RemoteOK,
+  Remotive, Jobicy, Arbeitnow), then RSS/Atom. An XML-only parser returns 0
+  for a JSON feed and the board reads as quiet, not broken.
+- Feed bodies can outgrow the 1.5MB page cap (Arbeitnow serves 2.3MB), so
+  feeds use a 3MB cap. Too large must read as flaky, never as dead.
+- `web` boards: search and category links (`/jobs/q-…`, `/job-search/…`) must
+  never be stored as postings — see `NOT_A_JOB_PATH` in
+  `worker/src/adapters/web.ts`. They are dateless, so they never score, but
+  they do inflate the jobs table.
+- A posting is an ATS board only when its `source` column is
+  `greenhouse:org` / `lever:org` / `ashby:org`. Everything else (web, RSS,
+  Bayt, Naukri, LinkedIn) is queued for the human by design.
 - `upsertJob` must backfill richer text when the same URL arrives again.
 - `/run` must fan out the whole shard, not just the hourly slice.
 - Empty skill evidence must never become eligible.
 - Discovery queue consumer is `max_batch_size = 1` so a message can store up to
   `INTAKE_CAP` postings without exhausting the subrequest budget.
 - `d1 execute` needs `--remote`; retry transient `fetch failed` on writes.
+- Node's global `fetch` can hang on a broken IPv6 route (ETIMEDOUT, ~10s).
+  The probe and verify scripts use `node:https` with `family: 4` instead; do
+  not reintroduce global `fetch` there.
+- `wrangler deploy` fails with "The request to Cloudflare's API timed out"
+  when the local route to some `api.cloudflare.com` anycast IP is broken
+  (TCP connect hangs past undici's 10s connect timeout). Probe it with
+  `node -e "fetch('https://api.cloudflare.com/client/v4/')"`, then retry or pin
+  the host to a healthy edge IP. The Worker's own endpoints are unaffected.
 - Wrangler reports a pre-existing libc field drift in `package-lock.json` on
   some npm versions — do not “fix” unrelated lockfile churn in a feature PR.
 
@@ -125,20 +171,22 @@ After any deploy:
 
 ```bash
 cd worker
-node scripts/verify_deploy.mjs --new-only            # dry-run deploy
-node scripts/verify_deploy.mjs --new-only --expect-live
+npm run verify -- --sources a,b          # check the endpoints and probe a few boards
+npm run verify -- --new-only --expect-live
 ```
 
 Fails on unreachable endpoints, wrong safety flags, a missing resume pointer,
 or a probe transport error. Quiet/inconclusive boards warn, they do not fail.
+A stalled connect is retried once before it is called a failure.
 
 ## Repository map
 
 ```
 config/sources.yaml          source of truth
 data/source_probe.json       measured source ledger
-worker/src/adapters/         per-kind fetchers
+worker/src/adapters/         per-kind fetchers (ats, boards, rss, web, bayt, naukri)
 worker/src/lib/              freshness, roles, scoring, hashing, hosts, notify
+worker/src/sources.generated.ts  the shard (generated; never hand-edited)
 worker/src/stages/           discover, evaluate, tailor/apply
 worker/scripts/              generator, probe, deploy verifier
 worker/schema.sql            D1 schema
