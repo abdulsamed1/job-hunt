@@ -2,6 +2,7 @@
 // Mirrors the Python feed/LinkedIn adapters' field mapping.
 
 import { fetchJson, fetchText, type RawJob } from "./http.js";
+import { isRemoteish } from "../lib/freshness.js";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0 Safari/537.36";
 
@@ -88,24 +89,35 @@ export async function fetchJobicy(limit = 30): Promise<RawJob[]> {
 export async function fetchLinkedInGuest(
   keywords: string, location: string, pages: number, tprSeconds: number | null,
 ): Promise<RawJob[]> {
-  // Standing target mirror: backend/fullstack/software, past-12h (f_TPR=r43200).
+  // Standing target mirror: past-12h (f_TPR=r43200), location or geo query as
+  // configured. A remote-signalled search string ("Remote") means every card
+  // the endpoint returns is a remote role, even when the card prints the
+  // employer's city — tag those so the target-geo filter sees the signal the
+  // search already proved.
+  const remoteSearch = isRemoteish(location, "");
   const out: RawJob[] = [];
   for (let page = 0; page < pages; page++) {
     const params = new URLSearchParams({
       keywords, location, start: String(page * 10), count: "10",
     });
     if (tprSeconds) params.set("f_TPR", `r${tprSeconds}`);
-    const html = await fetchText(
-      `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`,
-      {
-        headers: {
-          "User-Agent": UA,
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "en-US,en;q=0.9",
-          Referer: "https://www.linkedin.com/jobs/",
-        },
-      },
-    );
+    const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params}`;
+    const headers = {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      Referer: "https://www.linkedin.com/jobs/",
+    };
+    let html = await fetchText(url, { headers });
+    if (html === null) {
+      // One polite retry: the guest endpoint throttles bursts with 429.
+      await new Promise((r) => setTimeout(r, 700));
+      html = await fetchText(url, { headers });
+    }
+    // `null` is a failed fetch (429/403/5xx/network); "" is "no more cards".
+    // Raising matters: swallowing it would report a throttled source as a
+    // board with nothing to offer, and the probe would call it dead.
+    if (html === null) throw new Error(`linkedin guest search failed (${keywords} @ ${location})`);
     if (!html) break;
     const cards = html.match(/<li[\s\S]*?<\/li>/gi) || [];
     if (cards.length === 0) break;
@@ -120,16 +132,17 @@ export async function fetchLinkedInGuest(
       const title = pick(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
       if (!title || !href) continue;
       const company = pick(/<h4[^>]*>([\s\S]*?)<\/h4>/i);
-      const urn = card.match(/data-entity-urn="urn:li:jobPosting:(\d+)"/);
+      const urns = card.match(/data-entity-urn="urn:li:jobPosting:(\d+)"/);
+      const cardLocation = pick(/job-search-card__location[^>]*>([\s\S]*?)<\/span>/i) || "Remote";
       out.push({
         title,
         company: company || "LinkedIn Employer",
-        location: pick(/job-search-card__location[^>]*>([\s\S]*?)<\/span>/i) || "Remote",
+        location: remoteSearch && !isRemoteish(cardLocation, "") ? `${cardLocation} (Remote)` : cardLocation,
         url: href.split("?")[0],
         source: "linkedin",
         posted_at: pick(/<time[^>]+datetime="([^"]+)"/i),
         desc: `${title} at ${company}. Discovered via LinkedIn (worker shard).`,
-        external_id: urn ? urn[1] : null,
+        external_id: urns ? urns[1] : null,
       });
     }
   }

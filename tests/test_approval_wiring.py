@@ -65,7 +65,8 @@ def test_web_action_request_accepts_approval_field():
 
 
 @pytest.mark.asyncio
-async def test_run_application_stage_forwards_approval(tmp_path, monkeypatch):
+async def test_run_application_stage_never_sends_linkedin_to_browser(tmp_path, monkeypatch):
+    """Discovery is on, but no automated path may use the LinkedIn account."""
     from job_hunt.models import ApplicationRecord
 
     monkeypatch.setattr("job_hunt.settings.linkedin_enabled", lambda *a, **k: True)
@@ -92,8 +93,7 @@ async def test_run_application_stage_forwards_approval(tmp_path, monkeypatch):
         return_value=ApplicationRecord(job_id=saved.id, state=JobState.SUBMITTED)
     )
     orch.liveness.check_url_async = AsyncMock(return_value=(True, "test alive"))
-    await orch.run_application_stage(limit=5, dry_run=True, linkedin_approved=True)
+    processed = await orch.run_application_stage(limit=5, dry_run=True, linkedin_approved=True)
 
-    assert orch.browser_engine.fill_and_submit.await_count == 1
-    _, kwargs = orch.browser_engine.fill_and_submit.call_args
-    assert kwargs.get("linkedin_approved") is True
+    assert processed == 0
+    orch.browser_engine.fill_and_submit.assert_not_awaited()

@@ -23,6 +23,20 @@ REMOTE_SIGNALS = (
     "work from anywhere", "distributed", "telecommute", "virtual",
 )
 
+# The candidate is based in Egypt: an on-site or hybrid role there is in scope
+# alongside remote roles anywhere. Country first, then the cities/compounds
+# that boards actually print. Matched on word boundaries so "Egyptian" in a
+# description is not needed and "Suez" cannot match inside another word.
+EGYPT_PLACES = (
+    "egypt", "cairo", "alexandria", "giza", "6th of october", "6th october",
+    "new cairo", "nasr city", "smart village", "maadi", "zamalek", "dokki",
+    "mohandessin", "heliopolis", "new capital", "administrative capital",
+    "new administrative capital", "port said", "suez", "ismailia", "mansoura",
+    "tanta", "luxor", "aswan", "fayoum", "beni suef", "minya", "hurghada",
+    "sharm el sheikh", "10th of ramadan", "sheikh zayed", "sadat city",
+    "october city",
+)
+
 
 def parse_posted_at(value: object) -> Optional[datetime]:
     """Parse the zoo of board date formats into an aware datetime, or None."""
@@ -114,4 +128,33 @@ def filter_remote(postings: List[JobPosting]) -> List[JobPosting]:
     dropped = len(postings) - len(kept)
     if dropped:
         logger.info("Remote filter: dropped %d on-site postings", dropped)
+    return kept
+
+
+def is_egypt_location(posting: JobPosting) -> bool:
+    """True when the posting's location names Egypt (country or a known city)."""
+    loc = (posting.location or "").strip().lower()
+    if not loc:
+        return False
+    return any(re.search(rf"\b{re.escape(place)}\b", loc) for place in EGYPT_PLACES)
+
+
+def filter_target_geo(postings: List[JobPosting]) -> List[JobPosting]:
+    """The owner's search target: remote anywhere + placed in Egypt.
+
+    Keeps (a) remote-signalled postings wherever they are, (b) postings whose
+    location names Egypt (on-site, hybrid or remote there), and (c) postings
+    with no usable location signal — a board that gives no location never
+    loses a posting. Drops only a posting proven to be placed on-site outside
+    Egypt.
+    """
+    kept = [
+        p for p in postings
+        if is_remoteish(p) or is_egypt_location(p) or not _location_names_city(p)
+    ]
+    dropped = len(postings) - len(kept)
+    if dropped:
+        logger.info(
+            "Target-geo filter: dropped %d on-site postings outside Egypt", dropped
+        )
     return kept

@@ -61,8 +61,8 @@ import inspect
 
 def test_twenty_four_hour_defaults():
     p = build_parser()
-    assert p.parse_args(["scan"]).hours_old == 12
-    assert p.parse_args(["run", "--once"]).hours_old == 12
+    assert p.parse_args(["scan"]).hours_old == 24
+    assert p.parse_args(["run", "--once"]).hours_old == 24
     sig = inspect.signature(orch_mod.PipelineOrchestrator.run_discovery_stage)
     assert sig.parameters["hours_old"].default == 24
 

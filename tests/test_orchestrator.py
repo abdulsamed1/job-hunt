@@ -504,6 +504,52 @@ def test_cli_scan_accepts_source_and_windows():
     assert args.source == "linkedin_geo_recent"
     assert args.hours_old == 12
     assert args.remote_only is True
+    assert args.target_geo is False
+
+
+def test_cli_scan_target_geo_flag():
+    from job_hunt.cli import build_parser
+
+    args = build_parser().parse_args(["scan", "--target-geo"])
+    assert args.target_geo is True
+    # The standing recency window is 24h unless a caller says otherwise.
+    assert args.hours_old == 24
+
+    run_args = build_parser().parse_args(["run", "--target-geo"])
+    assert run_args.target_geo is True
+    assert run_args.hours_old == 24
+
+
+@pytest.mark.asyncio
+async def test_run_discovery_stage_target_geo_keeps_egypt_drops_foreign_onsite(orchestrator):
+    """The standing policy: remote anywhere + placements in Egypt."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    def _posting(title, company, url, location):
+        return JobPosting(
+            source="test", title=title, company=company,
+            raw_url=url, canonical_url=url,
+            canonical_url_hash=f"h-{company}", role_fingerprint=f"rf-{company}",
+            content_hash=f"c-{company}", location=location, posted_at=now,
+        )
+
+    class StubRegistry:
+        def load_sources_file(self, path):
+            return [{"adapter": "test", "url": "https://example.com"}]
+
+        async def discover_all(self, sources=None, **kwargs):
+            return [
+                _posting("Backend Engineer", "CairoCo", "https://example.com/cairo", "Cairo, Egypt"),
+                _posting("Backend Engineer", "BerlinCo", "https://example.com/berlin", "Berlin, Germany"),
+                _posting("Backend Engineer", "RemoteCo", "https://example.com/remote", "Remote"),
+            ]
+
+    orchestrator.registry = StubRegistry()
+    new_jobs = await orchestrator.run_discovery_stage(hours_old=24, target_geo=True)
+
+    assert new_jobs == 2  # Egypt on-site + remote anywhere; Berlin on-site dropped
+    stored = {j.location for j in orchestrator.storage.get_jobs_by_state(JobState.DISCOVERED)}
+    assert stored == {"Cairo, Egypt", "Remote"}
 
 
 def test_cli_no_notify_skips_notifier_construction(monkeypatch):
@@ -533,6 +579,10 @@ def test_web_action_request_accepts_windows():
     req = ActionRequest(hours_old=12, remote_only=True)
     assert req.hours_old == 12
     assert req.remote_only is True
+    # Defaults follow the standing policy: a 24h window and target-geo on.
+    default = ActionRequest()
+    assert default.hours_old == 24
+    assert default.target_geo is True
 
 
 @pytest.mark.asyncio

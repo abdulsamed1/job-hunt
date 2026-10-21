@@ -1,3 +1,8 @@
+import asyncio
+
+import httpx
+import pytest
+
 from job_hunt.discovery import robots
 
 
@@ -239,3 +244,38 @@ def test_simhash_cross_listing_rules():
     assert is_cross_listing(a, b) is True
     c = dict(b, title="Backend Engineer Berlin")
     assert is_cross_listing(a, c) is False  # title set differs: sibling req, not repost
+
+
+@pytest.mark.asyncio
+async def test_robots_refusal_is_an_error_when_the_probe_asks_for_one():
+    """A robots-disallowed source is "not measured", never "dead".
+
+    The probe must be able to tell the source's own policy apart from a board
+    that answered with nothing; reporting a refusal as a dead board would drop
+    a live source from the shard for good.
+    """
+    from job_hunt.discovery.registry import RobotsDisallowed, SourceRegistry
+
+    robots = "User-agent: *\nDisallow: /\n"
+
+    async def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=robots)
+        return httpx.Response(200, text="<html></html>")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        registry = SourceRegistry()
+        entry = {
+            "adapter": "web",
+            "name": "walled",
+            "url": "https://walled.example/jobs",
+        }
+        # The probe path: measured as a refusal, not as an empty board.
+        with pytest.raises(RobotsDisallowed, match="robots-disallowed"):
+            await registry.scan_source(
+                entry, client, asyncio.Semaphore(1), raise_on_error=True
+            )
+        # The pipeline path: skipped quietly, exactly as before.
+        postings = await registry.scan_source(entry, client, asyncio.Semaphore(1))
+    assert postings == []

@@ -37,6 +37,7 @@ export interface Env {
   APPLY_Q: Queue;
   QUERIES?: string;
   TPR_SECONDS?: string;
+  INTAKE_CAP?: string;
   THRESHOLD?: string;
   REQUIRE_LINKEDIN_APPROVAL?: string;
   LINKEDIN_ENABLED?: string;
@@ -100,9 +101,9 @@ import { notifyEventOnce, type WorkerEvent } from "./lib/notify.js";
 
 export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    // Hourly scout vs daily deep sweep selected by cron expression.
-    const deep = event.cron === "0 2 * * *";
-    const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+    // Hourly scout vs 6-hourly deep sweep selected by cron expression.
+    const deep = event.cron === "0 */6 * * *";
+    const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly");
     ctx.waitUntil(
       (async () => {
         const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
@@ -241,6 +242,16 @@ export default {
           const resumeBytes = new Uint8Array(await obj.arrayBuffer());
           // Route ATS boards to direct HTTP apply; everything else waits human.
           const src: string = row.source || "";
+          // LinkedIn is discovery-only BY OWNER DECISION (2026-10-21): applying
+          // through the owner's LinkedIn account is what got the account
+          // banned, so a LinkedIn posting never reaches an apply client. It is
+          // queued for the human exactly like any other non-ATS board.
+          if (src.toLowerCase() === "linkedin" || /(^|[./])linkedin\.com\//i.test(row.url || "")) {
+            const queuedDetail = "linkedin: discovery only — apply manually";
+            await saveApplication(db, m.hash, "APPLICATION_STARTED", queuedDetail, key);
+            if (await notifyEventOnce(db, env, "worker", m.hash, "APPLICATION_ATTEMPT", row, scored(queuedDetail)) !== "sent") console.log(`telegram notify skipped/failed for ${m.hash} (APPLICATION_ATTEMPT)`);
+            continue;
+          }
           const live = env.LIVE_APPLY === "true";
           let board: { kind: "greenhouse" | "lever" | "ashby"; org: string; jobId: string } | null = null;
           let gh = src.match(/^greenhouse:(.+)$/);
@@ -472,7 +483,7 @@ export default {
     if (url.pathname === "/run" && request.method === "POST") {
       // Fan out the WHOLE shard (hourly subset unless deep=1), one source per message.
       const deep = url.searchParams.get("deep") === "1";
-      const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly" || s.kind === "linkedin");
+      const defs = activeSources(env).filter((s) => deep || s.cadence === "hourly");
       const batch: Record<string, unknown>[] = defs.map((d) => ({ stage: "discover", def: d }));
       for (let i = 0; i < batch.length; i += 50) {
         await env.DISCOVER_Q.sendBatch(batch.slice(i, i + 50).map((body) => ({ body })));

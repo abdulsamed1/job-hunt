@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { canonicalHash, fnv1a, normalizeLocation, normalizeUrl, roleFingerprint } from "../src/lib/hash.js";
-import { filterRemoteList, filterRecentList, HOURS_OLD, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt, partitionFresh } from "../src/lib/freshness.js";
+import { filterRemoteList, filterTargetGeoList, filterRecentList, HOURS_OLD, isEgyptLocation, isFresh, isPlacedOnsite, isRemoteish, parsePostedAt, partitionFresh } from "../src/lib/freshness.js";
 import { checkDisabilityTargetingGate, checkEligibilityGate, checkLanguageGate, classifyTier, scoreJob, type Profile } from "../src/lib/evaluate.js";
 import { checkboxAction, matchAnswerToOption } from "../src/lib/match.js";
 
@@ -144,6 +144,31 @@ describe("freshness", () => {
   it("list filters drop only provable cases", () => {
     expect(filterRecentList([{ posted_at: null }], 24)).toHaveLength(1);
     expect(filterRemoteList([{ location: "", description: "" }])).toHaveLength(1);
+  });
+  it("isEgyptLocation names the country and its cities", () => {
+    expect(isEgyptLocation("Cairo, Egypt")).toBe(true);
+    expect(isEgyptLocation("Alexandria")).toBe(true);
+    expect(isEgyptLocation("Hybrid · New Cairo, Egypt")).toBe(true);
+    expect(isEgyptLocation("6th of October City")).toBe(true);
+    expect(isEgyptLocation("Bengaluru, India")).toBe(false);
+    expect(isEgyptLocation("Remote")).toBe(false);
+    expect(isEgyptLocation("")).toBe(false);
+  });
+  it("filterTargetGeoList keeps remote anywhere + Egypt, drops foreign on-site", () => {
+    const list = [
+      { location: "Remote", description: "" },
+      { location: "Worldwide", description: "" },
+      { location: "Cairo, Egypt", description: "" },
+      { location: "Hybrid - Giza, Egypt", description: "" },
+      { location: "Bengaluru, India", description: "" },
+      { location: "Austin, Texas, USA", description: "" },
+      { location: "", description: "" },
+    ];
+    expect(filterTargetGeoList(list).map((p) => p.location)).toEqual([
+      "Remote", "Worldwide", "Cairo, Egypt", "Hybrid - Giza, Egypt", "",
+    ]);
+    // The strict filter stays available and still drops Egypt on-site roles.
+    expect(filterRemoteList(list).map((p) => p.location)).toEqual(["Remote", "Worldwide", ""]);
   });
 });
 
@@ -426,12 +451,20 @@ describe("generated source shard", () => {
     expect(hourly.length).toBeLessThanOrEqual(40);
   });
 
-  it("keeps the LinkedIn standing target at 12h / 3 queries", async () => {
+  it("keeps the LinkedIn standing target: 12h, both geographies, same roles", async () => {
     const { GENERATED_SOURCES } = await import("../src/sources.generated.js");
     const li = GENERATED_SOURCES.filter((s) => s.kind === "linkedin");
-    expect(li).toHaveLength(1);
-    expect(li[0].tprSeconds).toBe(43200);
-    expect([...(li[0].queries || [])].sort()).toEqual(["Backend", "Forward Deployed Engineer", "Frontier Deployed Engineer", "Full stack", "Software Engineer"]);
+    const byName = Object.fromEntries(li.map((s) => [s.name, s]));
+    // One source per geography: worldwide remote + Egypt onward (the Worker
+    // searches by location string — it has no geoId support).
+    expect([...Object.keys(byName)].sort()).toEqual(["linkedin_egypt", "linkedin_geo_recent"]);
+    expect(byName["linkedin_geo_recent"].locations).toEqual(["Remote"]);
+    expect(byName["linkedin_egypt"].locations).toEqual(["Egypt"]);
+    const roles = ["Backend", "Full stack", "Software Engineer", "React", "Node.js", "TypeScript", "JavaScript", "Forward Deployed Engineer"];
+    for (const s of li) {
+      expect(s.tprSeconds, s.name).toBe(43200);
+      for (const r of roles) expect(s.queries || [], s.name).toContain(r);
+    }
   });
 
   it("gives every ATS source an org slug for board routing", async () => {

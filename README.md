@@ -7,9 +7,9 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 ## High-Level Architecture
 
 ```
-                [374 Configured Sources & Job Boards]
-     (149 Worker-runnable + 49 Python-only + 176 dead; LinkedIn [disabled 2026-10-02],
-      Greenhouse, Ashby,
+                [375 Configured Sources & Job Boards]
+     (150 Worker-runnable + 50 Python-only + 175 dead; LinkedIn guest search
+      [discovery only, apply is manual], Greenhouse, Ashby,
       Lever, SmartRecruiters, RSS/JSON, Indeed, Bayt, Naukri, HTML scrape)
                                                 │
                                                 ▼
@@ -67,11 +67,11 @@ An enterprise-grade, 24/7 autonomous job discovery, evaluation, CV tailoring, an
 
 ## Core Capabilities & Operational Moats
 
-### 1. High-Throughput Multi-ATS Discovery (374 Configured Sources)
-- **Extensive ATS Coverage**: Native adapters for **LinkedIn** (disabled 2026-10-02, account ban), **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
-- **Dedicated LinkedIn Guest Scraper** (DISABLED — account ban 2026-10-02; `LINKEDIN_ENABLED=false`): Direct pagination against public guest search endpoints (`seeMoreJobPostings/search`) with automated backoff, anti-429 rotation, and zero login credentials required. Standing target when re-enabled: `backend` / `fullstack` / `software`, past-12h window (`f_TPR=r43200`), worldwide geo radius — ~60 fresh postings per run.
+### 1. High-Throughput Multi-ATS Discovery (375 Configured Sources)
+- **Extensive ATS Coverage**: Native adapters for **LinkedIn** (guest search only — discovery, never apply), **Greenhouse**, **Ashby**, **Lever**, **SmartRecruiters**, **Workday**, **Workable**, **BambooHR**, and **RSS/XML feeds**.
+- **Dedicated LinkedIn Guest Scraper** (discovery only — no account, no cookies, no login): pagination against the public guest search endpoint (`seeMoreJobPostings/search`) with adaptive backoff and anti-429 pacing. Two standing targets, past-12h window (`f_TPR=r43200`): remote worldwide (`geoId=92000000`) and Egypt (`geoId=106155005`, on-site/hybrid/remote), across the build-role queries (Backend, Full stack, Software Engineer, React, Node.js, TypeScript, JavaScript, Forward Deployed Engineer). Applying through the owner's LinkedIn account is never automated — the browser engine refuses a LinkedIn posting before it launches, and the Worker queues it for the human. Note: `linkedin.com/robots.txt` disallows automated access, so the Python registry skips LinkedIn and the Worker guest fetcher is the only intake (the owner's accepted trade-off: no account is touched).
 - **Daily Target Tracking**: Real-time velocity tracking ensuring fresh engineering requisitions are ingested and analyzed around the clock.
-- **Coverage is measured, not assumed**: the live probe (`scripts/probe_sources.py`) measured every configured source on 2026-10-19 — **170 live**, **176 dead**, **28 unknown** (27 boards that failed this attempt + LinkedIn, disabled). Liveness = the source yields at least one remote posting at any age; the 24h window gates the feed, not the source. The dead boards are the ones that answer 404/410 (GitHub, DoorDash and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone) and they are excluded from the generated shard, which leaves 198 boards for the local and CI sweep to fetch. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
+- **Coverage is measured, not assumed**: the live probe (`scripts/probe_sources.py`) measured every configured source on 2026-10-21 — **169 live**, **175 dead**, **31 unknown** (boards that failed this attempt, plus the two LinkedIn sources robots.txt refuses). Liveness = the source yields at least one usable posting at any age: remote anywhere, placed in Egypt (on-site, hybrid or remote), or unknown location; the 24h window gates the feed, not the source, and the geography gate is the shipped `--target-geo` policy, so an Egypt on-site board counts. The dead boards answer 404/410 or never yield a usable posting (GitHub, DoorDash and 40+ Lever boards migrated off those ATSes — `figma` resolves while `github` 404s, so slug derivation is correct and the boards are genuinely gone); they are excluded from the generated shard, which leaves 200 boards for the local and CI sweep to fetch. `GET /coverage` reports configured vs attempted vs yielding from D1 rather than trusting the config.
 
 ## What the feed now guarantees
 
@@ -190,7 +190,7 @@ the laptop is off. See [`worker/README.md`](worker/README.md) for internals.
 
 | Stage | Cloudflare Worker | Python / Actions |
 |---|---|---|
-| Fetch + parse every live source | ✅ 149 worker-runnable | ✅ 374 configured (176 dead skipped → 198 fetched) |
+| Fetch + parse every live source | ✅ 150 worker-runnable | ✅ 375 configured (175 dead skipped → 200 fetched) |
 | Deterministic evaluation | ✅ | ✅ |
 | Tailored PDF via `pdf-lib` | ✅ | ✅ (master + visible skill line) |
 | Direct ATS HTTP POST | ✅ per-board flags, OFF by default | ✅ |

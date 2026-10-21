@@ -7,135 +7,134 @@ Autonomous job application agent. Python, Playwright, SQLite. Zero paid APIs.
 - `uv run pytest tests/ -q -p no:cacheprovider` — full suite (must stay green)
 - `uv run python -m job_hunt.cli <scan|evaluate|tailor|apply|run>` — pipeline stages
 - `python scripts/rezi_login.py` — Rezi OAuth (laptop with browser, human signs in)
-- `uv run python scripts/linkedin_login.py` — LinkedIn session (unused while LinkedIn is disabled)
+- `uv run python scripts/linkedin_login.py` — LinkedIn session (unused: discovery is guest-only, apply is manual)
 - `uv run python scripts/pull_master.py` — sync `data/cvs/Abdulsamed_Hamdy.pdf` from the Worker master-resume pointer (`--check` reports drift only, exit 1)
 
-## LinkedIn status: DISABLED (account ban, 2026-10-02)
+## LinkedIn: discovery only, apply is manual (owner decision 2026-10-21)
 
-LinkedIn is off in both local and Cloudflare. Do not re-enable without the
-user's explicit approval.
+LinkedIn **search is on**; applying through the owner's account is off, for
+good. The account was banned on 2026-10-02 by the old logged-in Easy Apply
+engine, and no automated path may use the account again.
 
-- Local switch: `LINKEDIN_ENABLED` env var or top-level `linkedin_enabled` in
-  `config/sources.yaml`. Default is **off**; set env/config to `true` to
-  re-enable. Gating lives in `src/job_hunt/settings.py`; entry points that
-  respect it: discovery (`orchestrator.run_discovery_stage`), evaluate,
-  tailor, application stage, and `BrowserApplicationEngine.fill_and_submit`
-  (hard block, no browser launch).
-- Worker switch: `LINKEDIN_ENABLED` var in `worker/wrangler.toml`
-  (currently `"false"`). `activeSources()` in `worker/src/index.ts` filters
-  `kind === "linkedin"` out of every shard; the `linkedin` apply path was
-  already unreachable (human-queue only).
-- Nothing is deleted: adapter, Easy Apply engine, `scripts/linkedin_login.py`,
-  worker guest adapter all remain. The `linkedin-sr` SmartRecruiters board
-  (LinkedIn-as-employer) is a different source and stays active.
-- CI: the 6-hourly LinkedIn micro sweep and `linkedin_approved` input were
+- **Discovery uses the public guest endpoint** (`jobs-guest/...`): no cookies,
+  no login, no account. It cannot endanger the account because the account is
+  never used. Two sources in `config/sources.yaml`: `linkedin_geo_recent`
+  (geoId `92000000`, remote worldwide) and `linkedin_egypt` (geoId
+  `106155005`, Egypt — on-site, hybrid and remote), same role queries,
+  `f_TPR=r43200`.
+- **Robots note (measured 2026-10-21)**: `linkedin.com/robots.txt` ends with
+  `User-agent: *` / `Disallow: /`, so the Python registry's robots gate skips
+  LinkedIn: the CI/local sweep never fetches it, and the probe records it as
+  **not measured** (`flaky`/`unknown`, never `dead`). The Worker guest fetcher
+  is the only LinkedIn intake. That asymmetry is the owner's accepted
+  trade-off — the guest endpoint needs no account, so no account can be
+  banned. If the owner wants robots honoured on the Worker too, delete the
+  `linkedin` case in `worker/src/stages/discover.ts`: discovery stops, apply
+  stays manual.
+- **No auto-apply, three layers**: the Worker `tailor-apply` stage saves a
+  LinkedIn row as `APPLICATION_STARTED` with "discovery only — apply manually"
+  and never calls an ATS client; the Python `run_application_stage` filters
+  LinkedIn rows out unconditionally; and
+  `BrowserApplicationEngine.fill_and_submit` refuses a LinkedIn posting before
+  launching a browser — no flag (`linkedin_approved`, `LINKEDIN_ENABLED`,
+  discovery on/off) changes that.
+- Switches gate **discovery only**: `linkedin_enabled: true` in
+  `config/sources.yaml` (default when the key is absent: off) or the
+  `LINKEDIN_ENABLED` env var locally; `LINKEDIN_ENABLED = "true"` in
+  `worker/wrangler.toml` on the Worker.
+- Cadence: LinkedIn runs on its own `6h` cadence inside the Worker deep sweep,
+  not on every hourly run (be polite to the guest endpoint).
+- The logged-in Easy Apply flows, `scripts/linkedin_login.py` and the session
+  plumbing remain for a future explicit manual mode; nothing automated calls
+  them, and the guest endpoint needs no session.
+- Nothing is deleted. The `linkedin-sr` SmartRecruiters board
+  (LinkedIn-as-employer) is a different source and stays as-is.
+- CI: the 6-hourly LinkedIn micro sweep and `linkedin_approved` input stay
   removed from `.github/workflows/scheduled-sweep.yml`.
 
-## Standing LinkedIn target (disabled; kept for reference)
+## Standing LinkedIn target
 
-- Queries: `backend`, `fullstack`, `software`
+- Queries: `Backend`, `Full stack`, `Software Engineer`, `React`, `Node.js`,
+  `TypeScript`, `JavaScript`, `Forward Deployed Engineer` (plus
+  `Frontier Deployed Engineer` on the worldwide source)
 - Window: `f_TPR=r43200` (past 12 hours), every run
-- Geo: `geoId=92000000`, `distance=25` (worldwide in practice)
-- Low volume: `max_pages_per_query=2`, `target_jobs_count=60`
-- Source of truth: `config/sources.yaml` entry `linkedin_geo_recent`
+- Geo: remote worldwide (`geoId=92000000`, `remote_only: true`) + Egypt
+  (`geoId=106155005`, no server-side remote filter)
+- Volume: `max_pages_per_query=2`, `target_jobs_count=60`
+- Source of truth: `config/sources.yaml` entries `linkedin_geo_recent` and
+  `linkedin_egypt`
 
-## Discovery defaults (374 configured sources)
+## Discovery defaults (375 configured sources)
 - Recency: `hours_old=24` default on every scan (`scan --hours-old 0` disables).
   Server-side where supported (Bayt/Naukri/Zip intervals, Indeed date filter;
-  LinkedIn TPR unused while disabled); central `filter_recent` backstops the rest.
+  LinkedIn TPR always); central `filter_recent` backstops the rest.
   Dateless postings always pass — only provably-stale ones drop.
-- Remote: `scan --remote-only` keeps remote-signalled + unknown-location
-  postings, drops placed on-site ones. Helpers in `discovery/freshness.py`.
+- Geography: `scan --target-geo` is the standing policy — keep remote anywhere,
+  keep anything placed in Egypt (on-site, hybrid or remote), keep
+  unknown-location postings; drop only a posting proven on-site outside Egypt.
+  `--remote-only` stays as the strict dial. Helpers live in
+  `discovery/freshness.py` (`filter_target_geo`, `is_egypt_location`) and,
+  mirrored, in the Worker's `lib/freshness.ts` (`filterTargetGeoList`).
 
-## Board coverage (374 configured; probed live 2026-10-19)
+## Board coverage (375 configured; measured 2026-10-21)
 
-Configured ≠ working. `config/sources.yaml` holds **374** entries; the live
-probe (`scripts/probe_sources.py`) measured **170 live**, **176 dead** and
-**28 unknown** (27 boards that failed this attempt + LinkedIn, disabled).
-Treat the config as intent, never as proof.
+Configured ≠ working. `config/sources.yaml` holds **375** entries; the live
+probe (`scripts/probe_sources.py`) measured **169 live**, **175 dead** and
+**31 unknown**. Treat the config as intent, never as proof — the per-board
+answer lives in `data/source_probe.json`.
 
-- **Liveness rule**: a source is live when it yields at least one **remote**
-  posting **at any age**. The 24h window gates the *feed*, not the source, and
-  the remote filter stays on because only remote roles are applicable to this
-  product. A board that answers 404/410 is **dead** (the org migrated ATS —
-  GitHub and DoorDash 404 on Greenhouse while `figma` returns 200, so slug
-  derivation is correct); a failed attempt (timeout, 5xx, 403, unparseable
-  body) is **flaky** → `status: unknown`, never a stale `status: live`. The
-  adapters raise on a failed fetch, so the probe can tell the two apart.
-- **Dead by adapter**: greenhouse 60, web 33, lever 44, ashby 19,
-  smartrecruiters 14, recruitee 2, feed 1, bayt/indeed/bamboohr 1 each.
-- **Flaky by adapter** (`status: unknown`, re-probed next run): web 23,
-  feed 3, lever 1, linkedin 1.
-- **Live by industry**: software 116, crypto 27, general 20, fintech 7.
+- **Liveness rule**: a source is live when it yields at least one **usable**
+  posting **at any age** — remote anywhere, placed in Egypt (on-site, hybrid or
+  remote), or unknown location. The 24h window gates the *feed*, not the
+  source, and the geography gate is the shipped `--target-geo` policy, so an
+  Egypt on-site board counts and is never dropped for lacking remote roles. A
+  board that answers 404/410 is **dead** (the org migrated ATS — GitHub and
+  DoorDash 404 on Greenhouse while `figma` returns 200, so slug derivation is
+  correct); a failed attempt (timeout, 5xx, 403, unparseable body) is **flaky**
+  → `status: unknown`, never a stale `status: live`. The adapters raise on a
+  failed fetch, so the probe can tell the two apart. A robots.txt refusal is
+  raised as `RobotsDisallowed` and reads as *not measured* (flaky) — never
+  dead, because nothing was measured.
+- **Live by adapter (measured 2026-10-21)**: greenhouse 70, ashby 42 (+1
+  `ashby-index`), web 24, feed 12, lever 9, teamtailor 2, recruitee 2, bayt 1,
+  bdjobs 1, freehire 1, naukri 1, personio 1, smartrecruiters 1, workable 1.
+- **Dead by adapter**: greenhouse 60, lever 44, web 33, ashby 19,
+  smartrecruiters 14, recruitee 2, teamtailor 1, feed 1, bamboohr 1.
+- **Unknown/flaky by adapter**: web 24, feed 3, linkedin 2, indeed 1, lever 1.
+- **Egypt-relevant boards**: WUZZUF (live), `bayt-egypt-tech` (live — the
+  target-geo liveness rule counts its Egypt on-site roles), GulfTalent (403 on
+  the last probes → flaky, stays in the config and is re-probed),
+  `linkedin_egypt` (Worker guest only — the Python registry refuses it on
+  robots, see LinkedIn above). `Bayt` (web) and `indeed-egypt-tech` are flaky.
 - `status: dead` is honoured everywhere: the Worker generator excludes those
   boards from the shard, and `SourceRegistry.load_sources_file` skips them
   locally (the CI sweep stops spending budget on them). The probe itself
   re-measures dead boards (`include_dead=True`) so a recovered board is
   revived.
-
-- **Live boards (measured 2026-10-19)** — every name below is recorded
-  `live` in `data/source_probe.json`; this is a measurement, not a wish list:
-  - **Feeds (12)**: arbeitnow, crypto-jobs-feed, cryptocurrencyjobs,
-    cryptojobslist-feed, jobicy, jobspresso, remote3-feed, remoteok,
-    remotive, Remotive, tokyodev-feed, weworkremotely-feed.
-  - **Greenhouse (70)**: acquia, affirm, airbnb, alphasights, anduril,
-    anthropic, box, brex, carta, checkr, chime, circleci, cloudflare,
-    coalition, cockroachlabs, coinbase, consensys, cribl, customerio,
-    dashlane, datacamp, datadog, dropbox, elastic, fastly, figma, fivetran,
-    gitlab, glean, godaddy, gohiring, grafana, gusto, honeycomb, instacart,
-    intercom, jackson-river-togetherwork, labelbox, launchdarkly, liveperson,
-    lyft, metalab, mixmax, mongodb, newrelic, okta, openzeppelin, pagerduty,
-    pinterest, planetscale, platformsh, reddit, ripple, robinhood, rocketchat,
-    samsara, scaleai, scandit, securityscorecard, sofi, streamnative, stripe,
-    sumologic, togetherai, turing, twilio, udacity, verkada, warp, wizeline.
-  - **Ashby (42 + `ashby-index`)**: alan, alchemy, andela, baseten, braintrust,
-    buffer, capchase, caremessage, cerebras, clerk, close, cognition,
-    cursor-ai, deepgram, elevenlabs, etched, factory, langchain, lightspeed,
-    linear, litmus, llamaindex, matx, midjourney, mux, percona, pika,
-    poolside, posthog, primer, quora, rain-ai, recharge, resend,
-    stellar-board, sunno, supabase, testgorilla, truelogic, uniswap,
-    unstructured, zapier + `ashby-index` (solana-ecosystem-index).
-  - **Lever (9)**: britecore, collabora, contentsquare, envato, kinsta,
-    mindful, offchain-labs, renofi, spotify.
-  - **Tenant boards (8)**: teamtailor 3 (saasglobal, teamtailor-career,
-    teamtailor-softwarefinder-na), recruitee 2 (kodify, recruitee-make),
-    smartrecruiters 1 (ubisoft), personio 1 (personio-vivid),
-    workable 1 (netguru).
-  - **JobSpy-pattern boards that yield (3)**: naukri (India, RSA token),
-    freehire, bdjobs (Bangladesh). `bayt` and `indeed` record a clean zero
-    with no cause in the ledger (their adapters swallowed the failure; they
-    now raise, so the next probe records the real status), `glassdoor`
-    answers 403 (flaky); ziprecruiter and google are not configured.
-  - **HTML-scraped `web` boards (25, python-only)**: Aave Careers, Coinbase
-    Careers, Crypto Careers, CryptoJobs, CryptoJobs.com, CryptoJobsList,
-    DeFi Jobs, Dice, Eurojobs, GulfTalent, Remote 💎 Web3 Jobs, Remote3,
-    RemoteLeaf, RemoteMore, Ripple Careers, Solana Ecosystem Jobs, TokyoDev,
-    WUZZUF, Web3 Jobs, Web3.career, Web3internships,
-    Wellfound (formerly AngelList), chainlink-web, jobberman, remotive-web.
 - **Dead — do not re-add without re-probing**: the 404 ATS boards (github,
-  doordash and 100+ others), polygon.technology jobs,
-  consensys.net/careers URL, alchemy.com/jobs URL, and the clean-zero boards
-  (Toptal, Hired, Arc (formerly Vettery), AngelList Talent, useWeb3 Jobs,
-  YCombinator Jobs, CryptoJobsDaily, Degen Crypto Jobs, Gitcoin,
-  Stellar Jobs, Uniswap Careers, OpenSea Careers, RemoteOK web page, …).
+  doordash and 100+ others), polygon.technology jobs, consensys.net/careers,
+  alchemy.com/jobs, and the never-yielding boards (Toptal, Hired, Arc
+  (formerly Vettery), AngelList Talent, useWeb3 Jobs, YCombinator Jobs,
+  CryptoJobsDaily, Degen Crypto Jobs, Gitcoin, Stellar Jobs, Uniswap Careers,
+  OpenSea Careers, RemoteOK web page, …).
 - **Flaky (403 / timeout / DNS / unparseable) — re-probed, but they never
-  yield**: Indeed, Glassdoor, Gun.io, Web3 Talent, JobStreet, JobsDB,
-  Stack Overflow Jobs (sunset), NFT Jobs, FlexJobs (paywall), Talent.io
-  (login), Bayt, BitcoinJobs, Blockchain Job Board, Blocktribe,
+  yield**: Indeed, Glassdoor, Gun.io, Web3 Talent, JobStreet, JobsDB, Stack
+  Overflow Jobs (sunset), NFT Jobs, FlexJobs (paywall), Talent.io (login),
+  Bayt (web), GulfTalent, BitcoinJobs, Blockchain Job Board, Blocktribe,
   CryptoJobHunt, CryptoJobLand, CryptoJobsDB, DAO Jobs, Ethereum Jobs,
   Polygon Ecosystem Jobs, Solidity Jobs, Remote.co, NodeFlair, swissdevjobs,
-  workingnomads, weworkremotely (406), prominentedge (lever timeout).
+  workingnomads, weworkremotely (406).
 - **Feeds without job URLs** (cryptojobs.com) and **private Ashby APIs**
   (chainlink-labs, aave) are intentionally not wired: no stable job identity.
 - Every new board must prove yield before its entry stays: `scan_source`
-  count > 0 on the Python side, `POST /probe {"name": ...}` showing
-  `remote_fresh > 0` on the Worker. Probing lives in triage, not the product.
+  count > 0 on the Python side, `POST /probe {"name": ...}` showing usable
+  postings on the Worker. Probing lives in triage, not the product.
 
 ## Worker source coverage is generated (never hand-kept)
 
 - `worker/scripts/gen_sources.py` emits `worker/src/sources.generated.ts` from
-  `config/sources.yaml`: **149 Worker-runnable + 49 explicitly python-only**
-  (web 48, naukri 1) + **176 dead** (excluded from both shards) = 374
+  `config/sources.yaml`: **150 Worker-runnable + 50 explicitly python-only**
+  (web 48, naukri 1, bayt 1) + **175 dead** (excluded from both shards) = 375
   accounted for.
 - `--check` mode fails on drift; `tests/test_worker_source_shard.py` enforces it
   in CI. **Never hand-edit `sources.generated.ts`** — edit `sources.yaml`.
@@ -146,9 +145,12 @@ Treat the config as intent, never as proof.
 
 ## Safety rules (violations fail review)
 
-1. **LinkedIn never auto-submits.** `require_linkedin_approval=True` default;
-   live runs need explicit `linkedin_approved=True`. Dry-run is the default mode.
-   (Moot while LinkedIn is disabled; enforced again on re-enable.)
+1. **LinkedIn applies are manual, always.** Discovery is guest-only (no
+   account). No automated path may apply through the owner's LinkedIn account:
+   the Worker tailor-apply stage queues a LinkedIn row for the human, the
+   Python application stage filters LinkedIn rows out, and the browser engine
+   refuses one before building a context. `linkedin_approved=True` is not a
+   bypass — the refusal is unconditional. Dry-run stays the default mode.
 2. **Wrong-job guards stay on.** Target-job verification + Easy Apply modal
    company check in `src/job_hunt/automation/browser.py` must pass before any
    submit path. Never weaken to first-match clicking.
@@ -212,17 +214,17 @@ gives you structural context (callers, dependents, test coverage) that file sear
 ## Deployment (free tiers)
 
 - **GitHub Actions** (`.github/workflows/scheduled-sweep.yml`): daily full
-  198-source 24h-remote sweep (the 176 dead boards are skipped) + dry-run
-  apply (LinkedIn sources filtered out,
-  see LinkedIn status above; manual dispatch without `full` runs apply only).
+  200-source 24h `--target-geo` sweep (the 175 dead boards are skipped) +
+  dry-run apply (LinkedIn rows are queued for the human, see LinkedIn above;
+  manual dispatch without `full` runs apply only).
   Live runs only via manual dispatch with `live`.
   Secrets via GitHub Secrets (`REZI_MCP_TOKEN`). ~840 min/mo worst case.
 - **Cloudflare Worker** (`worker/`, full pipeline, not just scout): live at
   `https://jobhunt.habdulsamed777.workers.dev`. Hourly scout shard (25 sources)
-  + daily deep sweep (all 149 Worker-runnable) across RSS/JSON/ATS/tenant
-  sources (LinkedIn-guest
-  filtered out while disabled, see LinkedIn status above) →
-  queue fan-out (1 source / 1 job per message, ≤50 subrequests) → deterministic
+  + **6-hourly deep sweep** (all 150 Worker-runnable) across RSS/JSON/ATS/tenant
+  sources (LinkedIn guest included on its 6h cadence, discover-only — see
+  LinkedIn above) →
+  queue fan-out (1 source / 1 job per message) → deterministic
   evaluate → tailor (pdf-lib PDF → R2) → direct ATS HTTP POST applies
   (Greenhouse/Lever approved per-board; Ashby dry-run until pinned).
   D1 mirrors the SQLite state machine and holds `source_health` for measured

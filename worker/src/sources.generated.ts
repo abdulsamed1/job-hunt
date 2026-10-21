@@ -4,10 +4,12 @@
 
 import type { SourceDef } from "./sources.js";
 
-// yaml_total=374 worker_supported=149 python_only=49 hourly=25
+// yaml_total=375 worker_supported=150 python_only=50 hourly=25
 
 export const GENERATED_SOURCES: SourceDef[] = [
-  {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "industry": "general", "status": "unknown", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"], "tprSeconds": 43200, "hoursOld": 24},
+  {"kind": "linkedin", "name": "linkedin_geo_recent", "cadence": "6h", "industry": "general", "status": "unknown", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "React", "Node.js", "TypeScript", "JavaScript", "Forward Deployed Engineer", "Frontier Deployed Engineer"], "locations": ["Remote"], "tprSeconds": 43200, "hoursOld": 24},
+  {"kind": "linkedin", "name": "linkedin_egypt", "cadence": "6h", "industry": "general", "status": "unknown", "url": "https://www.linkedin.com/jobs/", "queries": ["Backend", "Full stack", "Software Engineer", "React", "Node.js", "TypeScript", "JavaScript", "Forward Deployed Engineer"], "locations": ["Egypt"], "tprSeconds": 43200, "hoursOld": 24},
+  {"kind": "indeed", "name": "indeed-egypt-tech", "cadence": "6h", "industry": "general", "status": "unknown", "url": "https://eg.indeed.com/", "queries": ["backend", "full stack", "software", "reactjs", "nodejs", "typescript", "javascript", "forward deployed engineer"], "locations": ["Cairo, Egypt", "Egypt"], "country": "Egypt", "hoursOld": 24},
   {"kind": "freehire", "name": "freehire-remote-tech", "cadence": "6h", "industry": "general", "status": "live", "url": "https://freehire.me/api/v1/agent/jobs/search", "queries": ["backend", "full stack", "software", "reactjs", "nodejs", "typescript", "javascript", "forward deployed engineer"], "locations": ["Remote"], "hoursOld": 24},
   {"kind": "bdjobs", "name": "bdjobs-bangladesh-tech", "cadence": "6h", "industry": "general", "status": "live", "url": "https://api.bdjobs.com/Jobs/api/JobSearch/GetJobSearch", "queries": ["backend", "full stack", "software", "reactjs", "nodejs", "typescript", "javascript", "forward deployed engineer"], "locations": ["Remote"], "hoursOld": 24},
   {"kind": "greenhouse", "name": "stripe", "cadence": "hourly", "industry": "fintech", "status": "live", "org": "stripe", "hoursOld": 24},
@@ -100,7 +102,6 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "ashby", "name": "stellar-board", "cadence": "6h", "industry": "crypto", "status": "live", "org": "stellar", "hoursOld": 24},
   {"kind": "ashby-index", "name": "solana-ecosystem-index", "cadence": "6h", "industry": "crypto", "status": "live", "url": "https://jobs.solana.com/", "maxOrgs": 8, "hoursOld": 24},
   {"kind": "teamtailor", "name": "teamtailor-career", "cadence": "6h", "industry": "software", "status": "live", "url": "https://career.teamtailor.com", "hoursOld": 24},
-  {"kind": "teamtailor", "name": "teamtailor-softwarefinder-na", "cadence": "6h", "industry": "software", "status": "live", "url": "https://softwarefinder.na.teamtailor.com", "hoursOld": 24},
   {"kind": "recruitee", "name": "recruitee-make", "cadence": "6h", "industry": "software", "status": "live", "url": "https://make.recruitee.com", "hoursOld": 24},
   {"kind": "personio", "name": "personio-vivid", "cadence": "6h", "industry": "software", "status": "live", "url": "https://vivid.jobs.personio.de", "hoursOld": 24},
   {"kind": "greenhouse", "name": "acquia", "cadence": "6h", "industry": "software", "status": "live", "org": "acquia", "hoursOld": 24},
@@ -138,7 +139,7 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "ashby", "name": "quora", "cadence": "6h", "industry": "software", "status": "live", "org": "quora", "hoursOld": 24},
   {"kind": "greenhouse", "name": "rocketchat", "cadence": "6h", "industry": "software", "status": "live", "org": "rocketchat", "hoursOld": 24},
   {"kind": "greenhouse", "name": "twilio", "cadence": "6h", "industry": "software", "status": "live", "org": "twilio", "hoursOld": 24},
-  {"kind": "lever", "name": "mindful", "cadence": "6h", "industry": "software", "status": "live", "org": "mindful", "hoursOld": 24},
+  {"kind": "lever", "name": "mindful", "cadence": "6h", "industry": "software", "status": "unknown", "org": "mindful", "hoursOld": 24},
   {"kind": "ashby", "name": "mux", "cadence": "6h", "industry": "software", "status": "live", "org": "mux", "hoursOld": 24},
   {"kind": "ashby", "name": "percona", "cadence": "6h", "industry": "software", "status": "live", "org": "percona", "hoursOld": 24},
   {"kind": "ashby", "name": "primer", "cadence": "6h", "industry": "software", "status": "live", "org": "primer", "hoursOld": 24},
@@ -152,7 +153,7 @@ export const GENERATED_SOURCES: SourceDef[] = [
   {"kind": "ashby", "name": "alan", "cadence": "6h", "industry": "software", "status": "live", "org": "alan", "hoursOld": 24},
   {"kind": "lever", "name": "envato", "cadence": "6h", "industry": "software", "status": "live", "org": "envato-2", "hoursOld": 24},
   {"kind": "lever", "name": "contentsquare", "cadence": "6h", "industry": "software", "status": "live", "org": "contentsquare", "hoursOld": 24},
-  {"kind": "lever", "name": "prominentedge", "cadence": "6h", "industry": "software", "status": "unknown", "org": "prominentedge", "hoursOld": 24},
+  {"kind": "lever", "name": "prominentedge", "cadence": "6h", "industry": "software", "status": "live", "org": "prominentedge", "hoursOld": 24},
   {"kind": "workable", "name": "netguru", "cadence": "6h", "industry": "software", "status": "live", "url": "https://apply.workable.com/netguru/", "hoursOld": 24},
   {"kind": "recruitee", "name": "kodify", "cadence": "6h", "industry": "software", "status": "live", "url": "https://kodify.recruitee.com/api/offers/", "hoursOld": 24},
   {"kind": "teamtailor", "name": "saasglobal", "cadence": "6h", "industry": "software", "status": "live", "url": "https://saasglobal.teamtailor.com/jobs.rss", "hoursOld": 24},
@@ -169,6 +170,7 @@ export interface PythonOnlySource {
 
 // Cannot run on Workers (TLS impersonation / RSA / browser). Stays on Python/Actions.
 export const PYTHON_ONLY_SOURCES: PythonOnlySource[] = [
+  {"name": "bayt-egypt-tech", "adapter": "bayt", "url": "https://www.bayt.com/en/egypt/jobs/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "naukri-india-remote", "adapter": "naukri", "url": "https://www.naukri.com/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "CryptoJobs.com", "adapter": "web", "url": "https://cryptojobs.com/", "industry": "crypto", "status": "live", "hoursOld": 24},
   {"name": "Solana Ecosystem Jobs", "adapter": "web", "url": "https://jobs.solana.com/", "industry": "crypto", "status": "live", "hoursOld": 24},
@@ -207,7 +209,7 @@ export const PYTHON_ONLY_SOURCES: PythonOnlySource[] = [
   {"name": "DAO Jobs", "adapter": "web", "url": "https://daojobs.io/", "industry": "crypto", "status": "unknown", "hoursOld": 24},
   {"name": "WUZZUF", "adapter": "web", "url": "https://wuzzuf.net/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "Bayt", "adapter": "web", "url": "https://www.bayt.com/", "industry": "general", "status": "unknown", "hoursOld": 24},
-  {"name": "GulfTalent", "adapter": "web", "url": "https://www.gulftalent.com/", "industry": "general", "status": "live", "hoursOld": 24},
+  {"name": "GulfTalent", "adapter": "web", "url": "https://www.gulftalent.com/", "industry": "general", "status": "unknown", "hoursOld": 24},
   {"name": "Eurojobs", "adapter": "web", "url": "https://www.eurojobs.com/", "industry": "general", "status": "live", "hoursOld": 24},
   {"name": "JobsDB", "adapter": "web", "url": "https://www.jobsdb.com/", "industry": "general", "status": "unknown", "hoursOld": 24},
   {"name": "TokyoDev", "adapter": "web", "url": "https://www.tokyodev.com/", "industry": "general", "status": "live", "hoursOld": 24},

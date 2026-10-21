@@ -1330,7 +1330,7 @@ describe("queue lifecycle events", () => {
     }
   });
 
-  it("caps one source at 30 kept postings per run, keeping the most recent", async () => {
+  it("caps one source at the intake bound per run, keeping the most recent", async () => {
     const { default: worker } = await import("../src/index.js");
     // A chatty board: 45 dated postings, oldest first in the feed, so a cap
     // that ignored recency would keep the worst 30.
@@ -1345,7 +1345,8 @@ describe("queue lifecycle events", () => {
     try {
       const { db, jobs, counters } = memQueueDb({ upsertChanges: 1 });
       const q = memQueues();
-      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      // The bound is a var now; the mechanism is what this test pins.
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q, { INTAKE_CAP: "30" }));
       expect(jobs.size).toBe(30);
       // The 15 most recent survive; the 15 oldest are held back and counted.
       expect(jobs.has(canonicalHash(normalizeUrl("https://example.com/j/cap-45")))).toBe(true);
@@ -1356,6 +1357,170 @@ describe("queue lifecycle events", () => {
       expect(q.EVALUATE_Q.sent).toHaveLength(30);
     } finally {
       restore();
+    }
+  });
+
+  it("the default intake bound keeps everything a normal board offers", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // 45 fresh postings is a busy day for a board, not a pathological feed:
+    // under the default bound nothing is held back and nothing is counted.
+    const feed = rssWith(...Array.from({ length: 45 }, (_, i) => rssItem(
+      `Backend Engineer ${i + 1}`,
+      `https://example.com/j/all-${i + 1}`,
+      SKILL_EVIDENCE.repeat(20),
+      new Date(Date.now() - (45 - i) * 60_000).toUTCString(),
+    )));
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, feed);
+    try {
+      const { db, jobs, counters } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      expect(jobs.size).toBe(45);
+      expect(counters.get("intake_capped")).toBeUndefined();
+      expect(q.EVALUATE_Q.sent).toHaveLength(45);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps an Egypt on-site posting and drops a foreign on-site one", async () => {
+    const { default: worker } = await import("../src/index.js");
+    // The owner's standing target: remote anywhere + placements in Egypt.
+    const body = ghBody([
+      { id: 1, title: "Backend Engineer", url: "https://boards.greenhouse.io/acme/jobs/11", location: "Cairo, Egypt" },
+      { id: 2, title: "Backend Engineer", url: "https://boards.greenhouse.io/acme/jobs/12", location: "Bengaluru, India" },
+      { id: 3, title: "Backend Engineer", url: "https://boards.greenhouse.io/acme/jobs/13", location: "Remote, US" },
+    ]);
+    const texts: string[] = [];
+    const restore = stubQueueFetch(texts, body);
+    try {
+      const { db, jobs } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      await worker.queue({ messages: [{ body: ghMsg }] } as any, queueEnv(db, q));
+      expect(jobs.has(canonicalHash(normalizeUrl("https://boards.greenhouse.io/acme/jobs/11")))).toBe(true);
+      expect(jobs.has(canonicalHash(normalizeUrl("https://boards.greenhouse.io/acme/jobs/12")))).toBe(false);
+      expect(jobs.has(canonicalHash(normalizeUrl("https://boards.greenhouse.io/acme/jobs/13")))).toBe(true);
+      expect(jobs.size).toBe(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it("queues a LinkedIn posting for the human instead of applying to it", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const url = "https://www.linkedin.com/jobs/view/4000123456";
+    const restore = stubQueueFetch(texts, "");
+    try {
+      const { db, statements } = memQueueDb({
+        jobRow: {
+          canonical_hash: "h-li",
+          title: "Backend Engineer",
+          company: "Acme",
+          location: "Cairo, Egypt",
+          url,
+          description: SKILL_EVIDENCE.repeat(4),
+          source: "linkedin",
+          score: 100,
+          posted_at: hoursAgo(2),
+        },
+      });
+      const q = memQueues();
+      // Even with live apply and every approval on, the account is never used.
+      const env = queueEnv(db, q, { MASTER_RESUME_SHA: "deadbeef", LIVE_APPLY: "true", APPROVE_GREENHOUSE: "true" });
+      await worker.queue({ messages: [{ body: { stage: "tailor-apply", hash: "h-li" } }] } as any, env);
+      const apps = statements.filter((s) => s.sql.includes("INSERT INTO applications"));
+      expect(apps).toHaveLength(1);
+      expect(apps[0].params[1]).toBe("APPLICATION_STARTED");
+      expect(String(apps[0].params[2])).toContain("discovery only");
+      // No submission, no ATS call of any kind.
+      expect(statements.some((s) => String(s.params?.join(" ")).includes("SUBMITTED"))).toBe(false);
+      expect(texts.some((t) => t.includes("[worker] SUBMITTED:"))).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("LinkedIn guest search queries every configured location", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const urls: string[] = [];
+    // No cards parsed: the assertions are about which searches were issued.
+    const restore = stubQueueFetch(texts, "", urls);
+    try {
+      const { db } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const def = {
+        name: "linkedin_test", kind: "linkedin", cadence: "6h",
+        url: "https://www.linkedin.com/jobs/",
+        queries: ["Backend"], locations: ["Remote", "Egypt"],
+      };
+      await worker.queue(
+        { messages: [{ body: { stage: "discover", def } }] } as any,
+        queueEnv(db, q, { LINKEDIN_ENABLED: "true" }),
+      );
+      const searches = urls.filter((u) => u.includes("jobs-guest"));
+      expect(searches).toHaveLength(2);
+      expect(searches.some((u) => u.includes("location=Remote"))).toBe(true);
+      expect(searches.some((u) => u.includes("location=Egypt"))).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not search LinkedIn when the switch is off", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const texts: string[] = [];
+    const urls: string[] = [];
+    const restore = stubQueueFetch(texts, "", urls);
+    try {
+      const { db } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const def = {
+        name: "linkedin_test", kind: "linkedin", cadence: "6h",
+        url: "https://www.linkedin.com/jobs/",
+        queries: ["Backend"], locations: ["Remote"],
+      };
+      await worker.queue(
+        { messages: [{ body: { stage: "discover", def } }] } as any,
+        queueEnv(db, q, { LINKEDIN_ENABLED: "false" }),
+      );
+      expect(urls.filter((u) => u.includes("jobs-guest"))).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a fully failed LinkedIn search records a source error, not an empty board", async () => {
+    const { default: worker } = await import("../src/index.js");
+    const prev = globalThis.fetch;
+    (globalThis as any).fetch = async (url: string) => {
+      if (String(url).includes("jobs-guest")) return { ok: false, status: 429 };
+      return { ok: true, status: 200, text: async () => "", json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) };
+    };
+    try {
+      const { db, jobs, statements } = memQueueDb({ upsertChanges: 1 });
+      const q = memQueues();
+      const def = {
+        name: "linkedin_test", kind: "linkedin", cadence: "6h",
+        url: "https://www.linkedin.com/jobs/",
+        queries: ["Backend"], locations: ["Egypt"],
+      };
+      // The stage swallows the error into source_health (the message is
+      // acked, never retried into a storm) — what must not happen is a
+      // silent zero that reads like a quiet board.
+      await worker.queue(
+        { messages: [{ body: { stage: "discover", def } }] } as any,
+        queueEnv(db, q, { LINKEDIN_ENABLED: "true" }),
+      );
+      expect(jobs.size).toBe(0);
+      const health = statements.find((s) => s.sql.includes("INSERT INTO source_health"));
+      expect(health, "source health must be recorded").toBeTruthy();
+      expect(String(health?.params?.join(" "))).toContain("linkedin guest searches all failed");
+      expect(q.EVALUATE_Q.sent).toHaveLength(0);
+    } finally {
+      (globalThis as any).fetch = prev;
     }
   });
 
@@ -1375,7 +1540,7 @@ describe("queue lifecycle events", () => {
     try {
       const { db, jobs, counters } = memQueueDb({ upsertChanges: 1 });
       const q = memQueues();
-      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q));
+      await worker.queue({ messages: [{ body: discoverMsg }] } as any, queueEnv(db, q, { INTAKE_CAP: "30" }));
       expect(jobs.size).toBe(30);
       // The held-back postings are counted, not silently dropped.
       expect(counters.get("intake_capped")).toBe(15);

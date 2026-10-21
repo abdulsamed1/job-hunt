@@ -15,7 +15,7 @@ import type { RawJob } from "../adapters/http.js";
 import { canonicalHash, roleFingerprint } from "../lib/hash.js";
 import { boardUrlForDef, classifyHost } from "../lib/hosts.js";
 import { detectDegraded } from "../lib/health.js";
-import { filterRemoteList, HOURS_OLD, isRemoteish, parsePostedAt, partitionFresh } from "../lib/freshness.js";
+import { filterTargetGeoList, HOURS_OLD, isRemoteish, parsePostedAt, partitionFresh } from "../lib/freshness.js";
 import { notifyEventOnce } from "../lib/notify.js";
 import { classifyRole } from "../lib/roles.js";
 import { bumpCounter, findKnownJobs, hashKey, recordSourceHealth, setJobState, upsertJob, type Db } from "../state.js";
@@ -32,9 +32,18 @@ export function linkedinEnabled(env: Env): boolean {
   return (env.LINKEDIN_ENABLED || "false").toLowerCase() === "true";
 }
 
-/** Postings one source may contribute per run. Recency orders them, so what is
- *  held back is the oldest of a chatty board, not a random slice. */
-const INTAKE_CAP = 30;
+/** Postings one source may contribute per run. Not a throttle: 150 is above
+ *  what any healthy board publishes in a 24h window, so in practice every
+ *  posting the source offers is kept — the bound only stops a pathological
+ *  feed from flooding the store inside one invocation. The `INTAKE_CAP` var
+ *  overrides it. Recency orders them, so what is held back is the oldest of a
+ *  chatty board, not a random slice. */
+export const DEFAULT_INTAKE_CAP = 150;
+
+export function intakeCap(env: { INTAKE_CAP?: string }): number {
+  const raw = parseInt(env.INTAKE_CAP || "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_INTAKE_CAP;
+}
 
 /** Why a dateless posting is parked. One vocabulary, shared by the discover
  *  drop and the apply-time re-gate (see index.ts), so a row explains itself the
@@ -122,10 +131,29 @@ export async function discoverSource(def: SourceDef, env: Env): Promise<RawJob[]
     case "workable": return fetchWorkable(def.url || "", def.name);
     case "linkedin": {
       if (!linkedinEnabled(env)) return [];
+      // Guest endpoint only: no cookies, no login, no account. Discovery is
+      // the whole of the Worker's LinkedIn surface — a LinkedIn posting is
+      // never routed to an apply client (see the tailor-apply guard in
+      // index.ts). Every configured location is searched, not just the first.
       const out: RawJob[] = [];
-      for (const q of def.queries || ["backend"]) {
-        out.push(...(await fetchLinkedInGuest(q, (def.locations || ["Remote"])[0], 1, def.tprSeconds || parseInt(env.TPR_SECONDS || "43200", 10))));
+      const locations = def.locations || ["Remote"];
+      const tpr = def.tprSeconds || parseInt(env.TPR_SECONDS || "43200", 10);
+      let ok = 0;
+      let failed = 0;
+      for (const location of locations) {
+        for (const q of def.queries || ["backend"]) {
+          try {
+            out.push(...(await fetchLinkedInGuest(q, location, 1, tpr)));
+            ok++;
+          } catch {
+            failed++;
+          }
+        }
       }
+      // Some queries surviving is a normal partial harvest; every query
+      // failing (throttled, blocked) is a source-level failure and must be
+      // recorded as one, not swallowed into an empty result.
+      if (ok === 0 && failed > 0) throw new Error(`linkedin guest searches all failed (${failed})`);
       return out;
     }
   }
@@ -199,14 +227,17 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     jobs.map((j) => ({ ...j, posted_at: j.posted_at })),
     HOURS_OLD,
   );
-  const remote = filterRemoteList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
+  // The owner's standing target: remote anywhere, plus placements in Egypt.
+  // A placed on-site posting outside Egypt is the only thing dropped here.
+  const remote = filterTargetGeoList(fresh.map((j) => ({ ...j, location: j.location, description: j.desc, remote_flag: undefined })));
   const now = new Date().toISOString();
-  // One chatty board cannot fill the run: at most INTAKE_CAP postings per
-  // source reach the store, newest first. Without it a single aggregator
-  // decides what the day's feed looks like and the other sources are never
-  // read. The held-back postings are counted, not silently dropped — that
-  // count is what says a board is being throttled.
-  const kept = [...remote].sort((a, b) => (parsePostedAt(b.posted_at) ?? 0) - (parsePostedAt(a.posted_at) ?? 0)).slice(0, INTAKE_CAP);
+  const cap = intakeCap(env);
+  // One chatty board cannot fill the run: at most `cap` postings per
+  // source reach the store, newest first. The bound is a flood guard, not a
+  // throttle — it sits above what a healthy board publishes in the window.
+  // The held-back postings are counted, not silently dropped — that count is
+  // what says a board is being throttled.
+  const kept = [...remote].sort((a, b) => (parsePostedAt(b.posted_at) ?? 0) - (parsePostedAt(a.posted_at) ?? 0)).slice(0, cap);
   const heldBack = remote.length - kept.length;
   if (heldBack > 0) {
     try {
@@ -237,7 +268,7 @@ export async function runDiscoverStage(m: QueueMessage, db: Db, env: Env): Promi
     hash: canonicalHash(j.url),
     fp: roleFingerprint(j.company, j.title, j.location),
   }));
-  const datelessKept = dateless.slice(0, INTAKE_CAP);
+  const datelessKept = dateless.slice(0, cap);
   const datelessHeldBack = dateless.length - datelessKept.length;
   if (datelessHeldBack > 0) {
     // The dateless bucket is capped like the fresh one: a board that dates

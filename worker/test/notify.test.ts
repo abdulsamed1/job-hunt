@@ -250,7 +250,7 @@ describe("telegram event allowlist", () => {
   const STAGE_EVENTS = ["SEEKING", "FILTERED", "ELIGIBLE", "TAILORED"] as const;
   const OUTCOME_EVENTS = ["APPLICATION_ATTEMPT", "SUBMITTED", "DRY_RUN", "FAILED", "STAGE_FAILED"] as const;
 
-  it("default: the stage events are muted but still claimed in the ledger", async () => {
+  it("default: the stage events are muted before the ledger — no claim, no send", async () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
@@ -258,10 +258,11 @@ describe("telegram event allowlist", () => {
         expect(await notifyEventOnce(m.db, ENV, "worker", `h-${ev}`, ev, ROW, "stage chatter")).toBe("skipped");
       }
       expect(s.calls).toHaveLength(0);
-      // The ledger claim still happens, once per (runtime, hash, event).
-      expect(m.writes).toHaveLength(STAGE_EVENTS.length);
-      expect(m.writes.every((w) => String(w[0]).includes("INSERT INTO notification_events"))).toBe(true);
-      for (const ev of STAGE_EVENTS) expect(m.seen.has(`worker:h-${ev}:${ev}`)).toBe(true);
+      // Nothing is sent, so nothing is claimed: emission is already
+      // first-time-only, and a chatty board must not pay a D1 write per
+      // posting for a message nobody receives.
+      expect(m.writes).toHaveLength(0);
+      expect(m.seen.size).toBe(0);
     } finally { s.restore(); }
   });
 
@@ -315,17 +316,15 @@ describe("telegram event allowlist", () => {
     }
   });
 
-  it("a second muted event for the same job is still claimed exactly once", async () => {
+  it("a muted event writes no ledger row at all — a retry stays silent", async () => {
     const s = stubFetch(async () => okResp());
     const m = memDb();
     try {
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
-      // The second attempt hits the ledger conflict and skips the same way.
       expect(await notifyEventOnce(m.db, ENV, "worker", "h", "SEEKING", ROW, "found")).toBe("skipped");
       expect(s.calls).toHaveLength(0);
-      // Exactly one ledger row for the key: the ledger claims it once.
-      expect(m.seen.size).toBe(1);
-      expect(m.seen.has("worker:h:SEEKING")).toBe(true);
+      expect(m.writes).toHaveLength(0);
+      expect(m.seen.size).toBe(0);
     } finally { s.restore(); }
   });
 

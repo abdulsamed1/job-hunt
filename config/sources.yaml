@@ -1,4 +1,4 @@
-linkedin_enabled: false
+linkedin_enabled: true
 sources:
 - adapter: linkedin
   name: linkedin_geo_recent
@@ -7,13 +7,40 @@ sources:
   - Backend
   - Full stack
   - Software Engineer
+  - React
+  - Node.js
+  - TypeScript
+  - JavaScript
   - Forward Deployed Engineer
   - Frontier Deployed Engineer
   geo_id: 92000000
   distance: 25
   tpr_seconds: 43200
+  remote_only: true
+  max_pages_per_query: 1
+  target_jobs_count: 60
+  linkedin_require_approval: true
+  industry: general
+  status: unknown
+- adapter: linkedin
+  name: linkedin_egypt
+  url: https://www.linkedin.com/jobs/
+  queries:
+  - Backend
+  - Full stack
+  - Software Engineer
+  - React
+  - Node.js
+  - TypeScript
+  - JavaScript
+  - Forward Deployed Engineer
+  geo_id: 106155005
+  locations:
+  - Egypt
+  distance: 25
+  tpr_seconds: 43200
   remote_only: false
-  max_pages_per_query: 2
+  max_pages_per_query: 1
   target_jobs_count: 60
   linkedin_require_approval: true
   industry: general
@@ -37,7 +64,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: general
-  status: dead
+  status: live
 - adapter: naukri
   name: naukri-india-remote
   url: https://www.naukri.com/
@@ -77,7 +104,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: general
-  status: dead
+  status: unknown
 - adapter: freehire
   name: freehire-remote-tech
   url: https://freehire.me/api/v1/agent/jobs/search
@@ -1510,7 +1537,7 @@ sources:
   url: https://www.gulftalent.com/
   adapter: web
   industry: general
-  status: live
+  status: unknown
 - adapter: feed
   name: swissdevjobs
   url: https://swissdevjobs.ch/api/jobsLight
@@ -1663,7 +1690,7 @@ sources:
   locations:
   - Remote
   industry: software
-  status: live
+  status: dead
 - adapter: recruitee
   name: recruitee-make
   url: https://make.recruitee.com
@@ -2253,7 +2280,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: live
+  status: unknown
 - adapter: ashby
   name: mux
   url: https://jobs.ashbyhq.com/mux
@@ -2449,7 +2476,7 @@ sources:
   target_jobs_count: 40
   hours_old: 24
   industry: software
-  status: unknown
+  status: live
 - adapter: bamboohr
   name: prezi
   url: https://prezi.bamboohr.com/jobs/

@@ -40,6 +40,16 @@ from job_hunt.models import JobPosting
 logger = logging.getLogger(__name__)
 
 
+class RobotsDisallowed(RuntimeError):
+    """The source's own robots.txt forbids the fetch its adapter would make.
+
+    Raised only when the caller asked for errors (``raise_on_error=True``), so
+    the probe can tell "policy says do not fetch" apart from "the board
+    answered with nothing". Reporting a robots refusal as a dead board would
+    be a measurement lie: nothing was measured.
+    """
+
+
 class SourceRegistry:
     """Registry of ATS and job board discovery adapters."""
 
@@ -171,6 +181,8 @@ class SourceRegistry:
             verdict = await self._robots_verdict(gate_url, client)
             if verdict is False:
                 logger.warning("Robots disallowed source, skipping: %s (%s)", name, gate_url)
+                if raise_on_error:
+                    raise RobotsDisallowed(f"robots-disallowed: {gate_url}")
                 return []
             if verdict is None:
                 logger.info("Robots unconfirmed for source, proceeding once: %s (%s)", name, gate_url)

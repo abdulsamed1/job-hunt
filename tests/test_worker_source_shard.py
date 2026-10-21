@@ -110,11 +110,20 @@ def test_ats_sources_carry_org_slug():
 
 
 def test_linkedin_standing_target_preserved():
+    """The owner's target: remote worldwide + Egypt, same role queries."""
     worker, _p, _s = _load_generator().build()
-    li = [s for s in worker if s["kind"] == "linkedin"]
-    assert len(li) == 1
-    assert set(li[0]["queries"]) == {"Backend", "Full stack", "Software Engineer", "Forward Deployed Engineer", "Frontier Deployed Engineer"}
-    assert li[0]["tprSeconds"] == 43200, "12-hour TPR window is the standing target"
+    li = {s["name"]: s for s in worker if s["kind"] == "linkedin"}
+    assert set(li) == {"linkedin_geo_recent", "linkedin_egypt"}
+    roles = {"Backend", "Full stack", "Software Engineer", "React", "Node.js",
+             "TypeScript", "JavaScript", "Forward Deployed Engineer"}
+    assert roles.issubset(set(li["linkedin_geo_recent"]["queries"]))
+    assert roles.issubset(set(li["linkedin_egypt"]["queries"]))
+    for record in li.values():
+        assert record["tprSeconds"] == 43200, "12-hour TPR window is the standing target"
+    # One source per geography: worldwide remote, and Egypt by name (the Worker
+    # has no geoId support, so the location string is what it searches).
+    assert li["linkedin_geo_recent"]["locations"] == ["Remote"]
+    assert li["linkedin_egypt"]["locations"] == ["Egypt"]
 
 
 def test_cadence_keeps_hourly_shard_small():

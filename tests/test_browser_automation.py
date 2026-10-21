@@ -140,57 +140,36 @@ def test_classify_apply_host():
 
 
 @pytest.mark.asyncio
-async def test_linkedin_submit_requires_human_approval():
-    from unittest.mock import AsyncMock, MagicMock, patch
+async def test_linkedin_submission_is_refused_unconditionally():
+    """Owner decision 2026-10-21: the LinkedIn account is never used by an
+    automated path — no approval flag, no discovery switch makes it apply."""
+    from unittest.mock import patch
     from job_hunt.automation.browser import BrowserApplicationEngine
 
-    mock_page = MagicMock()
-    mock_page.url = "https://www.linkedin.com/jobs/view/123"
-    mock_page.goto = AsyncMock()
-    mock_page.wait_for_timeout = AsyncMock()
-    mock_page.add_init_script = AsyncMock()
-    mock_page.screenshot = AsyncMock()
-    mock_page.query_selector = AsyncMock(return_value=None)
-    mock_page.query_selector_all = AsyncMock(return_value=[])
-    mock_page.frames = []
-    mock_page.content = AsyncMock(return_value="<html></html>")
-
-    mock_context = MagicMock()
-    mock_context.new_page = AsyncMock(return_value=mock_page)
-    mock_context.close = AsyncMock()
-    mock_browser = MagicMock()
-    mock_browser.new_context = AsyncMock(return_value=mock_context)
-    mock_browser.close = AsyncMock()
-    mock_pw = MagicMock()
-    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
-
-    def make_job():
-        return JobPosting(
-            source="linkedin",
-            title="Backend Engineer",
-            company="Co",
-            raw_url="https://www.linkedin.com/jobs/view/123",
-            canonical_url="https://www.linkedin.com/jobs/view/123",
-            canonical_url_hash="h-approval",
-            role_fingerprint="rf-approval",
-            content_hash="c-approval",
-            application_type="easy_apply",
-        )
-
+    job = JobPosting(
+        source="linkedin",
+        title="Backend Engineer",
+        company="Co",
+        raw_url="https://www.linkedin.com/jobs/view/123",
+        canonical_url="https://www.linkedin.com/jobs/view/123",
+        canonical_url_hash="h-approval",
+        role_fingerprint="rf-approval",
+        content_hash="c-approval",
+        application_type="easy_apply",
+    )
     profile = CandidateProfile(
         full_name="A B", first_name="A", last_name="B",
         email="a@b.com", phone="1", location="Remote",
     )
 
     with patch("job_hunt.automation.browser.async_playwright") as mock_pw_fn:
-        mock_pw_fn.return_value.__aenter__ = AsyncMock(return_value=mock_pw)
-        mock_pw_fn.return_value.__aexit__ = AsyncMock(return_value=None)
-        engine = BrowserApplicationEngine(headless=True, require_linkedin_approval=True)
-        record = await engine.fill_and_submit(make_job(), profile, dry_run=False, linkedin_approved=False)
+        engine = BrowserApplicationEngine(headless=True, require_linkedin_approval=False)
+        record = await engine.fill_and_submit(job, profile, dry_run=False, linkedin_approved=True)
 
+    # Refused before a browser is ever launched, even with every switch flipped.
+    mock_pw_fn.assert_not_called()
     assert record.state == JobState.FAILED
-    assert "human approval" in (record.error_message or "").lower()
-
+    assert "discovery-only" in (record.error_message or "").lower()
 
 @pytest.mark.asyncio
 async def test_external_apply_refuses_unverified_host_without_approval():
@@ -306,54 +285,32 @@ async def test_detect_linkedin_login_wall():
 
 
 @pytest.mark.asyncio
-async def test_fill_and_submit_uses_saved_linkedin_session(tmp_path):
+async def test_linkedin_submission_refused_even_with_saved_session(tmp_path):
+    """A saved login session changes nothing: the refusal happens before any
+    browser context (and so before storage_state) can be created."""
     import json
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
     from job_hunt.automation.browser import BrowserApplicationEngine
 
     state = tmp_path / "state.json"
     state.write_text(json.dumps({"cookies": [{"name": "li_at", "value": "s"}]}))
-
-    mock_page = MagicMock()
-    mock_page.url = "https://www.linkedin.com/jobs/view/123"
-    mock_page.goto = AsyncMock()
-    mock_page.wait_for_timeout = AsyncMock()
-    mock_page.add_init_script = AsyncMock()
-    mock_page.screenshot = AsyncMock()
-    mock_page.query_selector = AsyncMock(return_value=None)
-    mock_page.query_selector_all = AsyncMock(return_value=[])
-    mock_page.frames = []
-    mock_page.content = AsyncMock(return_value="<html></html>")
-
-    mock_context = MagicMock()
-    mock_context.new_page = AsyncMock(return_value=mock_page)
-    mock_context.close = AsyncMock()
-    mock_browser = MagicMock()
-    mock_browser.new_context = AsyncMock(return_value=mock_context)
-    mock_browser.close = AsyncMock()
-    mock_pw = MagicMock()
-    mock_pw.chromium.launch = AsyncMock(return_value=mock_browser)
-
+    job = JobPosting(
+        source="linkedin", title="T", company="C",
+        raw_url="https://www.linkedin.com/jobs/view/123",
+        canonical_url="https://www.linkedin.com/jobs/view/123",
+        canonical_url_hash="h-ss", role_fingerprint="rf-ss", content_hash="c-ss",
+        application_type="easy_apply",
+    )
+    profile = CandidateProfile(
+        full_name="A B", first_name="A", last_name="B",
+        email="a@b.com", phone="1", location="Remote",
+    )
     with patch("job_hunt.automation.browser.async_playwright") as mock_pw_fn:
-        mock_pw_fn.return_value.__aenter__ = AsyncMock(return_value=mock_pw)
-        mock_pw_fn.return_value.__aexit__ = AsyncMock(return_value=None)
         engine = BrowserApplicationEngine(headless=True, linkedin_storage_state=str(state))
-        job = JobPosting(
-            source="linkedin", title="T", company="C",
-            raw_url="https://www.linkedin.com/jobs/view/123",
-            canonical_url="https://www.linkedin.com/jobs/view/123",
-            canonical_url_hash="h-ss", role_fingerprint="rf-ss", content_hash="c-ss",
-            application_type="easy_apply",
-        )
-        profile = CandidateProfile(
-            full_name="A B", first_name="A", last_name="B",
-            email="a@b.com", phone="1", location="Remote",
-        )
-        await engine.fill_and_submit(job, profile, dry_run=True)
+        record = await engine.fill_and_submit(job, profile, dry_run=True)
 
-    _, kwargs = mock_browser.new_context.call_args
-    assert kwargs.get("storage_state") == str(state)
-
+    mock_pw_fn.assert_not_called()
+    assert record.state == JobState.FAILED
 
 @pytest.mark.asyncio
 async def test_verify_linkedin_target_job_url_match():
@@ -465,55 +422,6 @@ async def test_signin_modal_is_not_easy_apply_panel():
 
     page.query_selector = AsyncMock(side_effect=apply_modal_for_dialog_selectors)
     assert await engine._detect_linkedin_easy_apply_panel(page) is True
-
-
-@pytest.mark.asyncio
-async def test_invalid_session_blocks_linkedin_run(tmp_path):
-    import json
-    from unittest.mock import AsyncMock, MagicMock, patch
-    from job_hunt.automation.browser import BrowserApplicationEngine
-
-    state = tmp_path / "state.json"
-    state.write_text(json.dumps({"cookies": [{"name": "li_at", "value": "stale"}]}))
-
-    page = MagicMock()
-    page.url = "https://www.linkedin.com/jobs/view/4472305480/"
-    page.goto = AsyncMock()
-    page.wait_for_timeout = AsyncMock()
-    page.add_init_script = AsyncMock()
-    page.screenshot = AsyncMock()
-    page.query_selector = AsyncMock(return_value=None)
-    page.query_selector_all = AsyncMock(return_value=[])
-    page.frames = []
-
-    ctx = MagicMock()
-    ctx.new_page = AsyncMock(return_value=page)
-    ctx.close = AsyncMock()
-    br = MagicMock()
-    br.new_context = AsyncMock(return_value=ctx)
-    br.close = AsyncMock()
-    pw = MagicMock()
-    pw.chromium.launch = AsyncMock(return_value=br)
-
-    with patch("job_hunt.automation.browser.async_playwright") as mock_pw_fn:
-        mock_pw_fn.return_value.__aenter__ = AsyncMock(return_value=pw)
-        mock_pw_fn.return_value.__aexit__ = AsyncMock(return_value=None)
-        engine = BrowserApplicationEngine(headless=True, linkedin_storage_state=str(state))
-        job = JobPosting(
-            source="linkedin", title="T", company="Globant",
-            raw_url="https://www.linkedin.com/jobs/view/4472305480/",
-            canonical_url="https://www.linkedin.com/jobs/view/4472305480/",
-            canonical_url_hash="h-sess", role_fingerprint="rf-sess", content_hash="c-sess",
-            application_type="easy_apply", external_id="4472305480",
-        )
-        profile = CandidateProfile(
-            full_name="A B", first_name="A", last_name="B",
-            email="a@b.com", phone="1", location="Remote",
-        )
-        record = await engine.fill_and_submit(job, profile, dry_run=True)
-
-    assert record.state == JobState.FAILED
-    assert "session" in (record.error_message or "").lower()
 
 
 @pytest.mark.asyncio

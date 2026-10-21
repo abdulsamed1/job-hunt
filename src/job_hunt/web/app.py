@@ -61,8 +61,11 @@ class ActionRequest(BaseModel):
     live: Optional[bool] = False
     max_sources: Optional[int] = None
     linkedin_approved: Optional[bool] = False
-    hours_old: Optional[int] = 12
+    hours_old: Optional[int] = 24
     remote_only: Optional[bool] = False
+    # The standing geography policy (remote anywhere + Egypt) is on by default
+    # in the UI, matching the CLI flag the CI sweep passes.
+    target_geo: Optional[bool] = True
 
 
 async def _execute_async_action(action_name: str, coro_fn, *args, **kwargs):
@@ -247,8 +250,9 @@ async def api_action_scan(req: ActionRequest, background_tasks: BackgroundTasks)
         "DISCOVERY_SCAN",
         orchestrator.run_discovery_stage,
         max_sources=req.max_sources or req.limit,
-        hours_old=req.hours_old if req.hours_old is not None else 12,
+        hours_old=req.hours_old if req.hours_old is not None else 24,
         remote_only=req.remote_only or False,
+        target_geo=req.target_geo if req.target_geo is not None else True,
     )
     return {"message": "Discovery scan initiated in background", "status": "started"}
 

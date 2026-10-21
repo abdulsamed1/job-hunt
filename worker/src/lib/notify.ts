@@ -156,6 +156,13 @@ export function parseTelegramEvents(raw: string | undefined | null): Set<string>
  * record the claim, so a Telegram outage cannot retry-storm. Missing
  * credentials resolve "skipped" without claiming anything. Non-conflict DB
  * errors resolve "failed" without sending. Never throws.
+ *
+ * A muted event (see `parseTelegramEvents`) resolves "skipped" *before* the
+ * ledger claim: there is nothing to deduplicate when nothing is sent, and
+ * every caller emits only on a first-time transition, so re-enabling an event
+ * later cannot replay old ones. That also keeps a muted stage event from
+ * costing one D1 write per posting on a chatty board.
+ *
  * Returns "sent" | "skipped" | "failed".
  */
 export async function notifyEventOnce(
@@ -169,6 +176,7 @@ export async function notifyEventOnce(
 ): Promise<"sent" | "skipped" | "failed"> {
   const rt = runtime || "worker";
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return "skipped";
+  if (!parseTelegramEvents(env.TELEGRAM_EVENTS).has(event.toUpperCase())) return "skipped";
   try {
     await db
       .prepare(
@@ -181,10 +189,6 @@ export async function notifyEventOnce(
     if (/unique|primary key|constraint failed|already exists/i.test(String(e))) return "skipped";
     return "failed";
   }
-  // The event key is claimed above, so the ledger stays at-most-once even for
-  // a muted event; only the HTTP POST is skipped. A muted event therefore
-  // resolves "skipped" exactly like an already-sent one.
-  if (!parseTelegramEvents(env.TELEGRAM_EVENTS).has(event.toUpperCase())) return "skipped";
   let outcome: "sent" | "failed" = "failed";
   try {
     if (await alert(env, formatJobAlert(rt, row, event, detail))) outcome = "sent";

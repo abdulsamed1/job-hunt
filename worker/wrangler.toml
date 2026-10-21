@@ -2,9 +2,12 @@ name = "jobhunt"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
-# 2 of the 5 free cron triggers used: hourly scout + daily deep sweep.
+# 2 of the 5 free cron triggers used: hourly scout + 6-hourly deep sweep.
+# The deep sweep runs 4×/day because a once-daily sweep under a 24h window
+# can miss a posting made just before the sweep time; every 6h every dated
+# posting is seen while still inside the window.
 [triggers]
-crons = ["15 * * * *", "0 2 * * *"]
+crons = ["15 * * * *", "0 */6 * * *"]
 
 [[d1_databases]]
 binding = "DB"
@@ -25,7 +28,11 @@ queue = "jobhunt-apply"
 
 [[queues.consumers]]
 queue = "jobhunt-discover"
-max_batch_size = 10
+# One source per invocation: a message stores up to INTAKE_CAP postings and
+# sends one evaluate message per new posting, so the per-invocation binding
+# budget is cap × batch. 150 × 1 stays far under the subrequest ceiling;
+# 150 × 10 (the default batch) does not.
+max_batch_size = 1
 max_retries = 2
 
 [[queues.consumers]]
@@ -45,10 +52,17 @@ bucket_name = "jobhunt-cvs"
 [vars]
 QUERIES = "backend,fullstack,software"
 TPR_SECONDS = "43200"
+# Flood guard per source per run (not a throttle): 150 is above what a healthy
+# board publishes in the 24h window, so every posting is normally kept.
+INTAKE_CAP = "150"
 THRESHOLD = "70"
 # Safety defaults: everything is dry-run unless a human flips these.
 REQUIRE_LINKEDIN_APPROVAL = "true"
-LINKEDIN_ENABLED = "false"
+# LinkedIn DISCOVERY is on (guest endpoints, no account). Applying through the
+# owner's LinkedIn account stays off by design: a LinkedIn row is queued for
+# the human in the tailor-apply stage, and the Python engine refuses a LinkedIn
+# posting before it ever launches a browser.
+LINKEDIN_ENABLED = "true"
 LIVE_APPLY = "false"
 APPROVE_GREENHOUSE = "false"
 APPROVE_LEVER = "false"

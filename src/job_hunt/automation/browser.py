@@ -1491,11 +1491,16 @@ class BrowserApplicationEngine:
             submission_payload={"url": job.raw_url, "dry_run": dry_run},
         )
 
-        if not settings.linkedin_enabled() and settings.is_linkedin_job(job):
+        # LinkedIn is discovery-only by owner decision (2026-10-21): applying
+        # through the owner's LinkedIn account is what got the account banned,
+        # so no automated path may ever drive the account. This is the last
+        # line of defense — the application stage already filters LinkedIn
+        # rows out — and it does not depend on the discovery switch.
+        if settings.is_linkedin_job(job):
             record.state = JobState.FAILED
             record.error_message = (
-                "Blocked: LinkedIn applications are disabled "
-                "(LINKEDIN_ENABLED=false / linkedin_enabled=false)"
+                "Blocked: LinkedIn applications are discovery-only "
+                "(apply manually; the account is never used automatically)"
             )
             logger.warning("Job %s blocked: %s", job.id, record.error_message)
             return record

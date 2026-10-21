@@ -159,6 +159,8 @@ class LinkedInAdapter(DiscoveryAdapter):
         postings: List[JobPosting] = []
         seen_urls = set()
         rate_limit_delay = 1.0  # Start with 1s, increase on 429
+        successful_fetches = 0
+        failed_fetches = 0
 
         search_tasks = self._build_search_tasks(queries, locations, max_pages, geo_id)
 
@@ -196,6 +198,7 @@ class LinkedInAdapter(DiscoveryAdapter):
                 "Connection": "keep-alive",
             }
 
+            fetched = False
             for attempt in range(MAX_RETRIES):
                 try:
                     resp = await client.get(url, headers=headers, timeout=15.0, follow_redirects=True)
@@ -209,6 +212,8 @@ class LinkedInAdapter(DiscoveryAdapter):
                         logger.debug("LinkedIn query (%s, %s, %d) returned status %d", kw, loc, start, resp.status_code)
                         break
 
+                    fetched = True
+                    successful_fetches += 1
                     batch = self._parse_job_cards(resp.text, entry)
                     if not batch and len(postings) < target_count:
                         logger.debug("No job cards parsed for (%s, %s, %d) - LinkedIn may have changed HTML", kw, loc, start)
@@ -226,11 +231,24 @@ class LinkedInAdapter(DiscoveryAdapter):
                     if attempt < MAX_RETRIES - 1:
                         await asyncio.sleep(RETRY_DELAY_BASE * (2 ** attempt) + random.uniform(0, 0.5))
 
+            if not fetched:
+                failed_fetches += 1
+
             # Adaptive pacing: slow down if we're getting too many results, speed up if not
             if len(postings) > target_count * 0.8:
                 await asyncio.sleep(0.3 + random.uniform(0, 0.3))
             else:
                 await asyncio.sleep(rate_limit_delay + random.uniform(0, 0.4))
+
+        # A run where EVERY request failed (429/403/5xx/network) is not an
+        # empty board — it is a throttled or blocked one. Raising is what
+        # keeps the probe from calling the source dead on a clean zero and
+        # what makes the runtime record source health instead of silence.
+        if search_tasks and successful_fetches == 0:
+            raise RuntimeError(
+                f"LinkedIn guest search made no successful request "
+                f"({failed_fetches} failed) — throttled or blocked"
+            )
 
         logger.info("LinkedIn discovery completed: %d unique jobs harvested.", len(postings))
         return postings
@@ -312,6 +330,17 @@ class LinkedInAdapter(DiscoveryAdapter):
         location = location_elem.get_text(strip=True) if location_elem else "Remote"
         raw_url = link_elem["href"].split("?")[0] if link_elem and "href" in link_elem.attrs else ""
 
+        # When the search itself was remote-filtered (f_WT), LinkedIn returns
+        # remote roles that still print the employer's city. Tag them so the
+        # downstream target-geo filter sees the remote signal the search
+        # already proved — otherwise a remote job reads as a foreign on-site
+        # posting and is dropped.
+        if entry.get("remote_only") and not any(
+            sig in location.lower()
+            for sig in ("remote", "anywhere", "worldwide", "work from home", "wfh", "distributed", "virtual")
+        ):
+            location = f"{location} (Remote)"
+
         if not title or not raw_url:
             return None
 
@@ -359,7 +388,10 @@ class LinkedInAdapter(DiscoveryAdapter):
 
         metadata: Dict[str, Any] = {
             "source_platform": "linkedin",
-            "remote_flag": not entry.get("remote_only", False),
+            # A remote-filtered search (f_WT) returns remote roles; a geo
+            # search returns what that geography holds. The flag mirrors the
+            # search, so an Egypt on-site posting is never called remote.
+            "remote_flag": bool(entry.get("remote_only", False)),
         }
         if company_url:
             metadata["company_url"] = company_url

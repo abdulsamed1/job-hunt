@@ -7,6 +7,8 @@ import pytest
 from job_hunt.discovery.freshness import (
     filter_recent,
     filter_remote,
+    filter_target_geo,
+    is_egypt_location,
     is_fresh,
     is_remoteish,
     parse_posted_at,
@@ -75,6 +77,36 @@ def test_filter_remote_keeps_unknown_drops_onsite():
     ]
     kept = filter_remote(jobs)
     assert len(kept) == 2
+
+
+def test_is_egypt_location():
+    assert is_egypt_location(_job(location="Cairo, Egypt")) is True
+    assert is_egypt_location(_job(location="Alexandria")) is True
+    assert is_egypt_location(_job(location="Hybrid · New Cairo, Egypt")) is True
+    assert is_egypt_location(_job(location="6th of October City")) is True
+    assert is_egypt_location(_job(location="Bengaluru, India")) is False
+    assert is_egypt_location(_job(location="Remote")) is False
+    assert is_egypt_location(_job(location=None)) is False
+    assert is_egypt_location(_job(location="")) is False
+
+
+def test_filter_target_geo_keeps_remote_anywhere_and_egypt_only():
+    jobs = [
+        _job(location="Remote"),
+        _job(location="Worldwide"),
+        _job(location="Cairo, Egypt"),
+        _job(location="Hybrid - Giza, Egypt"),
+        _job(location="Bengaluru, India"),
+        _job(location="Austin, Texas, USA"),
+        _job(location=None, description=""),
+    ]
+    kept = filter_target_geo(jobs)
+    assert [j.location for j in kept] == [
+        "Remote", "Worldwide", "Cairo, Egypt", "Hybrid - Giza, Egypt", None,
+    ]
+    # The strict filter stays available and still drops Egypt on-site roles.
+    strict = filter_remote(jobs)
+    assert [j.location for j in strict] == ["Remote", "Worldwide", None]
 
 
 def test_no_configured_source_exceeds_24h():

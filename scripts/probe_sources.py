@@ -30,9 +30,10 @@ FEED_KINDS = {"rss", "feed"}
 # The single source of truth for what "live" means. The Worker generator, the
 # config `status:` field and the docs all quote this rule.
 LIVENESS_RULE = (
-    "Liveness = the source yields at least one remote posting at any age. "
-    "The 24h window gates the feed, not the source, and the remote filter stays "
-    "on because only remote roles are applicable to this product. A failed "
+    "Liveness = the source yields at least one usable posting at any age: "
+    "remote anywhere, placed in Egypt (on-site, hybrid or remote), or unknown "
+    "location. The 24h window gates the feed, not the source, and the geography "
+    "gate is the shipped policy, so an Egypt on-site board counts. A failed "
     "attempt is flaky (never dead); a board that answers 404/410 is dead."
 )
 
@@ -115,11 +116,13 @@ def classify_verdict(
     fatal: bool = False,
     **kwargs: Any,
 ) -> str:
-    """Liveness = the source yields at least one remote posting at any age.
+    """Liveness = the source yields at least one usable posting at any age.
 
     The 24h window gates the feed, not the source (a board that posts monthly
-    is still alive), and the remote filter stays on because only remote roles
-    are applicable to this product. ``last_yield_at`` is carried for the
+    is still alive), and the geography gate is the shipped target-geo policy
+    (remote anywhere, placed in Egypt, or unknown location) rather than strict
+    remote-only: an Egypt on-site board is wanted, not dead.
+    ``last_yield_at`` is carried for the
     operator (newest posting date) but never decides the verdict. A failed
     attempt is ``flaky``, never ``dead``: a failure is not proof that the
     board is gone. The one exception is a board that *answers* that it is gone
@@ -475,11 +478,15 @@ def _probe_one(entry, client, semaphore, hours_old, remote, registry=None):
                 postings = await reg.scan_source(
                     entry, client, asyncio.Semaphore(10_000), raise_on_error=True
                 )
-            # Liveness = remote postings at any age. The 24h window gates the
-            # feed, not the source, so it is off by default (hours_old=0).
+            # Liveness = usable postings at any age. The 24h window gates the
+            # feed, not the source, so it is off by default (hours_old=0), and
+            # the geography gate is the shipped policy (remote anywhere, placed
+            # in Egypt, or unknown location) rather than strict remote-only:
+            # an Egypt on-site board is exactly what the product now wants, and
+            # calling it dead for having no remote roles would drop it forever.
             postings = _freshness.filter_recent(postings, hours_old)
             if remote:
-                postings = _freshness.filter_remote(postings)
+                postings = _freshness.filter_target_geo(postings)
         except Exception as exc:
             # A failed attempt is evidence of flakiness, never of a dead board.
             # The one exception: the board answered that it is gone (404/410),
@@ -591,12 +598,11 @@ def _build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Probe every configured source and record liveness in the ledger.",
         epilog=(
-            "Liveness rule: a source is live when it yields at least one remote "
-            "posting at any age. The 24h window gates the feed, not the source, "
-            "and the remote filter stays on because only remote roles are "
-            "applicable. A failed attempt is flaky (never dead) and is written "
-            "to the sources config with status 'unknown'; a board that answers "
-            "404/410 is dead."
+            "Liveness rule: a source is live when it yields at least one usable "
+            "posting at any age (remote anywhere, placed in Egypt, or unknown "
+            "location). The 24h window gates the feed, not the source. A failed "
+            "attempt is flaky (never dead) and is written to the sources config "
+            "with status 'unknown'; a board that answers 404/410 is dead."
         ),
     )
     ap.add_argument("--sources", default=str(DEFAULT_SOURCES))
@@ -616,7 +622,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--no-remote",
         action="store_true",
-        help="diagnostic only: drop the remote filter (the shipped rule keeps it ON)",
+        help="diagnostic only: drop the geography gate (the shipped rule keeps it ON)",
     )
     ap.add_argument("--sources-path", dest="sources_path", default=None)
     return ap

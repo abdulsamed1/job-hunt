@@ -161,8 +161,8 @@ def test_apply_marks_an_errored_source_unknown_not_stale_live(tmp_path):
     assert data["sources"][0]["status"] == "unknown"
 
 
-def test_remote_filter_is_on_by_default():
-    """The shipped rule keeps the remote filter on: only remote roles apply."""
+def test_geography_gate_is_on_by_default():
+    """The shipped rule keeps the geography gate on: only usable roles count."""
     mod = _load()
     params = inspect.signature(mod._probe_all_async).parameters
     assert params["remote"].default is True
@@ -172,10 +172,42 @@ def test_probe_help_states_the_liveness_rule():
     mod = _load()
     help_text = mod._build_parser().format_help()
     low = " ".join(help_text.lower().split())
-    assert "remote" in low
+    assert "remote anywhere" in low
+    assert "placed in egypt" in low
     assert "at any age" in low
     assert "24h window gates the feed" in low
     assert "flaky" in low
+
+
+@pytest.mark.asyncio
+async def test_probe_counts_an_egypt_onsite_board_as_live(monkeypatch):
+    """An Egypt on-site board is wanted by the product, so it must not read as
+    dead for having no remote roles (the old remote-only measure did that)."""
+    mod = _load()
+    from job_hunt.models import JobPosting
+
+    def _job(location: str) -> JobPosting:
+        return JobPosting(
+            source="web:wuzzuf", title="Backend Engineer", company="Acme",
+            raw_url=f"https://wuzzuf.net/jobs/{abs(hash(location))}",
+            canonical_url=f"https://wuzzuf.net/jobs/{abs(hash(location))}",
+            canonical_url_hash=f"h-{abs(hash(location))}",
+            role_fingerprint=f"rf-{abs(hash(location))}",
+            content_hash=f"c-{abs(hash(location))}",
+            location=location,
+        )
+
+    class FakeRegistry:
+        async def scan_source(self, entry, client, semaphore, raise_on_error=False):
+            return [_job("Cairo, Egypt"), _job("Austin, TX")]
+
+    probe = await mod._probe_one(
+        {"adapter": "web", "name": "wuzzuf", "url": "https://wuzzuf.net/jobs/egypt"},
+        client=None, semaphore=asyncio.Semaphore(1), hours_old=0, remote=True,
+        registry=FakeRegistry(),
+    )
+    assert probe.verdict == "live"
+    assert probe.yielded == 1  # the Austin on-site posting is not usable
 
 
 def test_suggest_hourly_caps_crypto_orgs_and_feeds():

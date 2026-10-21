@@ -43,10 +43,30 @@ export function isFresh(postedAt: unknown, hoursOld: number): boolean | null {
 
 const REMOTE_SIGNS = ["remote", "worldwide", "anywhere", "wfh", "work from home", "work from anywhere", "distributed", "telecommute", "virtual"];
 
+/** The candidate is based in Egypt: an on-site or hybrid role there is in
+ *  scope alongside remote roles anywhere. Country first, then the cities and
+ *  compounds boards actually print; matched case-insensitively. */
+const EGYPT_PLACES = [
+  "egypt", "cairo", "alexandria", "giza", "6th of october", "6th october",
+  "new cairo", "nasr city", "smart village", "maadi", "zamalek", "dokki",
+  "mohandessin", "heliopolis", "new capital", "administrative capital",
+  "new administrative capital", "port said", "suez", "ismailia", "mansoura",
+  "tanta", "luxor", "aswan", "fayoum", "beni suef", "minya", "hurghada",
+  "sharm el sheikh", "10th of ramadan", "sheikh zayed", "sadat city",
+  "october city",
+];
+
 export function isRemoteish(location: string, description: string, remoteFlag?: boolean): boolean {
   if (remoteFlag === true) return true;
   const hay = `${location || ""} ${description || ""}`.toLowerCase();
   return REMOTE_SIGNS.some((s) => hay.includes(s));
+}
+
+/** True when the location names Egypt (country or a known Egyptian place). */
+export function isEgyptLocation(location: string): boolean {
+  const loc = (location || "").trim().toLowerCase();
+  if (!loc) return false;
+  return EGYPT_PLACES.some((place) => new RegExp(`\\b${place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(loc));
 }
 
 /** Drop only placed on-site postings; unknown locations pass. */
@@ -109,5 +129,22 @@ export function partitionFresh<T extends LitePosting>(
 export function filterRemoteList<T extends LitePosting>(postings: T[]): T[] {
   return postings.filter(
     (p) => isRemoteish(p.location ?? "", p.description ?? "", p.remote_flag) || !isPlacedOnsite(p.location ?? "", p.description ?? "", p.remote_flag),
+  );
+}
+
+/**
+ * The owner's standing target: remote anywhere + placed in Egypt.
+ *
+ * Keeps remote-signalled postings wherever they are, postings whose location
+ * names Egypt (on-site, hybrid or remote there), and postings with no usable
+ * location signal — a board that gives no location never loses a posting.
+ * Drops only a posting proven to be placed on-site outside Egypt.
+ */
+export function filterTargetGeoList<T extends LitePosting>(postings: T[]): T[] {
+  return postings.filter(
+    (p) =>
+      isRemoteish(p.location ?? "", p.description ?? "", p.remote_flag) ||
+      isEgyptLocation(p.location ?? "") ||
+      !isPlacedOnsite(p.location ?? "", p.description ?? "", p.remote_flag),
   );
 }

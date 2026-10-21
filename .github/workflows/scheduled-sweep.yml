@@ -47,10 +47,10 @@ jobs:
       - name: Install Chromium for Playwright
         run: uv run python -m playwright install chromium --with-deps
 
-      - name: Full sweep (24h remote, all sources)
+      - name: Full sweep (24h, remote anywhere + Egypt)
         if: inputs.full == true || github.event_name == 'schedule'
         run: |
-          uv run python -m job_hunt.cli scan --hours-old 24 --remote-only
+          uv run python -m job_hunt.cli scan --hours-old 24 --target-geo
           uv run python -m job_hunt.cli evaluate --limit 400 --no-llm
           uv run python -m job_hunt.cli tailor --limit 50 --no-llm
 

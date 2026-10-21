@@ -198,6 +198,120 @@ async def test_linkedin_adapter_mock_fetch():
 
 
 @pytest.mark.asyncio
+async def test_linkedin_remote_search_tags_city_locations_as_remote():
+    """f_WT results print the employer's city; the remote signal must survive
+    the adapter or the target-geo filter drops them as foreign on-site roles."""
+    from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
+    from job_hunt.discovery.freshness import is_remoteish
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:777">
+        <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/backend-at-acme-777"></a>
+        <h3 class="base-search-card__title">Backend Engineer</h3>
+        <h4 class="base-search-card__subtitle">Acme</h4>
+        <span class="job-search-card__location">Melbourne, Victoria, Australia</span>
+        <time datetime="2026-10-21">2026-10-21</time>
+      </div>
+    </li>
+    """
+
+    async def mock_handler(request):
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = LinkedInAdapter()
+        remote_entry = {
+            "adapter": "linkedin",
+            "queries": ["Backend Engineer"],
+            "locations": ["Worldwide"],
+            "remote_only": True,
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        remote_postings = await adapter.fetch(remote_entry, client)
+
+        local_entry = dict(remote_entry, remote_only=False)
+        local_postings = await adapter.fetch(local_entry, client)
+
+    assert remote_postings[0].location == "Melbourne, Victoria, Australia (Remote)"
+    assert is_remoteish(remote_postings[0]) is True
+    # An Egypt-style geo search keeps the location exactly as LinkedIn printed it.
+    assert local_postings[0].location == "Melbourne, Victoria, Australia"
+
+
+@pytest.mark.asyncio
+async def test_linkedin_adapter_raises_when_every_request_fails(monkeypatch):
+    """A throttled or blocked run must not read as an empty board: the probe
+    would call the source dead and a live run would store nothing in silence."""
+    from job_hunt.discovery.adapters import linkedin as li_mod
+
+    async def _no_sleep(*a, **k):
+        return None
+
+    monkeypatch.setattr(li_mod.asyncio, "sleep", _no_sleep)
+
+    async def blocked(request):
+        return httpx.Response(500, text="nope")
+
+    transport = httpx.MockTransport(blocked)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = li_mod.LinkedInAdapter()
+        entry = {
+            "adapter": "linkedin",
+            "queries": ["Backend Engineer", "Full Stack Engineer"],
+            "locations": ["Worldwide"],
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        with pytest.raises(RuntimeError, match="no successful request"):
+            await adapter.fetch(entry, client)
+
+
+@pytest.mark.asyncio
+async def test_linkedin_adapter_partial_failure_still_returns_jobs(monkeypatch):
+    """One failing query beside survivors is a partial harvest, not a failure."""
+    from job_hunt.discovery.adapters import linkedin as li_mod
+
+    async def _no_sleep(*a, **k):
+        return None
+
+    monkeypatch.setattr(li_mod.asyncio, "sleep", _no_sleep)
+
+    sample_html = """
+    <li>
+      <div class="base-card base-search-card job-search-card" data-entity-urn="urn:li:jobPosting:555">
+        <a class="base-card__full-link" href="https://www.linkedin.com/jobs/view/backend-engineer-at-acme-555"></a>
+        <h3 class="base-search-card__title">Backend Engineer</h3>
+        <h4 class="base-search-card__subtitle">Acme</h4>
+        <span class="job-search-card__location">Remote</span>
+        <time datetime="2026-10-21">2026-10-21</time>
+      </div>
+    </li>
+    """
+
+    async def flaky(request):
+        if "Backend+Engineer" in str(request.url):
+            return httpx.Response(500, text="nope")
+        return httpx.Response(200, text=sample_html)
+
+    transport = httpx.MockTransport(flaky)
+    async with httpx.AsyncClient(transport=transport) as client:
+        adapter = li_mod.LinkedInAdapter()
+        entry = {
+            "adapter": "linkedin",
+            "queries": ["Backend Engineer", "Full Stack Engineer"],
+            "locations": ["Worldwide"],
+            "max_pages_per_query": 1,
+            "target_jobs_count": 10,
+        }
+        postings = await adapter.fetch(entry, client)
+
+    assert [p.title for p in postings] == ["Backend Engineer"]
+
+
+@pytest.mark.asyncio
 async def test_linkedin_adapter_detects_easy_apply():
     from job_hunt.discovery.adapters.linkedin import LinkedInAdapter
 

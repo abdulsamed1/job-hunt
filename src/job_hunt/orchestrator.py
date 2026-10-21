@@ -13,7 +13,7 @@ import httpx
 from job_hunt import settings
 from job_hunt.automation.browser import BrowserApplicationEngine
 from job_hunt.cv.tailor import CVTailor
-from job_hunt.discovery.freshness import filter_recent, filter_remote
+from job_hunt.discovery.freshness import filter_recent, filter_remote, filter_target_geo
 from job_hunt.discovery.hosts import is_spoof_like
 from job_hunt.discovery.registry import SourceRegistry
 from job_hunt.evaluation.engine import EvaluationEngine
@@ -170,13 +170,18 @@ class PipelineOrchestrator:
 
     async def run_discovery_stage(
         self, max_sources: Optional[int] = None, hours_old: int = 24, remote_only: bool = False,
-        source_name: Optional[str] = None,
+        source_name: Optional[str] = None, target_geo: bool = False,
     ) -> int:
         """Stage 1 & 2: Discover jobs across all sources and deduplicate.
 
         Recency + remote defaults propagate to every board: entries lacking the
         keys inherit them (adapters that support them filter server-side), and
         the shared post-filters backstop the rest. Dateless postings always pass.
+
+        ``target_geo`` is the owner's standing policy — remote anywhere plus
+        placements in Egypt — and is applied as a post-filter only: the
+        server-side ``remote_only`` switch stays off so an Egypt on-site
+        posting is never filtered out by the board before we see it.
         """
         sources = self.registry.load_sources_file(self.sources_path)
         if source_name:
@@ -209,6 +214,8 @@ class PipelineOrchestrator:
         postings = filter_recent(postings, hours_old)
         if remote_only:
             postings = filter_remote(postings)
+        elif target_geo:
+            postings = filter_target_geo(postings)
         new_jobs = 0
         for p in postings:
             _, is_new = self.storage.add_job(p)
@@ -462,8 +469,18 @@ class PipelineOrchestrator:
         tailored_jobs = self.storage.get_jobs_by_state(JobState.TAILORED, limit=limit)
         retry_jobs = self.storage.get_jobs_by_state(JobState.RETRY_PENDING, limit=limit)
         queue = tailored_jobs + retry_jobs
-        if not settings.linkedin_enabled(self.sources_path):
-            queue = [j for j in queue if not settings.is_linkedin_job(j)]
+        # LinkedIn is discovery-only by owner decision (2026-10-21): applying
+        # through the owner's LinkedIn account is what got the account banned,
+        # so a LinkedIn posting never enters the automated queue — it stays
+        # TAILORED for a human to apply. Unconditional, not tied to the
+        # discovery switch: the account is never used by an automated path.
+        linkedin_jobs = [j for j in queue if settings.is_linkedin_job(j)]
+        if linkedin_jobs:
+            logger.info(
+                "Skipping %d LinkedIn job(s): discovery-only, apply manually",
+                len(linkedin_jobs),
+            )
+        queue = [j for j in queue if not settings.is_linkedin_job(j)]
 
         processed = 0
         for job in queue:
@@ -567,13 +584,13 @@ class PipelineOrchestrator:
             )
         return count
 
-    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False) -> Dict[str, Any]:
+    async def run_cycle(self, dry_run: bool = True, max_sources: Optional[int] = None, linkedin_approved: bool = False, use_rezi: bool = False, hours_old: int = 24, remote_only: bool = False, target_geo: bool = False) -> Dict[str, Any]:
         """Execute one complete end-to-end pipeline iteration."""
         # 0. Recover stuck jobs
         recovered = self.recover_stuck_jobs()
 
         # 1. Discovery (targeting 500+ jobs daily)
-        new_jobs = await self.run_discovery_stage(max_sources=max_sources, hours_old=hours_old, remote_only=remote_only)
+        new_jobs = await self.run_discovery_stage(max_sources=max_sources, hours_old=hours_old, remote_only=remote_only, target_geo=target_geo)
 
         # 2. Evaluation
         evaluated = await self.run_evaluation_stage_async()
